@@ -47,10 +47,14 @@ const STARTUP_DELAY_MS = 3_000;
 const MIN_RUN_INTERVAL_MS = 60_000;
 
 export interface CrossOwnerSyncDeps {
-  /** 当前 owner 已就绪的主库连接（ensureReady 打开的那份）。 */
-  db: Database.Database;
-  currentUserId: string;
-  currentDbPath: string | null;
+  /**
+   * 运行时解析当前 owner 的主库连接——调度与执行之间可能发生账号切换
+   * （switchUser 会 closeDb），**绝不**在调度时捕获连接句柄，否则延迟执行时
+   * 拿到的是已关闭的旧连接（"database connection is not open"）。
+   */
+  getDb: () => Database.Database | null;
+  getUserId: () => string | null;
+  getCurrentDbPath: () => string | null;
   userDataDir: string;
 }
 
@@ -212,10 +216,18 @@ function hasTable(db: Database.Database, table: string): boolean {
 
 async function runCrossOwnerSessionSync(deps: CrossOwnerSyncDeps): Promise<CrossOwnerSyncSummary> {
   const startedAt = Date.now();
+  const db = deps.getDb();
+  const currentUserId = deps.getUserId();
+  const currentDbPath = deps.getCurrentDbPath();
+  if (!db || !currentUserId || !currentDbPath || !deps.userDataDir) {
+    // 调度到执行之间 owner 已切走 / 库已关闭——本次放弃，下次 ensureReady 再调度。
+    log.info('cross-owner session sync skipped: owner not ready at run time');
+    return { siblings: 0, sessionsUpserted: 0, messagesCopied: 0, failed: [] };
+  }
   const { paths } = discoverSiblingOwnerDbPaths(
     deps.userDataDir,
-    deps.currentDbPath,
-    deps.currentUserId,
+    currentDbPath,
+    currentUserId,
   );
   const summary: CrossOwnerSyncSummary = {
     siblings: paths.length,
@@ -224,15 +236,15 @@ async function runCrossOwnerSessionSync(deps: CrossOwnerSyncDeps): Promise<Cross
     failed: [],
   };
   if (paths.length === 0) {
-    log.info('cross-owner session sync: no sibling dbs', { userId: deps.currentUserId });
+    log.info('cross-owner session sync: no sibling dbs', { userId: currentUserId });
     return summary;
   }
   // 多连接（worker / utility transport 与本连接）并发写同一 WAL 库是常态，
   // 写前给当前连接一个 busy timeout，避免偶发 SQLITE_BUSY 直接失败。
-  deps.db.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
+  db.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
   for (const siblingPath of paths) {
     try {
-      const result = syncOneSibling(deps.db, siblingPath);
+      const result = syncOneSibling(db, siblingPath);
       summary.sessionsUpserted += result.sessionsUpserted;
       summary.messagesCopied += result.messagesCopied;
     } catch (error) {
@@ -243,7 +255,7 @@ async function runCrossOwnerSessionSync(deps: CrossOwnerSyncDeps): Promise<Cross
     }
   }
   log.info('cross-owner session sync complete', {
-    userId: deps.currentUserId,
+    userId: currentUserId,
     siblings: summary.siblings,
     sessionsUpserted: summary.sessionsUpserted,
     messagesCopied: summary.messagesCopied,

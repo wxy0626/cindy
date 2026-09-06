@@ -129,9 +129,9 @@ describe('syncSessionsFromSiblingDbs', () => {
 
     const me = createDb(siblingDbPath(dir, 'me'));
     const summary = await syncSessionsFromSiblingDbs({
-      db: me,
-      currentUserId: 'me',
-      currentDbPath: siblingDbPath(dir, 'me'),
+      getDb: () => me,
+      getUserId: () => 'me',
+      getCurrentDbPath: () => siblingDbPath(dir, 'me'),
       userDataDir: path.join(tempRoot, 'Cindy'),
     });
 
@@ -150,9 +150,9 @@ describe('syncSessionsFromSiblingDbs', () => {
 
     // 幂等:再跑一遍不重复插入、不报错
     const again = await syncSessionsFromSiblingDbs({
-      db: me,
-      currentUserId: 'me',
-      currentDbPath: siblingDbPath(dir, 'me'),
+      getDb: () => me,
+      getUserId: () => 'me',
+      getCurrentDbPath: () => siblingDbPath(dir, 'me'),
       userDataDir: path.join(tempRoot, 'Cindy'),
     });
     expect(again.sessionsUpserted).toBe(0);
@@ -161,7 +161,7 @@ describe('syncSessionsFromSiblingDbs', () => {
     me.close();
   });
 
-  it('updated_at 收敛:本地较新保留、源较新覆盖、软删墓碑传播', () => {
+  it('updated_at 收敛:本地较新保留、源较新覆盖、软删墓碑传播', async () => {
     const dir = path.join(tempRoot, 'CindyShared');
     fs.mkdirSync(dir, { recursive: true });
     const sibling = createDb(siblingDbPath(dir, 'owner-a'));
@@ -180,10 +180,10 @@ describe('syncSessionsFromSiblingDbs', () => {
     local.run('s-source-newer', '本地较旧', 'active', 100);
     local.run('s-deleted', '本地还活着', 'active', 100);
 
-    syncSessionsFromSiblingDbs({
-      db: me,
-      currentUserId: 'me',
-      currentDbPath: siblingDbPath(dir, 'me'),
+    await syncSessionsFromSiblingDbs({
+      getDb: () => me,
+      getUserId: () => 'me',
+      getCurrentDbPath: () => siblingDbPath(dir, 'me'),
       userDataDir: path.join(tempRoot, 'Cindy'),
     });
 
@@ -212,9 +212,9 @@ describe('syncSessionsFromSiblingDbs', () => {
     const me = createDb(siblingDbPath(dir, 'me'));
 
     const summary = await syncSessionsFromSiblingDbs({
-      db: me,
-      currentUserId: 'me',
-      currentDbPath: siblingDbPath(dir, 'me'),
+      getDb: () => me,
+      getUserId: () => 'me',
+      getCurrentDbPath: () => siblingDbPath(dir, 'me'),
       userDataDir: path.join(tempRoot, 'Cindy'),
     });
     expect(summary.failed).toHaveLength(0);

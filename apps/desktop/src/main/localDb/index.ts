@@ -484,10 +484,11 @@ export async function ensureReady(userId: string): Promise<EnsureReadyResult> {
   // 跨账号 / 跨版本会话镜像同步(2026-09-06 用户裁决「两版本和多账号互通对话」):
   // 启动 / 切账号后延迟几秒,把共享根(沙箱额外只读回看正式区域目录)里其它 owner
   // 库的会话 + 消息按 updated_at 收敛进当前库。fire-and-forget,失败只记日志。
+  // getter 取值而非捕获句柄:调度到执行之间可能发生账号切换(switchUser closeDb)。
   scheduleCrossOwnerSessionSync({
-    db,
-    currentUserId: userId,
-    currentDbPath: filePath,
+    getDb: () => _db,
+    getUserId: () => _currentUserId,
+    getCurrentDbPath: () => _currentDbPath,
     userDataDir: app.getPath('userData'),
   });
 
