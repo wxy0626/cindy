@@ -48,6 +48,9 @@ import { dialogueWorkspaceRootDir } from './dialogueWorkspace';
 import { repairManagedDialogueWorkspaceSessions } from './managedDialogueWorkspaceRepair';
 import * as schema from './schema';
 import { loadSqliteVec, resetSqliteVecState } from './sqliteVecLoader';
+import { resolveOwnerDataRootDir, resolveSessionDbRootDir } from '../localProfileSharedRoot';
+import { seedSessionDbSharedRoot } from '../localProfileSharedRootSeeder';
+import { scheduleCrossOwnerSessionSync } from './crossOwnerSessionSync';
 import {
   checkMigrationCompatibility,
   prepareMigrationRuntimeManifest,
@@ -105,8 +108,20 @@ export function getCurrentUserId(): string | null {
   return _currentUserId;
 }
 
+/**
+ * 解析 db 文件的存放目录。
+ *
+ * 本机维度共享：所有 owner 的会话库（云账号 / local-v1）统一落**跨区域共享根**，
+ * 让本机产生的会话在中国版与国际版之间都能看到，与登录态、账号无关。凭证命名
+ * 空间仍走 ownerScopedUserDataPath（区域隔离），不随库文件共享。语义边界见
+ * localProfileSharedRoot.ts。
+ */
+function dbDir(userId: string): string {
+  return resolveSessionDbRootDir(userId, app.getPath('userData'));
+}
+
 function dbPath(userId: string): string {
-  return path.join(app.getPath('userData'), `${BRAND_IDENTITY.dbFilePrefix}-${userId}.db`);
+  return path.join(dbDir(userId), `${BRAND_IDENTITY.dbFilePrefix}-${userId}.db`);
 }
 
 export function getDbPathForUser(userId: string): string {
@@ -155,6 +170,16 @@ export async function ensureReady(userId: string): Promise<EnsureReadyResult> {
   }
 
   const filePath = dbPath(userId);
+  // 存量播种：老版本可能在各自区域目录攒过会话库（local-v1 免登录档案、云账号库）。
+  // 切换到共享根后若不搬，用户升级会看到本机会话/项目消失。覆盖所有 owner，
+  // 幂等 + best-effort，失败只记日志不阻断启动。
+  try {
+    seedSessionDbSharedRoot(app.getPath('userData'), BRAND_IDENTITY.dbFilePrefix);
+  } catch (error) {
+    log.warn('session db shared root seeding failed (non-fatal)', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   const passiveSharedUserData = !app.isPackaged && process.env.XDT_PASSIVE_SHARED_USER_DATA === '1';
   // A packaged release may be launched while a shared passive dev instance is still
   // open.  The passive reader lease must continue to block schema writes, but an
@@ -456,11 +481,24 @@ export async function ensureReady(userId: string): Promise<EnsureReadyResult> {
   runOptimize(0x10002);
   startOptimizeSchedule();
 
+  // 跨账号 / 跨版本会话镜像同步(2026-09-06 用户裁决「两版本和多账号互通对话」):
+  // 启动 / 切账号后延迟几秒,把共享根(沙箱额外只读回看正式区域目录)里其它 owner
+  // 库的会话 + 消息按 updated_at 收敛进当前库。fire-and-forget,失败只记日志。
+  scheduleCrossOwnerSessionSync({
+    db,
+    currentUserId: userId,
+    currentDbPath: filePath,
+    userDataDir: app.getPath('userData'),
+  });
+
   log.info(JSON.stringify({ event: 'localDb.ensureReady.ok', userId, dbPath: filePath }));
   return { ready: true };
 }
 
 function openWithPragmas(filePath: string): Database.Database {
+  // 本地档案的库可能落在跨区域共享根（CindyShared），该目录是派生的、Electron
+  // 不会自动创建——打开前先确保父目录存在，否则 better-sqlite3 直接抛错。
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const db = createBetterSqliteDatabase(filePath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');

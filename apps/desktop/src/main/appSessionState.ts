@@ -12,6 +12,7 @@ import crypto from 'node:crypto';
 import { createLogger } from './logger.js';
 import { createOverrideSettingsFile } from './maker-host/override-settings-file.js';
 import { LOCAL_PROFILE_DATA_OWNER_ID } from './profile/profileRegistryModel.js';
+import { resolveOwnerDataRootDir } from './localProfileSharedRoot.js';
 import type { DataOwnerPushStamp } from '../shared/dataOwnerPush.js';
 
 export type AppSessionMode = 'signed-out' | 'local' | 'cloud';
@@ -34,6 +35,10 @@ export function dataOwnerStorageKey(ownerId: string): string {
  * Resolve private application state beneath the active owner's namespace.
  * Callers must not silently fall back to the shared userData root: doing so
  * would make signed-out startup or an account switch cross-contaminate data.
+ *
+ * 本地档案（local-v1）的命名空间挂在**跨区域共享根**下（见
+ * localProfileSharedRoot.ts）：它没有服务端归属，跟着区域目录走会让用户一换
+ * 版本就丢数据。云账号的命名空间仍严格落在各自区域的 userData 里。
  */
 export function ownerScopedUserDataPath(...parts: string[]): string {
   const ownerId = getActiveAppSession().dataOwnerId;
@@ -43,7 +48,8 @@ export function ownerScopedUserDataPath(...parts: string[]): string {
     // reading or writing a real owner's private state.
     return path.join(app.getPath('temp'), 'cindy-no-session', String(process.pid), ...parts);
   }
-  return path.join(app.getPath('userData'), 'owners', dataOwnerStorageKey(ownerId), ...parts);
+  const ownerRoot = resolveOwnerDataRootDir(ownerId, app.getPath('userData'));
+  return path.join(ownerRoot, 'owners', dataOwnerStorageKey(ownerId), ...parts);
 }
 
 interface PersistedAppSessionSettings {

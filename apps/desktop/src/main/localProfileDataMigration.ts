@@ -20,6 +20,7 @@ import {
   restrictDbFilePermissions,
 } from './localDb/betterSqliteFactory.js';
 import { LOCAL_PROFILE_DATA_OWNER_ID } from './profile/profileRegistryModel.js';
+import { resolveOwnerDataRootDir, resolveSessionDbRootDir } from './localProfileSharedRoot.js';
 import { atomicWriteFileSync, readAtomicFileSync } from './utils/atomicWriteFile.js';
 
 export const LOCAL_PROFILE_MIGRATION_TMP_SUFFIX = '.local-profile-migration-tmp';
@@ -178,13 +179,32 @@ const realFs: LocalProfileDataMigrationFs = {
   removeIfExists: (file) => fs.promises.rm(file, { force: true }),
 };
 
+/**
+ * 解析某个 owner 的 db 路径。
+ *
+ * 本地档案落在跨区域共享根，云账号留在区域目录（见 localProfileSharedRoot.ts）。
+ * `adoptLocalProfileDatabase` 的 source(local-v1) 与 target(云 owner) 因此自动
+ * 分处两个根：从共享库取快照、写进本区域的云账号库，领养语义一字未改。
+ *
+ * 注意 deps.userDataDir 在单测里是临时目录，目录名不匹配任何品牌区域目录，
+ * 共享根退化为该目录本身——既有测试的断言全部保持有效。
+ */
 function dbPath(deps: LocalProfileDataMigrationDeps, ownerId: string): string {
-  return path.join(deps.userDataDir, `${deps.dbFilePrefix}-${ownerId}.db`);
+  return path.join(
+    resolveSessionDbRootDir(ownerId, deps.userDataDir),
+    `${deps.dbFilePrefix}-${ownerId}.db`,
+  );
 }
 
+/**
+ * 领养标记的路径。
+ *
+ * marker 记录的是"这份 local-v1 库已被哪个云 owner 认领"，必须与库**同根**，
+ * 否则另一区域登录时会再次认领同一份共享库，把别人的本地数据判给自己。
+ */
 function migrationMarkerPath(deps: LocalProfileDataMigrationDeps): string {
   return path.join(
-    deps.userDataDir,
+    resolveOwnerDataRootDir(LOCAL_PROFILE_DATA_OWNER_ID, deps.userDataDir),
     `${deps.dbFilePrefix}-${LOCAL_PROFILE_DATA_OWNER_ID}${LOCAL_PROFILE_MIGRATION_MARKER_SUFFIX}`,
   );
 }
@@ -283,7 +303,7 @@ export async function withLocalProfileMigrationStartupBarrier<T>(
   operation: () => T | Promise<T>,
 ): Promise<T> {
   const marker = path.join(
-    userDataDir,
+    resolveOwnerDataRootDir(LOCAL_PROFILE_DATA_OWNER_ID, userDataDir),
     `${dbFilePrefix}-${LOCAL_PROFILE_DATA_OWNER_ID}${LOCAL_PROFILE_MIGRATION_MARKER_SUFFIX}`,
   );
   const lockDb = await acquireLocalProfileMigrationLock(marker);
@@ -686,7 +706,7 @@ export function reserveLocalProfileDataOwnerDetailed(
     return { status: 'failed' };
   }
   const marker = path.join(
-    userDataDir,
+    resolveOwnerDataRootDir(LOCAL_PROFILE_DATA_OWNER_ID, userDataDir),
     `${dbFilePrefix}-${LOCAL_PROFILE_DATA_OWNER_ID}${LOCAL_PROFILE_MIGRATION_MARKER_SUFFIX}`,
   );
   return withLocalProfileMigrationLock(marker, { status: 'failed' }, () =>
@@ -705,7 +725,7 @@ export function reserveCommittedLocalProfileDataOwnerDetailed(
     return { status: 'failed' };
   }
   const marker = path.join(
-    userDataDir,
+    resolveOwnerDataRootDir(LOCAL_PROFILE_DATA_OWNER_ID, userDataDir),
     `${dbFilePrefix}-${LOCAL_PROFILE_DATA_OWNER_ID}${LOCAL_PROFILE_MIGRATION_MARKER_SUFFIX}`,
   );
   return withLocalProfileMigrationLock<LocalProfileMigrationReservationDetails>(
@@ -740,7 +760,7 @@ export function releaseLocalProfileDataOwner(
   const normalizedOwnerId = ownerId.trim();
   if (!normalizedOwnerId || !claimToken) return false;
   const marker = path.join(
-    userDataDir,
+    resolveOwnerDataRootDir(LOCAL_PROFILE_DATA_OWNER_ID, userDataDir),
     `${dbFilePrefix}-${LOCAL_PROFILE_DATA_OWNER_ID}${LOCAL_PROFILE_MIGRATION_MARKER_SUFFIX}`,
   );
   return withLocalProfileMigrationLock(marker, false, () => {
@@ -777,7 +797,7 @@ export function recoverPendingLocalProfileDataOwner(
 ): PendingLocalProfileReservationRecovery {
   const normalizedCommittedOwnerId = committedOwnerId?.trim() || null;
   const marker = path.join(
-    userDataDir,
+    resolveOwnerDataRootDir(LOCAL_PROFILE_DATA_OWNER_ID, userDataDir),
     `${dbFilePrefix}-${LOCAL_PROFILE_DATA_OWNER_ID}${LOCAL_PROFILE_MIGRATION_MARKER_SUFFIX}`,
   );
   return withLocalProfileMigrationLock<PendingLocalProfileReservationRecovery>(
