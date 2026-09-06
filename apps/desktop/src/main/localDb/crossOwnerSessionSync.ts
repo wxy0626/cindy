@@ -21,8 +21,8 @@
  *     （model-access-credentials、secret store）与其它 owner 命名空间数据一律不读
  *     不写（authManager 安全红线不动）。
  *   - 兄弟库一律 **readonly** 连接，任何失败只记日志不影响本库。
- *   - 沙箱（非正式区域目录）对正式数据**只进不出**：允许读正式目录镜像进来，
- *     绝不把沙箱数据同步出去（隔离测试永不写脏用户真实数据）。
+ *   - 正式区域与 dev 沙箱**双向互通**（2026-09-06 用户裁决：版本+账号全互通、
+ *     本机对话都进左侧列表，dev 开发期就能验证，不只在正式版）。
  */
 
 import fs from 'node:fs';
@@ -33,7 +33,6 @@ import type Database from 'better-sqlite3';
 import { BRAND_IDENTITY } from '@cindy/maker-shared/brand-identity';
 
 import {
-  isProductionRegionUserDataDir,
   LOCAL_PROFILE_SHARED_DIR_NAME,
 } from '../localProfileSharedRoot.js';
 import { createBetterSqliteDatabase } from './betterSqliteFactory.js';
@@ -44,7 +43,12 @@ const log = createLogger('cross-owner-session-sync');
 const SIBLING_FILE_PATTERN = /^cindy-(.+)\.db$/;
 const BUSY_TIMEOUT_MS = 3_000;
 const STARTUP_DELAY_MS = 3_000;
-const MIN_RUN_INTERVAL_MS = 60_000;
+// 冷启动常先以 signed-out/local-v1 或某个云 owner 就绪，随后用户登录才切到真正
+// 的云 owner。若在 60s 内靠节流挡掉「登录后的那次调度」，用户登录后就不会有对话
+// 互通。故**不按时间节流**，只靠 in-flight 防重入：每次 ensureReady 成功都调度，
+// 正在跑就等下次（登录 / 切账号会再次 ensureReady）。不按时间节流只靠
+// in-flight 防重入，让冷启动后的登录切换也有机会跑一次。
+const MIN_RUN_INTERVAL_MS = 0;
 
 export interface CrossOwnerSyncDeps {
   /**
@@ -100,20 +104,42 @@ export function scheduleCrossOwnerSessionSync(deps: CrossOwnerSyncDeps): void {
 }
 
 /**
- * 枚举候选目录：
- *   - 正式区域身份：共享根（当前库所在目录，seeder 已保证全部 owner 库都在）；
- *   - 沙箱 / 自定义 userData：额外只读回看三个正式区域目录与共享根（只进不出）。
+ * 枚举候选目录（本机单一会话视图，2026-09-06 用户裁决「版本+账号全互通、本机
+ * 对话都进左侧列表」）：
+ *   - 当前库所在目录（通常是共享根；正式区域 seeder 已保证全部 owner 库在）；
+ *   - 共享根（CindyShared）——跨区域同机对话的家；
+ *   - 所有品牌区域目录（cn / global / dev 正式渠道）——兼容老版本把库留在区域
+ *     目录、尚未被 seeder 播种进共享根的情况；
+ *   - 沙箱目录（<品牌目录>-dev2[-name]）：统一按目录名命中「品牌区域目录 +
+ *     -dev2[-*]」形状扫描，让 dev 开发沙箱也能与正式区域双向互通——否则开发期
+ *     数据进不了正式版，互通只能在正式版上验证（用户 2026-09-06 明确不接受）。
+ *
+ * 只排除**当前正在写的那个库**（realpath 比对），其它全部当作兄弟只读镜像。
+ * 不写脏其它目录：兄弟库一律 readonly 连接。
  */
 function candidateDirs(userDataDir: string, currentDbPath: string | null): string[] {
   const dirs = new Set<string>();
-  if (currentDbPath) dirs.add(path.dirname(currentDbPath));
-  if (!isProductionRegionUserDataDir(userDataDir)) {
-    const base = path.dirname(userDataDir);
-    for (const dirName of Object.values(BRAND_IDENTITY.userDataDirNameByRegion)) {
-      dirs.add(path.join(base, dirName));
-      dirs.add(path.join(base, LOCAL_PROFILE_SHARED_DIR_NAME));
-    }
+  const base = path.dirname(userDataDir);
+  // 共享根（所有区域身份的会话库共同家园）。
+  dirs.add(path.join(base, LOCAL_PROFILE_SHARED_DIR_NAME));
+  // 品牌区域正式目录 + 它们的 dev 沙箱（-dev2 / -dev2-<name>）。
+  const regionNames = Object.values(BRAND_IDENTITY.userDataDirNameByRegion);
+  for (const name of regionNames) {
+    dirs.add(path.join(base, name));
   }
+  // 扫一遍 appData 下以任意品牌目录名开头的沙箱目录（eg. CindyGlobal-dev2-dev）。
+  try {
+    for (const entry of fs.readdirSync(base)) {
+      for (const name of regionNames) {
+        if (entry === name) continue;
+        if (entry.startsWith(`${name}-dev2`)) dirs.add(path.join(base, entry));
+      }
+    }
+  } catch {
+    // appData 读不到时静默——共享根 + 区域目录已覆盖主要路径。
+  }
+  // 当前库所在目录优先补上（未命中上述任何规则的自定义 userData）。
+  if (currentDbPath) dirs.add(path.dirname(currentDbPath));
   return [...dirs];
 }
 

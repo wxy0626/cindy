@@ -88,22 +88,37 @@ describe('discoverSiblingOwnerDbPaths', () => {
     expect(found.skippedCurrentOwner).toBe(1);
   });
 
-  it('沙箱(非正式区域目录)额外回看正式区域目录与共享根', () => {
+  it('沙箱与正式区域双向互通:任一区域启动都扫共享根+所有品牌目录+dev 沙箱', () => {
     const sharedRoot = path.join(tempRoot, 'CindyShared');
-    fs.mkdirSync(sharedRoot, { recursive: true });
-    fs.writeFileSync(siblingDbPath(sharedRoot, 'release-owner'), 'x');
+    const cnDir = path.join(tempRoot, 'Cindy');
+    const globalDir = path.join(tempRoot, 'CindyGlobal');
     const sandboxDir = path.join(tempRoot, 'CindyGlobal-dev2-dev');
-    fs.mkdirSync(sandboxDir, { recursive: true });
-    fs.writeFileSync(siblingDbPath(sandboxDir, 'sandbox-owner'), 'x');
+    for (const d of [sharedRoot, cnDir, globalDir, sandboxDir]) fs.mkdirSync(d, { recursive: true });
+    // 正式区(global)在共享根有库;cn 目录残留老库;沙箱有开发库 —— 三者都应被看见。
+    fs.writeFileSync(siblingDbPath(sharedRoot, 'release-owner'), 'x');
+    fs.writeFileSync(siblingDbPath(cnDir, 'cn-owner'), 'x');
+    fs.writeFileSync(siblingDbPath(sandboxDir, 'dev-owner'), 'x');
 
-    const found = discoverSiblingOwnerDbPaths(
-      sandboxDir,
-      siblingDbPath(sandboxDir, 'me'),
-      'me',
+    // 从全球正式区启动
+    const fromGlobal = discoverSiblingOwnerDbPaths(
+      globalDir,
+      path.join(globalDir, 'cindy-myglobal.db'),
+      'myglobal',
     );
-    const names = found.paths.map((p) => path.basename(p)).sort();
-    expect(names).toContain('cindy-release-owner.db');
-    expect(names).toContain('cindy-sandbox-owner.db');
+    const gNames = fromGlobal.paths.map((p) => path.basename(p)).sort();
+    expect(gNames).toContain('cindy-release-owner.db');
+    expect(gNames).toContain('cindy-cn-owner.db');
+    expect(gNames).toContain('cindy-dev-owner.db');
+
+    // 从 dev 沙箱启动 —— 同样能看见正式区与共享根的库
+    const fromDev = discoverSiblingOwnerDbPaths(
+      sandboxDir,
+      path.join(sandboxDir, 'cindy-mydb.db'),
+      'mydb',
+    );
+    const dNames = fromDev.paths.map((p) => path.basename(p)).sort();
+    expect(dNames).toContain('cindy-release-owner.db');
+    expect(dNames).toContain('cindy-cn-owner.db');
   });
 });
 
