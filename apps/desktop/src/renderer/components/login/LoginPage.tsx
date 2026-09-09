@@ -808,11 +808,13 @@ export function LoginPage({
           {/* noValidate:关掉浏览器对 type="email" 的原生约束校验气泡(英文系统提示,
               不受主题控制),改由下方本地校验渲染设计稿定义的红边+红字错误态。 */}
           <form onSubmit={submitIdentifier} noValidate>
-            <LoginBackButton
-              disabled={localModePending}
-              label={t('login.back')}
-              onClick={returnToRegionSelector}
-            />
+            {!isAddAccount ? (
+              <LoginBackButton
+                disabled={localModePending}
+                label={t('login.back')}
+                onClick={returnToRegionSelector}
+              />
+            ) : null}
             <LoginTitleBlock
               title={t('login.title')}
               subtitle={t('login.subtitle')}

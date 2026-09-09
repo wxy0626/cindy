@@ -268,9 +268,9 @@ describe('identifier 态(附录 A providers 场景)', () => {
     expect(loginHook.value.dispatch).not.toHaveBeenCalled();
   });
 
-  it('普通登录首屏不提供退出流程的返回按钮', async () => {
+  it('普通登录 identifier 页返回到区域选择器', async () => {
     mount(await identifierState('providers:both'));
-    expect(screen.queryByRole('button', { name: 'login.back' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'login.back' })).toBeTruthy();
   });
 
   it.each(['darwin', 'win32'])('登录更多账号在 %s 仅保留面板返回入口', async (platform) => {
