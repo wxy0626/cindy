@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   projectBulkArchiveActionForStatus,
+  selectProjectDeleteCandidates,
   selectProjectBulkArchiveCandidates,
   type ProjectBulkArchiveSession,
 } from '../features/cc-agent/lib/projectBulkArchiveAction';
@@ -69,5 +70,21 @@ describe('project bulk archive action', () => {
     ]);
     expect(result.skippedPinned).toBe(0);
     expect(result.skippedRunning).toBe(0);
+  });
+
+  it('deletes only archived sessions in the project', () => {
+    const sessions = [
+      session('active', 'active'),
+      session('archived', 'archived'),
+      session('deleted', 'deleted'),
+      session('other-project', 'archived', 'project-b'),
+    ];
+
+    const result = selectProjectDeleteCandidates(
+      sessions,
+      (item) => item.project === 'project-a',
+    );
+
+    expect(result.map((item) => item.id)).toEqual(['archived']);
   });
 });

@@ -54,6 +54,7 @@ import { setDeferredUiAssignmentOwner } from '@/features/cc-agent/deferredUiAssi
 import { invalidateProvidersSnapshot } from '@/lib/providersSnapshotStore';
 import { preloadLocalCatalogSnapshot } from '@/lib/localCatalogSnapshot';
 import { getDataOwnerGeneration, setDataOwnerGeneration } from './dataOwnerGeneration';
+import type { LocalProjectSyncOptions } from '../../shared/localProjectSync';
 
 /**
  * 登录态上下文：user / isAuthenticated / isCanary / deviceId 全部来自 main 的
@@ -79,11 +80,13 @@ export interface AuthContextValue {
   /** Renderer-safe login screen state; auth tickets remain in main. */
   loginState: AuthFlowState | null;
   loadLoginState: () => Promise<DesktopLoginActionResult>;
+  /** 登录页选择区域后，立即更新 renderer 中的登录表单状态。 */
+  selectLoginRegion: (region: 'cn' | 'global') => Promise<DesktopLoginActionResult>;
   dispatchLoginAction: (action: DesktopLoginAction) => Promise<DesktopLoginActionResult>;
   logout: () => Promise<void>;
   listAccounts: () => Promise<DesktopAccountSwitcherSnapshot>;
   syncAccounts: () => Promise<DesktopAccountSwitcherSnapshot>;
-  switchAccount: (accountKey: string) => Promise<void>;
+  switchAccount: (accountKey: string, localProjectSync?: LocalProjectSyncOptions) => Promise<void>;
   beginAddAccount: () => Promise<DesktopLoginActionResult>;
   cancelAddAccount: () => Promise<void>;
   enterLocalMode: () => Promise<void>;
@@ -336,7 +339,14 @@ export function AuthProvider({
         description: payload.message || t(descriptionKey),
         confirmText: t('logic.confirm.sessionExpiredConfirm'),
         showCancel: false,
-      }).then(() => {
+      }).then(async () => {
+        // 会话过期后必须同步清除 main 中的失效凭据和刷新定时器；
+        // 只清 renderer 状态会让旧区域会话再次刷新并遮挡新的登录页。
+        try {
+          await authServiceRef.current!.logout();
+        } catch (error) {
+          log.warn('failed to clear expired auth session before re-login', error);
+        }
         activeUserIdRef.current = null;
         sessionsStore.reset();
         clearWorkersCache();
@@ -359,6 +369,15 @@ export function AuthProvider({
     setLoginState(result.state);
     return result;
   }, []);
+
+  const selectLoginRegion = useCallback(
+    async (region: 'cn' | 'global'): Promise<DesktopLoginActionResult> => {
+      const result = await authServiceRef.current!.selectLoginRegion(region);
+      setLoginState(result.state);
+      return result;
+    },
+    [],
+  );
 
   const dispatchLoginAction = useCallback(
     async (action: DesktopLoginAction): Promise<DesktopLoginActionResult> => {
@@ -397,11 +416,16 @@ export function AuthProvider({
             setLoginState(result.state);
             return result;
           }
+          // 只有支持本地同步的登录 action 才能把策略传入自动发码分支。
+          const localProjectSync =
+            'localProjectSync' in action ? action.localProjectSync : undefined;
           return dispatchLoginAction({
             type: 'request-code',
             kind: 'email',
             identifier: result.state.email,
             captchaToken,
+            // 继续传递登录页的本地项目同步策略，避免自动发码分支丢失选择。
+            ...(localProjectSync ? { localProjectSync } : {}),
           });
         }
       }
@@ -415,6 +439,8 @@ export function AuthProvider({
     await runDataOwnerBoundary(() => authServiceRef.current!.logout());
     sessionsStore.reset();
     clearWorkersCache();
+    // 仅刷新登录 renderer，让 preload 重新读取已清空的登录区域选择；主进程不重启。
+    window.location.reload();
   }, [runDataOwnerBoundary]);
 
   const listAccounts = useCallback(() => authServiceRef.current!.listAccounts(), []);
@@ -422,8 +448,10 @@ export function AuthProvider({
   const syncAccounts = useCallback(() => authServiceRef.current!.syncAccounts(), []);
 
   const switchAccount = useCallback(
-    (accountKey: string) =>
-      runDataOwnerBoundary(() => authServiceRef.current!.switchAccount(accountKey)),
+    (accountKey: string, localProjectSync?: LocalProjectSyncOptions) =>
+      runDataOwnerBoundary(() =>
+        authServiceRef.current!.switchAccount(accountKey, localProjectSync),
+      ),
     [runDataOwnerBoundary],
   );
 
@@ -502,6 +530,7 @@ export function AuthProvider({
       deviceId,
       loginState,
       loadLoginState,
+      selectLoginRegion,
       dispatchLoginAction,
       logout,
       listAccounts,
@@ -533,6 +562,7 @@ export function AuthProvider({
       deviceId,
       loginState,
       loadLoginState,
+      selectLoginRegion,
       dispatchLoginAction,
       logout,
       listAccounts,

@@ -58,7 +58,7 @@ export function ContactsListPane(props: Props) {
       <div className="flex items-center gap-2 p-3 pb-2">
         <div
           className={cn(
-            'flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2.5',
+            'search-capsule-control flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-full px-2.5',
             'bg-[var(--settings-input-bg)]',
           )}
         >
@@ -159,7 +159,7 @@ export function ContactsListPane(props: Props) {
             onChange={(e) => props.onGroupFilterChange(e.target.value || null)}
             aria-label={t('settings.contacts.list.groupFilterAria')}
             className={cn(
-              'h-6 max-w-[120px] rounded-full bg-[var(--settings-input-bg)] px-2 text-12 outline-none',
+              'settings-dropdown-trigger h-6 max-w-[120px] rounded-full bg-[var(--settings-input-bg)] px-2 text-12 outline-none',
               'text-[var(--settings-section-desc)]',
             )}
           >

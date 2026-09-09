@@ -248,7 +248,9 @@ export function AgentSelect({
               'bg-[var(--create-agent-control-bg)] text-[var(--create-agent-control-text)]',
             ]
           : [
-              'border border-[var(--border-default)]',
+              isField
+                ? 'settings-dropdown-trigger'
+                : 'border border-[var(--border-default)] focus-visible:border-[var(--focus-ring)]',
               // 字段形态用设置页输入框底色; 工具条形态用 composer pill 底色。
               isField
                 ? 'bg-[var(--settings-input-bg)]'

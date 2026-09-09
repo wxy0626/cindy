@@ -103,7 +103,8 @@ export function normalizeDesktopRestartArgv(argv = [], env = process.env) {
   if (argv.includes(SHARED_USERDATA_ARG) || argv.includes('--preserve-running')) {
     return argv;
   }
-  return [...argv, DEFAULT_ISOLATED_ARG];
+  // 默认开发实例使用独立凭证沙箱，避免共享正式 ChatGPT 登录并解除开发版 OAuth 写门禁。
+  return [...argv, DEFAULT_ISOLATED_ARG, '--isolated-auth'];
 }
 
 export function desktopRestartArgvConflictMessage(argv = [], env = process.env) {

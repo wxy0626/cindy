@@ -1984,6 +1984,114 @@ body.resizing-pane [data-ghost-webview] {
 }
 
 @layer utilities {
+  /* 设置页所有可展开选择器共用的触发器基线：打开/聚焦才显示蓝色，
+     普通悬停保持中性，避免把静态按钮误染成蓝色。 */
+  .settings-dropdown-trigger {
+    border: 2px solid var(--settings-input-border);
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  .settings-dropdown-trigger:hover {
+    border-color: var(--settings-input-border-focus);
+  }
+
+  .settings-dropdown-trigger:focus-visible,
+  .settings-dropdown-trigger[aria-expanded='true'],
+  .settings-dropdown-trigger[data-state='open'] {
+    border-color: var(--focus-ring);
+    box-shadow: 0 0 0 2px var(--focus-ring-soft);
+    outline: none;
+  }
+
+  /* 设置页所有可编辑控件共用同一套交互基线。排除 checkbox/radio，避免
+     覆盖原生二值控件；下拉触发器可额外使用 settings-dropdown-trigger。 */
+  .settings-page input:not([type='checkbox']):not([type='radio']):not(.settings-search-input),
+  .settings-page textarea,
+  .settings-page select {
+    border-width: 2px;
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  .settings-page input:not([type='checkbox']):not([type='radio']):not(.settings-search-input):hover,
+  .settings-page textarea:hover,
+  .settings-page select:hover {
+    background-color: var(--surface-hover);
+  }
+
+  .settings-page input:not([type='checkbox']):not([type='radio']):not(.settings-search-input):focus,
+  .settings-page textarea:focus,
+  .settings-page select:focus {
+    border-color: var(--focus-ring);
+    box-shadow: 0 0 0 2px var(--focus-ring-soft);
+    outline: none;
+  }
+
+  /* 搜索框由外层胶囊承载边框；内部 input 必须保持透明，避免出现方形内框。 */
+  .settings-search-shell {
+    border: 2px solid var(--settings-input-border);
+    background: var(--settings-input-bg);
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  .settings-search-shell:hover {
+    background: var(--surface-hover);
+  }
+
+  .settings-search-shell:focus-within {
+    border-color: var(--focus-ring);
+    box-shadow: 0 0 0 2px var(--focus-ring-soft);
+  }
+
+  .settings-page .settings-search-shell > input,
+  .settings-page .settings-search-shell > textarea {
+    border: 0 !important;
+    border-width: 0 !important;
+    box-shadow: none;
+    background: transparent;
+  }
+
+  /* 插件页和设置页共用的搜索胶囊：外层负责高亮，内部输入不单独画框。 */
+  .search-capsule-control {
+    border: 2px solid var(--settings-input-border, var(--border-default));
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  .search-capsule-control:hover {
+    background: var(--surface-hover) !important;
+  }
+
+  .search-capsule-control:focus-within {
+    background: var(--surface-hover) !important;
+    border-color: var(--focus-ring) !important;
+    box-shadow: 0 0 0 2px var(--focus-ring-soft) !important;
+  }
+
+  .search-capsule-control > input,
+  .search-capsule-control > textarea {
+    border: 0 !important;
+    border-width: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    outline: none !important;
+  }
+
+  /* 非原生输入的键盘快捷键捕获位也遵循同一套边框基线。 */
+  .settings-input-control {
+    border-width: 2px;
+    border-color: var(--settings-input-border);
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  .settings-input-control:hover {
+    background-color: var(--surface-hover);
+  }
+
+  .settings-input-control[data-recording='true'],
+  .settings-input-control:focus-within {
+    border-color: var(--focus-ring);
+    box-shadow: 0 0 0 2px var(--focus-ring-soft);
+  }
+
   .text-sidebar-item-active-foreground {
     color: var(--sidebar-item-active-foreground);
   }

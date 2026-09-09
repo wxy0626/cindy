@@ -786,7 +786,7 @@ export function ConversationSearchBox({
         )}
       >
         <div className="border-b border-[var(--cmd-palette-border)] p-2">
-          <div className="flex h-9 items-center gap-2 rounded-full border border-[var(--border-default)] bg-[var(--surface-elevated)] px-3">
+          <div className="search-capsule-control flex h-9 items-center gap-2 rounded-full px-3">
             <Search size={15} className="shrink-0 text-[var(--cmd-palette-item-icon)]" />
             <input
               ref={inputRef}

@@ -5,23 +5,38 @@ import type {
   AuthFlowState,
   VerificationKind,
 } from '@cindy/auth-client';
+import type { LocalProjectSyncOptions } from './localProjectSync.js';
+import { parseLocalProjectSyncOptions } from './localProjectSync.js';
 
 export type DesktopLoginAction =
   | { type: 'reset' }
   | { type: 'cancel-browser' }
-  | { type: 'discover'; email: string }
+  | { type: 'discover'; email: string; localProjectSync?: LocalProjectSyncOptions }
   | { type: 'discover-sso-org'; org: string }
   | { type: 'confirm-sso-realm' }
   | { type: 'cancel-sso-realm' }
-  | { type: 'request-code'; kind: VerificationKind; identifier: string; captchaToken?: string }
-  | { type: 'verify-code'; kind: VerificationKind; identifier: string; code: string }
+  | {
+      type: 'request-code';
+      kind: VerificationKind;
+      identifier: string;
+      captchaToken?: string;
+      localProjectSync?: LocalProjectSyncOptions;
+    }
+  | {
+      type: 'verify-code';
+      kind: VerificationKind;
+      identifier: string;
+      code: string;
+      localProjectSync?: LocalProjectSyncOptions;
+    }
   | {
       type: 'start-browser';
       kind: 'social' | 'sso';
       providerOrConnectionId: string;
       label: string;
+      localProjectSync?: LocalProjectSyncOptions;
     }
-  | { type: 'select-account'; accountId: string }
+  | { type: 'select-account'; accountId: string; localProjectSync?: LocalProjectSyncOptions }
   | { type: 'request-sso-verification-code' }
   | { type: 'verify-sso-verification'; code: string }
   | { type: 'request-binding-code'; contact: string }
@@ -46,6 +61,12 @@ export interface DesktopSavedAccount {
 export interface DesktopAccountSwitcherSnapshot {
   accounts: DesktopSavedAccount[];
   mutationAllowed: boolean;
+}
+
+/** 已保存账号快捷切换请求；同步策略仍由主进程边界严格解析。 */
+export interface DesktopAccountSwitchRequest {
+  accountKey: string;
+  localProjectSync?: LocalProjectSyncOptions;
 }
 
 /** The receipt token stays in Electron main; renderer only receives display-safe fields. */
@@ -91,6 +112,14 @@ function isBoundedString(value: unknown, maxLength: number): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= maxLength;
 }
 
+/** 共享策略字段出现但不合法时拒绝整条 action，避免静默降级为未共享。 */
+function parseOptionalLocalProjectSync(
+  value: unknown,
+): LocalProjectSyncOptions | undefined | null {
+  if (value === undefined) return undefined;
+  return parseLocalProjectSyncOptions(value);
+}
+
 function isVerificationKind(value: unknown): value is VerificationKind {
   return value === 'email' || value === 'phone';
 }
@@ -107,10 +136,12 @@ export function parseDesktopLoginAction(value: unknown): DesktopLoginAction | nu
       return { type: 'reset' };
     case 'cancel-browser':
       return { type: 'cancel-browser' };
-    case 'discover':
-      return isBoundedString(value.email, MAX_IDENTIFIER_LENGTH)
-        ? { type: 'discover', email: value.email }
+    case 'discover': {
+      const localProjectSync = parseOptionalLocalProjectSync(value.localProjectSync);
+      return isBoundedString(value.email, MAX_IDENTIFIER_LENGTH) && localProjectSync !== null
+        ? { type: 'discover', email: value.email, ...(localProjectSync ? { localProjectSync } : {}) }
         : null;
+    }
     case 'discover-sso-org':
       return isBoundedString(value.org, MAX_ORG_IDENTIFIER_LENGTH)
         ? { type: 'discover-sso-org', org: value.org }
@@ -128,8 +159,10 @@ export function parseDesktopLoginAction(value: unknown): DesktopLoginAction | nu
       }
       // captchaToken 缺省合法(cn 构建 / captcha 未启用);一旦携带必须过界校验,
       // 非法则整条 action 拒绝,不做静默剥离。
+      const localProjectSync = parseOptionalLocalProjectSync(value.localProjectSync);
+      if (localProjectSync === null) return null;
       if (value.captchaToken === undefined) {
-        return { type: 'request-code', kind: value.kind, identifier: value.identifier };
+        return { type: 'request-code', kind: value.kind, identifier: value.identifier, ...(localProjectSync ? { localProjectSync } : {}) };
       }
       return isBoundedString(value.captchaToken, MAX_CAPTCHA_TOKEN_LENGTH)
         ? {
@@ -137,35 +170,54 @@ export function parseDesktopLoginAction(value: unknown): DesktopLoginAction | nu
             kind: value.kind,
             identifier: value.identifier,
             captchaToken: value.captchaToken,
+            ...(localProjectSync
+              ? { localProjectSync }
+              : {}),
           }
         : null;
     }
     case 'verify-code':
-      return isVerificationKind(value.kind) &&
-        isBoundedString(value.identifier, MAX_IDENTIFIER_LENGTH) &&
-        isBoundedString(value.code, MAX_CODE_LENGTH)
-        ? {
-            type: 'verify-code',
-            kind: value.kind,
-            identifier: value.identifier,
-            code: value.code,
-          }
-        : null;
+      {
+        const localProjectSync = parseOptionalLocalProjectSync(value.localProjectSync);
+        return isVerificationKind(value.kind) &&
+          isBoundedString(value.identifier, MAX_IDENTIFIER_LENGTH) &&
+          isBoundedString(value.code, MAX_CODE_LENGTH) &&
+          localProjectSync !== null
+          ? {
+              type: 'verify-code',
+              kind: value.kind,
+              identifier: value.identifier,
+              code: value.code,
+              ...(localProjectSync ? { localProjectSync } : {}),
+            }
+          : null;
+      }
     case 'start-browser':
-      return (value.kind === 'social' || value.kind === 'sso') &&
-        isBoundedString(value.providerOrConnectionId, MAX_OPAQUE_ID_LENGTH) &&
-        isBoundedString(value.label, MAX_OPAQUE_ID_LENGTH)
-        ? {
-            type: 'start-browser',
-            kind: value.kind,
-            providerOrConnectionId: value.providerOrConnectionId,
-            label: value.label,
-          }
-        : null;
+      {
+        const localProjectSync =
+          value.kind === 'social'
+            ? parseOptionalLocalProjectSync(value.localProjectSync)
+            : undefined;
+        return (value.kind === 'social' || value.kind === 'sso') &&
+          isBoundedString(value.providerOrConnectionId, MAX_OPAQUE_ID_LENGTH) &&
+          isBoundedString(value.label, MAX_OPAQUE_ID_LENGTH) &&
+          localProjectSync !== null
+          ? {
+              type: 'start-browser',
+              kind: value.kind,
+              providerOrConnectionId: value.providerOrConnectionId,
+              label: value.label,
+              ...(localProjectSync ? { localProjectSync } : {}),
+            }
+          : null;
+      }
     case 'select-account':
-      return isBoundedString(value.accountId, MAX_OPAQUE_ID_LENGTH)
-        ? { type: 'select-account', accountId: value.accountId }
-        : null;
+      {
+        const localProjectSync = parseOptionalLocalProjectSync(value.localProjectSync);
+        return isBoundedString(value.accountId, MAX_OPAQUE_ID_LENGTH) && localProjectSync !== null
+          ? { type: 'select-account', accountId: value.accountId, ...(localProjectSync ? { localProjectSync } : {}) }
+          : null;
+      }
     case 'request-sso-verification-code':
       return { type: 'request-sso-verification-code' };
     case 'verify-sso-verification':
@@ -188,6 +240,31 @@ export function parseDesktopLoginAction(value: unknown): DesktopLoginAction | nu
 
 export function parseDesktopAccountKey(value: unknown): string | null {
   return isBoundedString(value, MAX_ACCOUNT_KEY_LENGTH) ? value : null;
+}
+
+/**
+ * 解析已保存账号切换请求。
+ * 旧版本只传字符串账号 key，因此字符串形式必须继续支持；对象形式用于
+ * 传递登录页同源的本地项目同步白名单，并且只保留受认可的字段。
+ */
+export function parseDesktopAccountSwitchRequest(
+  value: unknown,
+): DesktopAccountSwitchRequest | null {
+  const record =
+    typeof value === 'string'
+      ? { accountKey: value }
+      : isRecord(value)
+        ? value
+        : null;
+  if (!record) return null;
+
+  const accountKey = parseDesktopAccountKey(record.accountKey);
+  const localProjectSync = parseOptionalLocalProjectSync(record.localProjectSync);
+  if (!accountKey || localProjectSync === null) return null;
+  return {
+    accountKey,
+    ...(localProjectSync ? { localProjectSync } : {}),
+  };
 }
 
 /** Runtime validation for the irreversible account-deletion confirmation boundary. */

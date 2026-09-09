@@ -1731,7 +1731,14 @@ export async function patchMessageAgentMetaWithResult(
   const rows = await db
     .select({ agentMeta: messages.agentMeta })
     .from(messages)
-    .where(and(eq(messages.sessionId, sessionId), eq(messages.clientId, clientId)))
+    .where(
+      and(
+        eq(messages.sessionId, sessionId),
+        eq(messages.clientId, clientId),
+        // 异步上下文快照不能回写已 rewind 的旧消息。
+        isNull(messages.rewindAt),
+      ),
+    )
     .limit(1);
   if (rows.length === 0) return null;
   // 损坏的 JSON 以 {} 为底重建(补丁字段仍写入,旧字段无法挽救)。

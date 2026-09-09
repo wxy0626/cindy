@@ -204,12 +204,9 @@ function VoiceInputSelect<T extends string>({
           aria-expanded={open}
           className={cn(
             'group flex min-h-[44px] w-full items-center justify-between gap-2.5 rounded-[14px] px-3.5',
-            'border border-[var(--settings-input-border)] bg-[var(--settings-input-bg)]',
+            'settings-dropdown-trigger bg-[var(--settings-input-bg)]',
             'text-left text-[var(--settings-input-text)] shadow-[var(--shadow-menu)]',
             'outline-none transition-colors',
-            open
-              ? 'border-[var(--settings-section-title)]'
-              : 'hover:border-[var(--settings-input-border-focus)] focus-visible:border-[var(--settings-input-border-focus)]',
           )}
         >
           <span className="flex min-w-0 items-center gap-2.5">

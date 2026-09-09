@@ -33,10 +33,10 @@
  *     用户完成 Feishu OAuth → MainLayout 第一次 mount → 同一条 pull 路径消费 payload,
  *     不会因为登录流程跳过而丢失"点击右键打开"这个意图。
  *
+*   setAsDefaultProtocolClient 可把 scheme 临时注册到 Electron 解释器,因此能在 dev
  * dev 模式说明:
- *   setAsDefaultProtocolClient 可把 scheme 临时注册到 Electron 解释器,因此能在 dev
- *   实例运行期间验证系统 URL 唤起;但协议归属受最后注册的正式版 / dev 实例影响,
- *   发布前仍需用 packaged build 做最终跨平台验证。
+ *   开发版不注册系统协议，避免 Windows 将处理程序显示为 Electron；开发登录走
+ *   托管回调轮询。正式包才注册 cindy / 历史 scheme，并由 Cindy 自己接收回调。
  */
 
 import { app, BrowserWindow } from 'electron';
@@ -531,22 +531,17 @@ function isWindowsSlashSwitch(value: string): boolean {
  * 逐个注册(Windows/Linux 运行时写注册表 / .desktop;macOS 以 Info.plist 的
  * CFBundleURLTypes 双注册为准,此调用是兜底,同样遍历保持行为一致)。
  * - packaged:直接 setAsDefaultProtocolClient(scheme) 即可
- * - dev:需要带 execPath + argv 让系统知道怎么把链接路由回当前 Electron 解释器
+ * - dev:不注册，避免协议处理程序显示为 Electron
  *
  * 必须在 app.whenReady 之前调用一次(Electron 文档要求)。重复调用幂等。
  */
 export function registerDeepLinkProtocol(): void {
+  // 开发版由 Electron 解释器承接协议时，Windows 会把处理程序显示为
+  // “Electron”，这会误导用户并可能把回调发到错误实例。开发登录使用
+  // 托管回调轮询，不需要系统级 cindy:// 注册；正式包仍注册 Cindy 自己的 exe。
+  if (process.defaultApp) return;
   for (const scheme of DEEP_LINK_SCHEMES) {
-    if (process.defaultApp) {
-      // dev:用 Electron 解释器跑 main 入口
-      if (process.argv.length >= 2) {
-        app.setAsDefaultProtocolClient(scheme, process.execPath, [path.resolve(process.argv[1])]);
-      } else {
-        app.setAsDefaultProtocolClient(scheme);
-      }
-    } else {
-      // packaged:直接调,OS 用 app bundle 路径
-      app.setAsDefaultProtocolClient(scheme);
-    }
+    // packaged:直接调，OS 使用 Cindy 自己的可执行文件路径。
+    app.setAsDefaultProtocolClient(scheme);
   }
 }

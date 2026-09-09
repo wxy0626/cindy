@@ -35,6 +35,7 @@ import {
   EFFORT_VALUES,
   providerOffersModel,
 } from '@cindy/model-providers';
+import type { ContextUsageData } from '@cindy/maker-core';
 import type { SubagentRunsListResponse } from '@cindy/maker-shared/subagent-workspace';
 import { useProportionalWidth } from '@/hooks/useProportionalWidth';
 import {
@@ -119,6 +120,7 @@ import { useAnimatedNumber } from '@/hooks/useAnimatedNumber';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog-provider';
 import { useSilentEncryptedRetry } from '@/hooks/useSilentEncryptedRetry';
 import { TodaySpendChip } from '@/components/status/TodaySpendChip';
+import { ContextUsagePopover } from '@/components/status/ContextUsageHoverCard';
 import { TopRightChipStack, TopRightChipStackProvider } from '@/components/chat/TopRightChipStack';
 import { ChatDisplaySnapshotProvider } from '@/components/chat/ChatDisplaySnapshotContext';
 import { useCCAgentChat } from '@/hooks/useCCAgentChat';
@@ -220,6 +222,9 @@ import { isRemoteSessionWriteBlocked } from './lib/remoteSessionWriteGuard';
 import { getModelById, getDefaultModelForVendor, getModelsForVendor } from '@/lib/modelDefinitions';
 import { resolveDisplayContextWindow } from '@/lib/contextWindow';
 import { formatRunningTokenCount, resolveRunningUsageMeta } from './lib/runningTokenUsage';
+import { aggregateAssistantTurnUsageDetails } from '@/lib/userTurnUsage';
+import { isContextUsageData } from '@/lib/contextUsage';
+import type { TurnUsageDetails } from '../../../shared/turnUsageDetails';
 import { matchNavigationCommandName, tryHandleNavigationCommand } from '@/lib/navigationCommands';
 import { extractIpcError } from '@/utils/ipcError';
 import { listActiveRunsForSession } from '@/features/learn/useLearnRun';
@@ -1710,6 +1715,35 @@ export function CCAgentSessionView({
     updateQueueItem,
     chatDisplaySnapshot,
   } = useCCAgentChat(sessionId, handleTitleUpdate, { chatRealtime });
+
+  /** 从消息流末尾取最近一轮 assistant 用量，跨同一用户轮的多个 segment 聚合展示。 */
+  const latestTurnDetails = useMemo<TurnUsageDetails | null>(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role !== 'assistant' || !message.turnUsageDetails) continue;
+      return (
+        aggregateAssistantTurnUsageDetails(messages, message.clientId) ?? message.turnUsageDetails
+      );
+    }
+    return null;
+  }, [messages]);
+
+  /** 从会话消息中取最近一份完整上下文详情；悬浮展示只读该缓存，不在进入时请求。 */
+  const cachedContextUsage = useMemo<ContextUsageData | null>(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+
+      if (message.contextUsage && isContextUsageData(message.contextUsage)) {
+        return message.contextUsage;
+      }
+
+      if (message.systemCardType !== 'context') continue;
+      const usage = message.systemCardData?.usage;
+      if (isContextUsageData(usage)) return usage;
+    }
+    return null;
+  }, [messages]);
+
   useEffect(() => {
     if (!sessionId || !isOrcaLeadSessionView || !historyLoaded) return;
     const recoveredAssignment = getRecoverableDeferredUiAssignment({
@@ -3210,23 +3244,12 @@ export function CCAgentSessionView({
     ],
   );
 
-  const maybeShowContextUsage = useCallback(
-    async (message: string): Promise<boolean> => {
-      if (!/^\/context\s*$/i.test(message.trim())) return false;
-      if (!sessionId) {
-        insertSystemCard('context', { usage: null });
-        return true;
-      }
-      if (session?.agentKind === 'codex') {
-        insertSystemCard('context', {
-          usage: null,
-          error: t('chat.systemCard.context.unsupportedAgent', { agent: 'Codex' }),
-        });
-        return true;
-      }
-      const createOpts = session?.workingDir
+  /** 构造悬浮上下文详情与 /context 共用的会话参数，确保本地、SSH 和 device-link 口径一致。 */
+  const buildContextUsageCreateOpts = useCallback(
+    () =>
+      session?.workingDir
         ? {
-            agentKind: session.agentKind === 'pi' ? ('pi' as const) : ('claude-code' as const),
+            agentKind: realAgentKind === 'pi' ? ('pi' as const) : ('claude-code' as const),
             workingDir: session.workingDir,
             model: session.model,
             orcaRole: session.orcaRole ?? null,
@@ -3245,7 +3268,25 @@ export function CCAgentSessionView({
             ...(session.remoteHostId ? { remoteHostId: session.remoteHostId } : {}),
             ...(session.sdkSessionId ? { resumeSessionId: session.sdkSessionId } : {}),
           }
-        : undefined;
+        : undefined,
+    [fastMode, realAgentKind, remoteDeviceId, session],
+  );
+
+  const maybeShowContextUsage = useCallback(
+    async (message: string): Promise<boolean> => {
+      if (!/^\/context\s*$/i.test(message.trim())) return false;
+      if (!sessionId) {
+        insertSystemCard('context', { usage: null });
+        return true;
+      }
+      if (session?.agentKind === 'codex') {
+        insertSystemCard('context', {
+          usage: null,
+          error: t('chat.systemCard.context.unsupportedAgent', { agent: 'Codex' }),
+        });
+        return true;
+      }
+      const createOpts = buildContextUsageCreateOpts();
       const cardClientId = insertSystemCard('context', { usage: undefined });
       if (!cardClientId) return true;
       void makerApiFor(sessionId)
@@ -3262,7 +3303,7 @@ export function CCAgentSessionView({
         });
       return true;
     },
-    [fastMode, insertSystemCard, remoteDeviceId, session, sessionId, t, updateSystemCardData],
+    [buildContextUsageCreateOpts, insertSystemCard, session, sessionId, t, updateSystemCardData],
   );
 
   const handleSend = useCallback(
@@ -5205,11 +5246,14 @@ export function CCAgentSessionView({
                     deviceLinkDeviceId={remoteDeviceId ?? null}
                   />
                   <ContextCapacityRing
+                    sessionId={sessionId}
                     contextTokens={agentStatus.contextTokens}
                     model={agentSwitchIntent?.model ?? session?.model ?? ''}
                     vendorKey={normalizeDbAgentKind(displayAgentKind)}
                     sdkContextWindow={agentStatus.contextWindow}
                     deviceId={remoteDeviceId}
+                    usage={cachedContextUsage}
+                    latestTurnDetails={latestTurnDetails}
                     onCompact={
                       // 按 agent 能力分流(#1927/#1933 review):claude-code 走 inputCoordinator,
                       // 其余声明 manualCompact.supported(当前仅 pi)走 compact-session 通道;
@@ -5717,20 +5761,30 @@ function getModelContextWindow(
 }
 
 function ContextCapacityRing({
+  sessionId,
   contextTokens,
   model,
   vendorKey,
   sdkContextWindow,
   deviceId,
+  usage,
+  latestTurnDetails,
   onCompact,
 }: {
+  /** 当前会话 id，用于切换会话时清空悬浮详情快照。 */
+  sessionId?: string;
   contextTokens: number;
   model: string;
+  /** 会话引擎；目录查不到 contextWindow 时由 display resolver 兜底。 */
   vendorKey: 'cc' | 'codex' | 'pi';
   /** SDK-reported context window; 0 = not yet known → use hardcoded fallback. */
   sdkContextWindow: number;
   /** device-link 远程会话所属被控端 id;按被控端能力查 contextWindow(本机会话 undefined,行为不变)。 */
   deviceId?: string;
+  /** 已缓存的完整上下文详情；悬浮时只展示，不触发新的上下文查询。 */
+  usage?: ContextUsageData | null;
+  /** 最近一轮用量，展示在分割线下的速度与建议区域。 */
+  latestTurnDetails?: TurnUsageDetails | null;
   /** 提供时圆环可点击 — 点击后(经用户确认)向 agent 发送 /compact 压缩上下文。 */
   onCompact?: () => void;
 }) {
@@ -5755,10 +5809,14 @@ function ContextCapacityRing({
   const fillColor = pct > 90 ? '#EF4444' : pct > 70 ? '#F59E0B' : 'var(--msg-tool-card-chevron)';
 
   const usedTokens = Math.min(contextTokens, contextWindow || Infinity);
-  const tooltipText =
-    contextWindow > 0
-      ? `Context — ${formatTokenCount(usedTokens)} / ${formatTokenCount(contextWindow)} (${pct}%)`
-      : 'No context data yet';
+  const hintText =
+    vendorKey === 'pi'
+      ? t('ccAgent.layout.contextRing.piApproximateHint')
+      : onCompact
+        ? t('ccAgent.layout.contextRing.compactHint')
+        : vendorKey === 'codex'
+          ? t('ccAgent.layout.contextRing.codexAutoHint')
+          : null;
 
   const ringContent = (
     <>
@@ -5799,38 +5857,39 @@ function ContextCapacityRing({
     </>
   );
 
+  const ringTrigger = onCompact ? (
+    <button
+      type="button"
+      onClick={onCompact}
+      aria-label={t('ccAgent.layout.contextRing.compactHint')}
+      className="flex shrink-0 cursor-pointer items-center gap-1 transition-opacity hover:opacity-75 active:opacity-60"
+    >
+      {ringContent}
+    </button>
+  ) : (
+    <div className="flex shrink-0 items-center gap-1">{ringContent}</div>
+  );
+
   return (
-    <Tip
-      text={
-        onCompact ? (
-          <>
-            <div>{tooltipText}</div>
-            <div>{t('ccAgent.layout.contextRing.compactHint')}</div>
-          </>
-        ) : vendorKey === 'codex' ? (
-          // codex 协议没有手动 compact 入口(server 侧自动压缩),圆环不可点击;
-          // tooltip 里说明原因,避免用户疑惑为什么 Claude 能点 codex 不能。
-          <>
-            <div>{tooltipText}</div>
-            <div>{t('ccAgent.layout.contextRing.codexAutoHint')}</div>
-          </>
-        ) : (
-          tooltipText
-        )
+    <ContextUsagePopover
+      usage={usage}
+      fallbackTotalTokens={usedTokens}
+      fallbackMaxTokens={contextWindow}
+      latestTurnDetails={latestTurnDetails}
+      hintText={hintText}
+      usageKey={
+        String(sessionId ?? '') +
+        ':' +
+        vendorKey +
+        ':' +
+        model +
+        ':' +
+        String(deviceId ?? '') +
+        ':' +
+        String(contextWindow)
       }
     >
-      {onCompact ? (
-        <button
-          type="button"
-          onClick={onCompact}
-          aria-label={t('ccAgent.layout.contextRing.compactHint')}
-          className="flex shrink-0 cursor-pointer items-center gap-1 transition-opacity hover:opacity-75 active:opacity-60"
-        >
-          {ringContent}
-        </button>
-      ) : (
-        <div className="flex shrink-0 items-center gap-1">{ringContent}</div>
-      )}
-    </Tip>
+      {ringTrigger}
+    </ContextUsagePopover>
   );
 }

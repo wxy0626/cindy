@@ -714,9 +714,8 @@ function QuickTestPanel({ hostId, availableKinds }: QuickTestPanelProps) {
             value={pickedKind}
             onChange={(e) => setPickedKind(e.target.value as AgentKind)}
             disabled={running}
-            className="h-8 rounded-lg border bg-transparent px-2 text-13 outline-none"
+            className="settings-dropdown-trigger h-8 rounded-lg bg-transparent px-2 text-13 outline-none"
             style={{
-              borderColor: 'var(--settings-theme-card-border)',
               color: 'var(--settings-section-title)',
             }}
           >

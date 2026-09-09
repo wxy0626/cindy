@@ -61,6 +61,7 @@ beforeEach(() => {
     value: {
       appDisplayVersion: '1.0.0',
       appDisplayVersionDetail: '1.0.0-test',
+      appSemanticVersion: '1.0.0',
     },
   });
 });

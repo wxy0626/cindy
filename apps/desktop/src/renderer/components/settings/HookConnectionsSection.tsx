@@ -1157,7 +1157,7 @@ export function HookConnectionsSection() {
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label={t('settings.tina.prefs.teamChipAria')}
-                className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--surface-chip)] px-2.5 py-1 text-11 text-[var(--text-secondary)] outline-none transition-colors hover:text-[var(--text-primary)]"
+                className="settings-dropdown-trigger flex shrink-0 items-center gap-1 rounded-full bg-[var(--surface-chip)] px-2.5 py-1 text-11 text-[var(--text-secondary)] outline-none transition-colors hover:text-[var(--text-primary)]"
               >
                 <span className="max-w-40 truncate">
                   {prefsState.teams.find((tm) => tm.teamId === prefsState.selectedTeamId)
@@ -1185,7 +1185,7 @@ export function HookConnectionsSection() {
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label={t('settings.remoteControl.hook.form.defaultWorkspaceAria')}
-                className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--surface-chip)] px-2.5 py-1 text-11 text-[var(--text-secondary)] outline-none transition-colors hover:text-[var(--text-primary)]"
+                className="settings-dropdown-trigger flex shrink-0 items-center gap-1 rounded-full bg-[var(--surface-chip)] px-2.5 py-1 text-11 text-[var(--text-secondary)] outline-none transition-colors hover:text-[var(--text-primary)]"
               >
                 <span className="max-w-40 truncate">
                   {t('settings.remoteControl.hook.form.defaultWorkspaceChip', {

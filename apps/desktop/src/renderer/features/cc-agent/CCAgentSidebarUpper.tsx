@@ -130,6 +130,7 @@ import { useHiddenProjects, type UseHiddenProjectsReturn } from './hooks/useHidd
 import {
   normalizeProjectKey,
   normalizeWorkingDir,
+  mergeProjectCatalogueWithVisibleSessions,
   projectIdentityKey,
   projectIdentityKeyForSession,
   pinnedSessionIdsInDisplayOrder,
@@ -138,6 +139,7 @@ import {
 import { projectDisplayLabelWithMachine } from './lib/remoteProjectIdentity';
 import {
   projectBulkArchiveActionForStatus,
+  selectProjectDeleteCandidates,
   selectProjectBulkArchiveCandidates,
 } from './lib/projectBulkArchiveAction';
 import { sessionActivityMs } from './lib/dateSessionGrouping';
@@ -212,7 +214,11 @@ import {
   getProjectSessionCollapseLimit,
 } from './lib/sidebarCollapseConfig';
 import { getSessionListCollapseView } from './lib/sessionListCollapse';
-import { hasSessionSelectionModifier, type SessionClickModifiers } from './sidebar/SessionItem';
+import {
+  hasSessionSelectionModifier,
+  type SessionAction,
+  type SessionClickModifiers,
+} from './sidebar/SessionItem';
 import type { SessionMoveTarget } from './sidebar/sessionMoveTarget';
 import {
   DIALOGUE_FILTER_KEY,
@@ -234,6 +240,7 @@ import {
   prefetchDeviceGitSafetySettings,
 } from '@/hooks/useGitSafetySettings';
 import { recentWorkdirsStore } from '@/lib/recentWorkdirsStore';
+import { deleteProjectAlias } from '@/lib/projectAliasService';
 import {
   requestRemoteSessionStatus,
   useRemoteArchivedFailedDeviceIds,
@@ -731,6 +738,7 @@ export function CCAgentSidebarUpper() {
             >
               <ExpandedView
                 sessionsHook={sessionsHook}
+                allSessionsForAttention={allSessionsForAttention}
                 navigate={navigate}
                 activeSessionId={activeSessionId}
                 // 兜底直接用路由参数而非 filesSession?.id:filesSession 只从本地
@@ -779,6 +787,8 @@ type SessionsHook = ReturnType<typeof useCCSessions>;
 
 interface ExpandedProps {
   sessionsHook: SessionsHook;
+  /** 全状态会话目录；项目文件夹保留不受当前 active / archived 筛选影响。 */
+  allSessionsForAttention: Session[];
   navigate: ReturnType<typeof useNavigate>;
   activeSessionId: string | undefined;
   /** 「正在被用户注视」的会话 —— 供 attention 语义(running-status 通知豁免 /
@@ -814,6 +824,7 @@ const CONFIRM_INITIAL: ConfirmState = {
 
 function ExpandedView({
   sessionsHook,
+  allSessionsForAttention,
   navigate,
   activeSessionId,
   viewedSessionId,
@@ -1415,13 +1426,25 @@ function ExpandedView({
     projectAliases.aliases,
     true,
   );
-  // Project pinning is independent from conversation pinning. This catalogue
-  // keeps pinned conversations inside their project solely for project identity
-  // and project-level actions; the normal project tree above remains deduped.
-  const allProjectGroups = useProjectGroups(sidebarSessions, projectAliases.aliases, true);
+  // 项目目录册使用当前机器下的全状态会话；状态 / 最近活动筛选只影响子任务，
+  // 不影响项目文件夹本身是否存在。
+  const projectCatalogueSessions = useMemo(
+    () =>
+      selectVisibleSessions(
+        allSessionsForAttention,
+        remoteProjectSessions,
+        selectedMachineId,
+      ).filter((session) => !isOrcaWorkerSession(session)),
+    [allSessionsForAttention, remoteProjectSessions, selectedMachineId],
+  );
+  const projectCatalogueGroups = useProjectGroups(
+    projectCatalogueSessions,
+    projectAliases.aliases,
+    true,
+  );
   const activeWorkingDirs = useMemo(
-    () => allProjectGroups.projects.map((p) => p.projectKey),
-    [allProjectGroups.projects],
+    () => projectCatalogueGroups.projects.map((project) => project.projectKey),
+    [projectCatalogueGroups.projects],
   );
   const collapse = useCollapsedProjects(activeWorkingDirs, sidebarSettingsSnapshot.dataOwnerId);
 
@@ -1430,8 +1453,11 @@ function ExpandedView({
   // 并非不存在;codex)。collapse 仍用机器过滤后的 activeWorkingDirs(collapseAll / isAllCollapsed
   // 针对当前可见项目),渲染也仍走机器过滤后的 allGroups / groups。
   const unfilteredProjectSessions = useMemo(
-    () => [...sessions, ...remoteProjectSessions].filter(passesOrcaAndStatus),
-    [sessions, remoteProjectSessions, passesOrcaAndStatus],
+    () =>
+      selectVisibleSessions(allSessionsForAttention, remoteProjectSessions, MACHINE_ALL).filter(
+        (session) => !isOrcaWorkerSession(session),
+      ),
+    [allSessionsForAttention, remoteProjectSessions],
   );
   const projectUniverse = useProjectGroups(unfilteredProjectSessions, projectAliases.aliases, true);
   // Visibility is a negative overlay only. Keep the raw universe above for
@@ -1537,17 +1563,35 @@ function ExpandedView({
 
   /* ---- F-PJ-10: 在 render 阶段把 filter.projects 应用到 ProjectNode 列表 ---- */
   const visibleProjects = useMemo(() => {
-    const notHidden = visibleSidebarProjects(
+    const projectsWithRetainedFolders = mergeProjectCatalogueWithVisibleSessions(
+      projectCatalogueGroups.projects,
       groupsWithPinnedProjects.projects,
+    );
+    const notHidden = visibleSidebarProjects(
+      projectsWithRetainedFolders,
       hiddenProjectKeys,
       localPlatform,
     );
-    if (filter.projectsAsSet === null) return notHidden;
+    // 归档视图只展示仍有归档任务的项目。项目目录册会跨 active / archived
+    // 保留空节点，便于活动列表抵抗筛选抖动；但归档任务永久删除后，归档页不应
+    // 继续显示没有任何子项的空项目目录。
+    const statusVisibleProjects =
+      filter.status === 'archived'
+        ? notHidden.filter((project) => project.sessions.length > 0)
+        : notHidden;
+    if (filter.projectsAsSet === null) return statusVisibleProjects;
     const allowed = filter.projectsAsSet;
-    return notHidden.filter((project) =>
+    return statusVisibleProjects.filter((project) =>
       projectFilterIncludes(allowed, project.projectKey, localPlatform),
     );
-  }, [groupsWithPinnedProjects.projects, hiddenProjectKeys, filter.projectsAsSet, localPlatform]);
+  }, [
+    filter.projectsAsSet,
+    filter.status,
+    groupsWithPinnedProjects.projects,
+    hiddenProjectKeys,
+    localPlatform,
+    projectCatalogueGroups.projects,
+  ]);
 
   /* ---- M41: Vendor 过滤 — 应用到 pinned / unclassified / project sessions ---- */
   const vendorPredicate = useMemo(() => {
@@ -1595,7 +1639,7 @@ function ExpandedView({
     // 同上:**筛选不作用于置顶区**——项目 / Agent 维度都不过滤置顶项目及其会话
     // (设计文档 §3.3 定稿;2026-08-12 用户重申)。仍然尊重「从侧栏移除项目」,
     // 那不是筛选而是用户对该项目的显式隐藏。
-    return allProjectGroups.projects.flatMap((project) => {
+    return projectCatalogueGroups.projects.flatMap((project) => {
       if (
         projectKeyComparisonSetHas(hiddenProjectComparisonKeys, project.projectKey, localPlatform)
       ) {
@@ -1612,7 +1656,12 @@ function ExpandedView({
         },
       ];
     });
-  }, [allProjectGroups.projects, hiddenProjectComparisonKeys, localPlatform, pinnedProjectKeys]);
+  }, [
+    hiddenProjectComparisonKeys,
+    localPlatform,
+    pinnedProjectKeys,
+    projectCatalogueGroups.projects,
+  ]);
 
   const visiblePinnedEntries = useMemo<PinnedSidebarEntry[]>(() => {
     const entries: PinnedSidebarEntry[] = [
@@ -1709,7 +1758,6 @@ function ExpandedView({
       const matchingSessions = vendorPredicate
         ? project.sessions.filter(vendorPredicate)
         : project.sessions;
-      if (matchingSessions.length === 0) return [];
       return [
         {
           ...project,
@@ -1732,7 +1780,6 @@ function ExpandedView({
       const matchingSessions = vendorPredicate
         ? project.sessions.filter(vendorPredicate)
         : project.sessions;
-      if (matchingSessions.length === 0) return [];
       return [
         {
           ...project,
@@ -2579,6 +2626,146 @@ function ExpandedView({
     [confirmDialog, handleClearSelection, setProjectHidden, t],
   );
 
+  /**
+   * 归档视图中的“删除项目”：只删除该项目下的归档任务记录，项目目录和磁盘文件不变。
+   * 复用批量删除的软删除与 worktree 保护序列，避免项目级入口绕过既有安全检查。
+   */
+  const handleDeleteArchivedProject = useCallback(
+    async (project: ProjectNode, candidateOverride?: Session[]) => {
+      if (bulkActionPending !== null) return;
+      if (isDeviceLinkWriteBlocked(project)) {
+        toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
+        return;
+      }
+      // 使用当前会话索引而不是项目行的可见子集，确保最近活动等筛选不会漏删项目内归档任务。
+      const projectSessions = [...sessionsByIdRef.current.values()];
+      const targetProjectKey = project.projectKey;
+      const candidates = candidateOverride
+        ? selectProjectDeleteCandidates(candidateOverride, (session) => true)
+        : selectProjectDeleteCandidates(
+        projectSessions,
+        (session) => projectIdentityKeyForSession(session) === targetProjectKey,
+          );
+      if (candidates.length === 0) {
+        toast.warning(t('ccAgent.sidebar.deleteProject.empty'));
+        return;
+      }
+      if (candidates.some(isRemoteSessionWriteBlocked)) {
+        toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
+        return;
+      }
+
+      const dirtyCount = await countDirtyWorktreesForRemoval(candidates);
+      const confirmed = await confirmDialog({
+        title: t('ccAgent.sidebar.deleteProject.title', { name: project.displayName }),
+        description:
+          t('ccAgent.sidebar.deleteProject.description', { count: candidates.length }) +
+          (dirtyCount > 0
+            ? ' ' +
+              t('ccAgent.sidebar.deleteProject.dirtyWorktreeWarning', { count: dirtyCount })
+            : ''),
+        confirmText: t('ccAgent.sidebar.deleteProject.confirm'),
+        cancelText: t('ccAgent.sidebar.deleteProject.cancel'),
+        confirmVariant: 'destructive',
+      });
+      if (!confirmed) return;
+
+      const orderedSessionIdsBeforeDelete = getVisibleSidebarSessionIds(sidebarScrollRef.current);
+      setBulkActionPending('delete');
+      const failed: string[] = [];
+      try {
+        for (const session of candidates) {
+          makerChatStore.closeSessionQuery(session.id);
+          try {
+            const statusWriteTarget = await sessionService.resolveStatusWriteTarget(session.id);
+            if (statusWriteTarget.kind !== 'local') {
+              throw new Error('归档项目只能永久删除本机数据库中的会话');
+            }
+            await sessionService.permanentlyDeleteArchived([session.id]);
+            makerChatStore.purgeSession(session.id);
+            discardComposerDraft(session.id);
+            cleanupSessionLayoutPrefs(session.id);
+            if (statusWriteTarget.kind === 'local') {
+              void window.electronAPI.cleanupSessionImages(session.id).catch((err: unknown) => {
+                log.warn('[project delete] cleanup images failed', err);
+              });
+            }
+          } catch (err) {
+            log.error('[project delete]', err);
+            failed.push(session.id);
+          }
+        }
+
+        const failedIds = new Set(failed);
+        const succeededIds = new Set(
+          candidates.filter((session) => !failedIds.has(session.id)).map((session) => session.id),
+        );
+        if (failed.length === 0 && project.scope === 'local' && project.workingDir) {
+          // 项目节点还来自 recent_workdirs / project_aliases；只删 sessions 会留下空项目。
+          const projectPath = project.workingDir;
+          if (projectPath) {
+            try {
+              await recentWorkdirsStore.remove(projectPath);
+            } catch (err) {
+              log.warn('[project delete] remove recent workdir failed', err);
+            }
+          }
+          try {
+            await deleteProjectAlias(project.projectKey);
+          } catch (err) {
+            log.warn('[project delete] remove project alias failed', err);
+          }
+        }
+        await refreshSessions();
+        if (failed.length === 0) {
+          void recentWorkdirsStore.forceRefresh().catch(() => undefined);
+        }
+
+        if (viewedSessionId && succeededIds.has(viewedSessionId)) {
+          const redirectRoute = await resolveSessionRemovalRedirect(
+            succeededIds,
+            viewedSessionId,
+            orderedSessionIdsBeforeDelete,
+          );
+          navigate(redirectRoute ?? '/cc-agent');
+        }
+
+        setSelectedSessionIds((prev) => {
+          const next = new Set(prev);
+          for (const id of succeededIds) next.delete(id);
+          return next;
+        });
+        setSelectionAnchorSessionId((prev) =>
+          prev && succeededIds.has(prev) ? null : prev,
+        );
+
+        if (failed.length === 0) {
+          toast.success(
+            t('ccAgent.sidebar.deleteProject.deleted', { count: succeededIds.size }),
+          );
+        } else {
+          toast.error(
+            t('ccAgent.sidebar.deleteProject.partialFailure', {
+              ok: succeededIds.size,
+              fail: failed.length,
+            }),
+          );
+        }
+      } finally {
+        setBulkActionPending(null);
+      }
+    },
+    [
+      bulkActionPending,
+      confirmDialog,
+      navigate,
+      refreshSessions,
+      resolveSessionRemovalRedirect,
+      t,
+      viewedSessionId,
+    ],
+  );
+
   /* ---- Pin / Unpin handler ---- */
   const handleTogglePin = useCallback(
     async (sessionId: string, currentlyPinned: boolean) => {
@@ -2754,7 +2941,7 @@ function ExpandedView({
   });
 
   const handleActionClick = useCallback(
-    async (sessionId: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => {
+    async (sessionId: string, action: SessionAction) => {
       const session = sessionsByIdRef.current.get(sessionId);
       if (isRemoteSessionWriteBlocked(session)) {
         toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
@@ -2772,6 +2959,20 @@ function ExpandedView({
       // 命中就直接拦，连 IPC 都不用发。
       if (isArchiveLike && attachedSessionIdsRef.current.has(sessionId)) {
         toast.warning(t('ccAgent.sidebar.archiveBlocked.attached'));
+        return;
+      }
+
+      // 行内删除确认态已经完成二次确认，直接进入既有删除执行序列，不再打开中央确认框。
+      // 删除前的 worktree 保护仍由 main 侧删除流程负责，避免确认态再次把用户带离当前行。
+      if (action === 'delete-now') {
+        const deleteRedirectRoute =
+          sessionId === viewedSessionIdRef.current
+            ? await resolveSessionRemovalRedirect(new Set([sessionId]), sessionId)
+            : null;
+        await runSessionAction(sessionId, 'delete', {
+          activeSessionId: viewedSessionIdRef.current,
+          deleteRedirectRoute,
+        });
         return;
       }
       // 本地集合没命中仍问一次 main 兜底(刚 attach 而 binding:changed 尚未到达
@@ -2845,7 +3046,7 @@ function ExpandedView({
       }
       await unarchiveSession(sessionId);
     },
-    [runningSessionIds, runSessionAction, unarchiveSession, t],
+    [resolveSessionRemovalRedirect, runningSessionIds, runSessionAction, unarchiveSession, t],
   );
 
   const handleConfirm = useCallback(async () => {
@@ -3123,7 +3324,7 @@ function ExpandedView({
    * 两个方向都逐条写入，单条失败不会阻断其余会话，最后统一 refresh。
    */
   const handleArchiveAllInProject = useCallback(
-    async (project: ProjectNode) => {
+    async (project: ProjectNode, candidateOverride?: Session[]) => {
       if (isDeviceLinkWriteBlocked(project)) {
         toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
         return;
@@ -3140,10 +3341,10 @@ function ExpandedView({
       // pinned 是用户主动表达 "留住这个会话"，archive all 必须排除（跟 running 是两个独立维度）。
       // 既 pinned 又 running 的：归到 pinned 那类（用户意图明确，running 只是临时状态）。
       const { candidates, skippedPinned, skippedRunning } = selectProjectBulkArchiveCandidates(
-        sessions,
+        candidateOverride ?? sessions,
         action,
         runningSessionIds,
-        belongsToProject,
+        candidateOverride ? () => true : belongsToProject,
       );
 
       if (action === 'unarchive') {
@@ -3581,6 +3782,7 @@ function ExpandedView({
                       onToggleProjectPin={handleToggleProjectPin}
                       onRenameProject={handleProjectAliasChange}
                       onRemoveFromSidebar={handleRemoveProjectFromSidebar}
+                      onDeleteProject={handleDeleteArchivedProject}
                       onSessionClick={handleSessionClick}
                       onAction={handleActionClick}
                       onRename={handleRename}
@@ -3640,6 +3842,7 @@ function ExpandedView({
                   onToggleProjectPin={handleToggleProjectPin}
                   onRenameProject={handleProjectAliasChange}
                   onRemoveFromSidebar={handleRemoveProjectFromSidebar}
+                  onDeleteProject={handleDeleteArchivedProject}
                   onCollapseAll={collapse.collapseAll}
                   onExpandAll={collapse.expandAll}
                   onCreateProject={handleCreateProject}
@@ -3716,6 +3919,7 @@ function ExpandedView({
           与「显示全部」),见 railPanelStore 头注。 */}
       <RailPanels
         projects={visibleRailProjectsWithVendor}
+        statusFilter={filter.status}
         pinnedProjectKeys={pinnedProjectKeys}
         unclassified={railUnclassified}
         dialogues={railDialogues}
@@ -3738,6 +3942,7 @@ function ExpandedView({
         onCreateInProject={handleCreateInProject}
         onToggleProjectPin={handleToggleProjectPin}
         onRemoveProjectFromSidebar={handleRemoveProjectFromSidebar}
+        onDeleteProject={handleDeleteArchivedProject}
       />
       {deleteScheduleDialog}
     </>
@@ -3996,6 +4201,8 @@ function RailPanelShell({
 
 interface RailPanelsProps {
   projects: ProjectNode[];
+  /** 归档视图的项目菜单改为删除项目，活跃视图保留侧栏移除。 */
+  statusFilter: UseSidebarFilterReturn['status'];
   pinnedProjectKeys: ReadonlySet<string>;
   /** 未分类(草稿等)会话——展开态 UnclassifiedSection 同源,面板内平铺在项目列表之上。 */
   unclassified: Session[];
@@ -4027,6 +4234,8 @@ interface RailPanelsProps {
   onToggleProjectPin: (project: ProjectNode, currentlyPinned: boolean) => void;
   /** 与展开态同源的本地项目侧栏移除动作。 */
   onRemoveProjectFromSidebar: (project: ProjectNode) => void;
+  /** 归档视图中的项目级删除；只删除归档任务，不删除项目目录。 */
+  onDeleteProject: (project: ProjectNode) => void;
 }
 
 /**
@@ -4040,6 +4249,7 @@ interface RailPanelsProps {
  */
 function RailPanels({
   projects,
+  statusFilter,
   pinnedProjectKeys,
   unclassified,
   dialogues,
@@ -4062,6 +4272,7 @@ function RailPanels({
   onCreateInProject,
   onToggleProjectPin,
   onRemoveProjectFromSidebar,
+  onDeleteProject,
 }: RailPanelsProps) {
   const { t } = useTranslation();
   const panelState = useSyncExternalStore(railPanelStore.subscribe, railPanelStore.getSnapshot);
@@ -4637,6 +4848,8 @@ function RailPanels({
               ? (projects.find((x) => x.projectKey === projectMenu.projectKey) ?? null)
               : null;
             const menuTargetBlocked = menuTarget != null && isDeviceLinkWriteBlocked(menuTarget);
+            // 归档视图只允许项目级删除；活跃 / 全部视图继续显示侧栏移除。
+            const isArchivedView = statusFilter === 'archived';
             return (
               <>
                 <DropdownMenuItem
@@ -4668,7 +4881,7 @@ function RailPanels({
                     ? t('ccAgent.remoteSession.actionsUnavailable')
                     : t('ccAgent.sidebar.projectAction.newInDirectory')}
                 </DropdownMenuItem>
-                {menuTarget?.scope === 'local' && (
+                {menuTarget?.scope === 'local' && !isArchivedView && (
                   <>
                     <DropdownMenuSeparator className="my-1 h-px bg-[var(--cmd-palette-border)]" />
                     <DropdownMenuItem
@@ -4679,6 +4892,23 @@ function RailPanels({
                       className="cursor-pointer text-sm text-[var(--msg-assistant-text)] hover:bg-[var(--cmd-palette-item-hover)]"
                     >
                       {t('ccAgent.sidebar.projectAction.removeFromSidebar')}
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {isArchivedView && menuTarget && (
+                  <>
+                    <DropdownMenuSeparator className="my-1 h-px bg-[var(--cmd-palette-border)]" />
+                    <DropdownMenuItem
+                      disabled={menuTargetBlocked}
+                      onSelect={() => {
+                        setProjectMenu(null);
+                        if (menuTargetBlocked) return;
+                        railPanelStore.closeAll();
+                        onDeleteProject(menuTarget);
+                      }}
+                      className="cursor-pointer text-sm text-[hsl(var(--destructive))] hover:bg-[var(--cmd-palette-item-hover)]"
+                    >
+                      {t('ccAgent.sidebar.projectAction.deleteProject')}
                     </DropdownMenuItem>
                   </>
                 )}

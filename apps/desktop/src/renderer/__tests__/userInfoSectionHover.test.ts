@@ -43,7 +43,7 @@ describe('UserInfoSection — outer wrapper takes over full-row hover', () => {
 
   it('visible user card uses the rounded tokenized capsule style', () => {
     expect(source).toContain(
-      'flex h-10 items-center rounded-full border border-[var(--sidebar-user-card-border)] bg-[var(--sidebar-user-card-bg)] px-[7px]',
+      'flex min-h-10 items-center rounded-full border border-[var(--sidebar-user-card-border)] bg-[var(--sidebar-user-card-bg)] px-[7px] py-1.5',
     );
   });
 
@@ -79,22 +79,27 @@ describe('UserInfoSection — version label', () => {
     expect(source).toContain("t('sidebar.user.regionCodeDev')");
     expect(source).not.toContain("'Global'");
     expect(source).not.toMatch(/'CN'|'Dev'/);
-    expect(source).toMatch(
-      /const appVersionLabel = appRegionLabel\s*\n\s*\? `\$\{appRegionLabel\} · \$\{appDisplayVersion\}`\s*\n\s*: appDisplayVersion;/,
-    );
+    expect(source).toContain('const accountDetailLabel = isDevelopmentBuild ? developmentAccountLabel : appVersionLabel;');
+    expect(source).toContain('user?.accountLabel?.trim()');
+    expect(source).toContain('const gitRevision = appDisplayVersion.split');
+    expect(source).toContain('Git 版本只作为开发标签的悬停提示');
+    expect(source).toContain('text={gitVersionLabel ?? developmentLabel}');
+    expect(source).toContain('side="top" delay={0}');
     expect(source).not.toContain('XD.Inc');
-    expect(source).toContain('{appVersionLabel}');
-    expect(source).toContain('title={appVersionLabelDetail}');
+    expect(source).toContain('{accountDetailLabel}');
+    expect(source).toContain('title={accountDetailLabel}');
   });
 
-  it('shows the Beta label only after the persisted channel state has loaded', () => {
-    expect(source).toContain("import { useBetaChannelSettings } from '@/hooks/useBetaChannelSettings';");
-    expect(source).toContain(
-      'const showBetaLabel = !betaChannelState.loading && betaChannelState.enableBeta;',
-    );
+  it('renders Beta on the account button without reusing the development version', () => {
+    expect(source).toContain('useBetaChannelSettings');
     expect(source).toContain('data-testid="sidebar-beta-channel-label"');
-    expect(source).not.toContain('beta-channel-badge');
-    expect(source).toContain("t('settings.betaChannel.badge')");
+    expect(source).toContain('bg-[#3566a8]');
+    expect(source).toContain('const betaLabel =');
+    expect(source).toContain("? 'Beta' : null");
+    expect(source).not.toContain('`Beta ${semanticVersion}`');
+    expect(source).toContain('data-testid="sidebar-development-label"');
+    expect(source).toContain('<button');
+    expect(source).not.toContain('bg-[#2a2a23]');
   });
 });
 

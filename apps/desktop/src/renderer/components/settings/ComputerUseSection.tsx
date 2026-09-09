@@ -1714,7 +1714,7 @@ export function ComputerUseSection({
                 <button
                   type="button"
                   disabled={androidDevicePending || !androidStatus}
-                  className={cn(ACTION_BUTTON_CLASS, 'max-w-[260px] px-2.5')}
+                  className={cn(ACTION_BUTTON_CLASS, 'settings-dropdown-trigger max-w-[260px] px-2.5')}
                   aria-label={t('settings.computerUse.android.device.ariaLabel')}
                   title={configuredDefaultAndroidDevice ?? undefined}
                 >

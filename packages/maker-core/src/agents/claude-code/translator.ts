@@ -230,15 +230,34 @@ export function newRuntimeState(): RuntimeState {
 
 const CLAUDE_MAIN_USAGE_PARENT = '__main__';
 
-function isMainUsageSegmentId(segmentId: string | undefined): boolean {
-  return typeof segmentId === 'string' && segmentId.endsWith(`:${CLAUDE_MAIN_USAGE_PARENT}`);
+interface ClaudeUsageBucket {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreateTokens: number;
+}
+
+/** 将 tracker 的 scope 汇总转换为 done payload 的 token 分桶。 */
+function claudeUsageBucketFromTotals(totals: {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreate: number;
+}): ClaudeUsageBucket {
+  return {
+    inputTokens: totals.input,
+    outputTokens: totals.output,
+    cacheReadTokens: totals.cacheRead,
+    cacheCreateTokens: totals.cacheCreate,
+  };
 }
 
 /** Parent-agent streamed output only. Subagent segments stay in cumulative usage. */
 function mainTurnOutputTokens(tracker: UsageTracker): number {
   let output = 0;
   for (const segment of tracker.getTurnUsageSegments()) {
-    if (isMainUsageSegmentId(segment.id)) output += segment.outputTokens;
+    // scope 缺省兼容历史 segment；只有明确的 subagent 才排除。
+    if (segment.scope !== 'subagent') output += segment.outputTokens;
   }
   return output;
 }
@@ -247,7 +266,9 @@ function mainActiveSegmentHasOutput(ctx: TranslateContext): boolean {
   const segmentId = ctx.rt.activeUsageSegmentByParent.get(CLAUDE_MAIN_USAGE_PARENT);
   if (!segmentId) return false;
   for (const segment of ctx.tracker.getTurnUsageSegments()) {
-    if (segment.id === segmentId) return segment.outputTokens > 0;
+    if (segment.id === segmentId && segment.scope !== 'subagent') {
+      return segment.outputTokens > 0;
+    }
   }
   return false;
 }
@@ -1759,6 +1780,8 @@ function handleStreamEvent(
       ].every((field) => Object.prototype.hasOwnProperty.call(usage, field));
       ctx.tracker.upsertApiCallUsage(segmentId, {
         id: segmentId,
+        // parent_tool_use_id 存在时，这段 usage 属于 Claude 子代理。
+        scope: parentToolUseId ? 'subagent' : 'parent',
         model: streamModel ?? ctx.getModel(),
         priceVariant,
         inputTokens: dIn,
@@ -1816,6 +1839,8 @@ function handleStreamEvent(
       if (dIn > 0 || dCacheRead > 0 || dCacheCreate > 0) {
         ctx.tracker.upsertApiCallUsage(segmentId, {
           id: segmentId,
+          // message_start 与后续 delta 必须保持同一 scope。
+          scope: parentToolUseId ? 'subagent' : 'parent',
           model: event.message?.model ?? streamModel ?? ctx.getModel(),
           priceVariant,
           inputTokens: dIn,
@@ -2072,6 +2097,11 @@ function handleResult(
   // turn 桶快照 — endTurn 会清掉 turn 桶, 必须在调用之前先取出来给后面日志用
   const preTurnEndCacheStats = ctx.tracker.getCacheStats();
   const turnUsageSegments = ctx.tracker.getTurnUsageSegments();
+  // 先按 scope 快照，endTurn 会清空当前 turn 桶。
+  const turnUsageByScope = ctx.tracker.getTurnUsageByScope();
+  // done payload 同时保留主代理与子代理的独立用量。
+  const parentUsage = claudeUsageBucketFromTotals(turnUsageByScope.parent);
+  const subagentUsage = claudeUsageBucketFromTotals(turnUsageByScope.subagent);
   const segmentTotals = turnUsageSegments.reduce<{
     inputTokens: number;
     outputTokens: number;
@@ -2122,6 +2152,7 @@ function handleResult(
           // 超限轮同理: markContextOverflow 刚锁上的满载值不能被失败轮的 0 增量冲掉。
           replaceLastApi:
             ctx.turn.apiCalls === 1 &&
+            !ctx.rt.generation.sawSubagent &&
             !ctx.turn.sawCompactBoundary &&
             !isEmptyResponseTurn &&
             !isContextOverflowTurn,
@@ -2383,6 +2414,8 @@ function handleResult(
   const resultWithUsageSegments = {
     ...safeResult,
     usageSegments: turnUsageSegments,
+    parentUsage,
+    subagentUsage,
     usageSegmentsComplete,
     modelUsageCumulativeStartsAtZero: ctx.modelUsageCumulativeStartsAtZero?.() === true,
   };

@@ -12,6 +12,8 @@ interface UseLoginReturn {
   clearAccountDeletionReceipt: ReturnType<typeof useAuth>['clearAccountDeletionReceipt'];
   listAccounts: ReturnType<typeof useAuth>['listAccounts'];
   dispatch: (action: DesktopLoginAction) => Promise<boolean>;
+  /** 登录页选择区域，并将主进程返回的 providers 状态投影到当前页面。 */
+  selectLoginRegion: (region: 'cn' | 'global') => Promise<{ success: boolean; code: string | null }>;
   /**
    * 与 dispatch 同一条链路,但把失败码返回给调用方——captcha 兜底重试需要在
    * 调用点区分 CAPTCHA_REQUIRED/CAPTCHA_INVALID 与其他失败(errorCode state
@@ -28,19 +30,25 @@ interface UseLoginReturn {
    * 界面仍停在登录页,再点一次也不会重播状态。
    */
   enterLocalMode: ReturnType<typeof useAuth>['enterLocalMode'];
+  /** 启动添加账号流程，并由调用方导航到专用登录路由。 */
+  beginAddAccount: ReturnType<typeof useAuth>['beginAddAccount'];
 }
 
 /** Coordinates presentation state while all credentials and tickets stay in main. */
+const LOGIN_ACTION_TIMEOUT_MS = 20_000;
+
 export function useLogin(): UseLoginReturn {
   const {
     loginState,
     loadLoginState,
     dispatchLoginAction,
+    selectLoginRegion: selectRegionInAuth,
     hasAccountDeletionReceipt,
     getAccountDeletionStatus,
     clearAccountDeletionReceipt,
     listAccounts,
     enterLocalMode,
+    beginAddAccount,
   } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -70,15 +78,24 @@ export function useLogin(): UseLoginReturn {
       setIsLoading(true);
       setErrorCode(null);
       try {
-        const result = await dispatchLoginAction(action);
+        // IPC/网络异常不能让登录页永久停在 loading；超时后回收 loading 并给出可重试错误。
+        const result = await Promise.race([
+          dispatchLoginAction(action),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(() => reject(new Error('AUTH_REQUEST_TIMEOUT')), LOGIN_ACTION_TIMEOUT_MS);
+          }),
+        ]);
         if (!result.success) {
           setErrorCode(result.code === 'USER_CANCELLED' ? null : result.code);
           return { success: false, code: result.code };
         }
         return { success: true, code: null };
-      } catch {
-        setErrorCode('AUTH_REQUEST_FAILED');
-        return { success: false, code: 'AUTH_REQUEST_FAILED' };
+      } catch (error) {
+        const code = error instanceof Error && error.message === 'AUTH_REQUEST_TIMEOUT'
+          ? 'AUTH_REQUEST_TIMEOUT'
+          : 'AUTH_REQUEST_FAILED';
+        setErrorCode(code);
+        return { success: false, code };
       } finally {
         loadingRef.current = false;
         setIsLoading(false);
@@ -93,6 +110,19 @@ export function useLogin(): UseLoginReturn {
     [dispatchWithResult],
   );
 
+  const selectLoginRegion = useCallback(
+    async (region: 'cn' | 'global'): Promise<{ success: boolean; code: string | null }> => {
+      try {
+        const result = await selectRegionInAuth(region);
+        if (!result.success) return { success: false, code: result.code };
+        return { success: true, code: null };
+      } catch {
+        return { success: false, code: 'AUTH_REQUEST_FAILED' };
+      }
+    },
+    [selectRegionInAuth],
+  );
+
   return {
     isLoading,
     errorCode,
@@ -102,8 +132,10 @@ export function useLogin(): UseLoginReturn {
     clearAccountDeletionReceipt,
     listAccounts,
     dispatch,
+    selectLoginRegion,
     dispatchWithResult,
     clearError: () => setErrorCode(null),
     enterLocalMode,
+    beginAddAccount,
   };
 }

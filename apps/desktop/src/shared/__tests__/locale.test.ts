@@ -14,7 +14,6 @@ describe('desktop locale resolution', () => {
 
   it('uses the first supported locale in the OS preference list', () => {
     expect(resolvePreferredSystemLocale(['fr-FR', 'zh-Hant-TW', 'en-US'])).toBe('zh-TW');
-    expect(resolvePreferredSystemLocale(['fr-FR', 'ja-JP'])).toBe('ja');
     expect(resolvePreferredSystemLocale(['fr-FR'])).toBe('en');
   });
 });

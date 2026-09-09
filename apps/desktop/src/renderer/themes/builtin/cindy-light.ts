@@ -17,7 +17,7 @@ const overrides = {
   'surface-card-ivory': '#FDFDF8', // 直映: 卡片/输入框(留暖近白)
   'surface-chip': '#EEEEE9', // 阶梯: hover/chip(压暗于页底)
   'surface-chip-alt': '#FAFAF5', // 阶梯: 次级卡片
-  'surface-hover': '#EEEEE9', // 阶梯: hover/chip(压暗于页底)
+  'surface-hover': '#E5E5E0', // hover/chip: 与页面底色拉开层级
   'surface-hover-soft': '#F0F0EB', // 阶梯: 柔和 hover
   'surface-hover-hsl': '60.0 12.8% 92.4%', // hover -> HSL
   'surface-on-card': '#FFFFFF', // 裁决: 中性反相前景,不作红 CTA 专用
@@ -73,7 +73,7 @@ const overrides = {
   'model-trigger-hover': '#EEEEE9', // 阶梯: hover/chip(压暗于页底)
   // 下拉行 hover/选中底:surface-hover(#F1F1F1)相对面板(#F8F8F8)只差 7,行高亮几乎看不清。
   // 菜单行专用 token 压深一档(-14/通道)使 hover 在面板上清晰,模型/权限/+ 三菜单共用。
-  'model-item-hover': '#EFEFEA', // 下拉行 hover: 锚定弹层面板(比面板暗 ~12%),勿改回页底锚定
+  'model-item-hover': '#E1E1DC', // 下拉行 hover: 与弹层面板拉开清晰层级
   'msg-link': '#1D4ED8', // 链接蓝
   'msg-scrollbar-hover': '#DFDFDA', // 阶梯: 弱档
   'msg-user-bg': '#FDFDF8', // 直映: 卡片/输入框(留暖近白)
@@ -85,7 +85,7 @@ const overrides = {
   'perm-allow-kbd-bg': 'rgba(255, 255, 255, 0.16)', // kbd bg:随反相深钮的浅翻译层(修复 2026-07-19:原页面级浅灰在深钮上字底同亮)
   'perm-allow-kbd-border': 'rgba(255, 255, 255, 0.30)', // 边框:同上
   'perm-code-bg': '#FAFAF5', // 代码块底: 卡片锚定(比卡片暗 ~2.6%)
-  'perm-item-selected-bg': '#F6F6F1', // 卡片锚定: 权限弹层选中行(2026-08-14)
+  'perm-item-selected-bg': 'var(--model-item-hover)', // 弹层选中态背景
   'plan-outline-active-bg': '#F6F6F1', // 卡片锚定: 计划大纲激活行(2026-08-14)
   'plan-toolbar-btn-hover-bg': '#E8E8E3', // 阶梯: 菜单 hover
   popover: '60.0 55.6% 98.2%', // 卡片 -> HSL
@@ -98,14 +98,14 @@ const overrides = {
   'settings-integration-avatar-bg': '#FDFDF8', // 直映: 卡片/输入框(留暖近白)
   'settings-logout-bg': '#FDFDF8', // 直映: 卡片/输入框(留暖近白)
   'settings-menu-bg-hover': '#E8E8E3', // 阶梯: 菜单 hover
-  'settings-menu-bg-selected': '#F6F6F1', // 卡片锚定: 比卡片暗 ~6%(压在弹层上的选中态,2026-08-14)
+  'settings-menu-bg-selected': '#E2E2DE', // 卡片内选中态背景
   'settings-source-link': '#1D4ED8', // 可访问链接蓝
   'settings-theme-auto-dark': '#181818', // Auto 预览: 新暗色底
   'sidebar-action-icon': '60.0 2.1% 52.4%', // 侧栏灰字: 同上
   'cmd-palette-item-meta': '#888883', // 二级同档(同上)
   'sidebar-item-active-foreground': '#FCFCFC', // 用户二次改稿 2026-07-20:反相胶囊,light 深底浅字(同 accent-pure-cta-fg)
-  'sidebar-item-active-border': 'transparent', // 用户三次改稿 2026-07-20:选中胶囊彻底去描边
-  'sidebar-item-active': '214.3 5.5% 24.9%', // 用户二次改稿 2026-07-20:反相胶囊 #3C3F43 深底(同 accent-cta-bg)
+  'sidebar-item-active-border': '#686866', // 选中态细描边:在浅色背景上建立清晰边界
+  'sidebar-item-active': '214.3 8.0% 31.0%', // 选中态深灰底:保留反相文字并提高与背景的区分度
   'splash-bg': '60.0 16.1% 93.9%', // 页底 -> HSL
   'splash-text': '60.0 1.9% 41.2%', // 三级 -> HSL
   'splash-text-destructive': '0.0 0.0% 10.2%', // 正文 -> HSL

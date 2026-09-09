@@ -774,6 +774,9 @@ function extraResourcesForTarget(targetPlatform: string): string[] {
     'resources/THIRD-PARTY-RESTRICTED.txt',
   ];
 
+  // Windows BrowserWindow 任务栏图标使用多尺寸 ICO;其它平台仍使用 PNG/ICNS。
+  if (targetPlatform === 'win32') base.unshift('resources/icon.ico');
+
   const windowsUpdaterRuntimeResource =
     windowsUpdaterRuntimeExtraResourceForTarget(targetPlatform);
   if (windowsUpdaterRuntimeResource) {

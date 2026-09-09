@@ -3,8 +3,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { betaChannelState, navigate } = vi.hoisted(() => ({
-  betaChannelState: { enableBeta: false, isCustomized: false, loading: false },
+const { navigate } = vi.hoisted(() => ({
   navigate: vi.fn(),
 }));
 
@@ -36,7 +35,9 @@ vi.mock('@/hooks/useUpdateBannerDismiss', () => ({
 }));
 
 vi.mock('@/hooks/useBetaChannelSettings', () => ({
-  useBetaChannelSettings: () => ({ state: betaChannelState }),
+  useBetaChannelSettings: () => ({
+    state: { enableBeta: false, isCustomized: false, loading: false },
+  }),
 }));
 
 vi.mock('@/hooks/useLogout', () => ({
@@ -72,13 +73,12 @@ import { UserInfoSection } from '@/components/sidebar/UserInfoSection';
 
 beforeEach(() => {
   navigate.mockClear();
-  betaChannelState.enableBeta = false;
-  betaChannelState.loading = false;
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
     value: {
       appDisplayVersion: '1.0.0',
       appDisplayVersionDetail: '1.0.0-test',
+      appSemanticVersion: '1.0.0',
     },
   });
 });
@@ -86,13 +86,9 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('UserInfoSection mobile download entry', () => {
-  it('shows the Beta label beside the expanded app version when the channel is enabled', () => {
-    betaChannelState.enableBeta = true;
+  it('does not show a Beta label beside the expanded app version', () => {
     render(<UserInfoSection isCollapsed={false} />);
-
-    expect(screen.getByTestId('sidebar-beta-channel-label').textContent).toBe(
-      'settings.betaChannel.badge',
-    );
+    expect(screen.queryByTestId('sidebar-beta-channel-label')).toBeNull();
     expect(screen.getByRole('button', { name: 'sidebar.user.moreLabel' })).toBeTruthy();
   });
 

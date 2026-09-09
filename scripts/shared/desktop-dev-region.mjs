@@ -104,6 +104,8 @@ export function stripDesktopDevRegionArgs(argv) {
 
 /**
  * 计算 desktop dev 启动配置。remote dev 默认读取同区域仓内清单；
+ * local + cn 是“本地运行桌面端、连接 CN 云端”的开发路径，也读取 CN 清单；
+ * 只有不带 cn 的 local 路径才生成 localhost 本地服务清单。
  * --endpoints-cdn / XDT_ENDPOINTS_CDN=1 时不注入默认文件，让主进程走区域化 CDN。
  */
 export function resolveDesktopDevStartupConfig({
@@ -115,10 +117,17 @@ export function resolveDesktopDevStartupConfig({
   const endpointsCdn =
     argv.includes("--endpoints-cdn") || env.XDT_ENDPOINTS_CDN === "1";
   const configuredManifestFile = env.XDT_ENDPOINT_MANIFEST_FILE?.trim();
+  // local + cn 必须复用 CN 云端清单，否则 dev-local-env 会把认证地址错误生成为
+  // localhost:3344，登录页就会把本机没有启动认证服务误报成网络故障。
+  const regionManifestFile = `config/${{
+    cn: "endpoint.json",
+    global: "endpoint.global.json",
+    dev: "endpoint.dev.json",
+  }[region]}`;
   const endpointManifestFile =
     configuredManifestFile ||
-    (mode === "remote" && !endpointsCdn
-      ? `config/${{ cn: "endpoint.json", global: "endpoint.global.json", dev: "endpoint.dev.json" }[region]}`
+    (!endpointsCdn && (mode === "remote" || (mode === "local" && region === "cn"))
+      ? regionManifestFile
       : undefined);
   return { region, endpointsCdn, endpointManifestFile };
 }

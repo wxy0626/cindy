@@ -49,8 +49,10 @@ export function formatOutputTokenRateValue(
 }
 
 export function formatOutputTokenRate(details: TurnUsageDetails): string | null {
+  // 速度只反映父对话主代理的生成；子代理输出已经计入总 token，但不应污染主代理 TPS。
+  const parentOutputTokens = details.parentUsage?.outputTokens ?? details.outputTokens;
   return typeof details.durationMs === 'number'
-    ? formatOutputTokenRateValue(details.outputTokens, details.durationMs)
+    ? formatOutputTokenRateValue(parentOutputTokens, details.durationMs)
     : null;
 }
 

@@ -85,13 +85,17 @@ import {
 import { createLogger, getLogDir } from './logger';
 import { ENDPOINT_MANIFEST_BASE_URL, ENDPOINT_MANIFEST_PEER_BASE_URL } from '../shared/endpoints';
 import { resolvePreferredSystemLocale } from '../shared/locale';
+import { CURRENT_CINDY_REGION } from '../shared/brandRegion';
 
 const log = createLogger('clientEndpoints');
 
 const MANIFEST_FILE_NAME = 'endpoint.json';
 const BUILD_VARIANT = import.meta.env.VITE_CINDY_AUTH_REGION;
 /** 与 authManager 的构建区域判定保持一致；dev 使用 CN auth 身份。 */
-const BUILD_AUTH_REGION: ClientEndpointRegion = BUILD_VARIANT === 'global' ? 'global' : 'cn';
+const BUILD_AUTH_REGION: ClientEndpointRegion = CURRENT_CINDY_REGION === 'global' ? 'global' : 'cn';
+/** 当前启动区域对应的端点清单自举地址，单程序通过启动参数选择。 */
+const ACTIVE_MANIFEST_BASE_URL =
+  BUILD_AUTH_REGION === 'global' ? ENDPOINT_MANIFEST_BASE_URL : ENDPOINT_MANIFEST_PEER_BASE_URL;
 const DEFAULT_REALM_MANIFEST_BASE_URLS: RealmManifestBaseUrls =
   BUILD_AUTH_REGION === 'global'
     ? {
@@ -276,14 +280,14 @@ function fetchTextViaNet(url: string, timeoutMs: number): Promise<ManifestFetchR
 }
 
 function fetchManifestViaCdn(timeoutMs: number): Promise<ManifestFetchResult> {
-  if (!ENDPOINT_MANIFEST_BASE_URL) {
+  if (!ACTIVE_MANIFEST_BASE_URL) {
     // 烘焙基址缺失属打包/构建配置事故,同样走阻断暴露(→ 弹框)。
     log.error('ENDPOINT_MANIFEST_BASE_URL is empty (build misconfiguration)');
     return Promise.resolve({ ok: false, detail: 'missing-manifest-base-url' });
   }
   // cache-bust:防 Chromium / CDN 复用陈旧清单。
   return fetchTextViaNet(
-    `${ENDPOINT_MANIFEST_BASE_URL}/${MANIFEST_FILE_NAME}?t=${Date.now()}`,
+    `${ACTIVE_MANIFEST_BASE_URL}/${MANIFEST_FILE_NAME}?t=${Date.now()}`,
     timeoutMs,
   );
 }
@@ -1090,7 +1094,7 @@ export async function initClientEndpoints(): Promise<boolean> {
     // dev 下 app.getAppPath() = apps/desktop;packaged 不走 file 分支,该值无消费。
     repoRoot: path.resolve(app.getAppPath(), '..', '..'),
   });
-  const manifestUrl = `${ENDPOINT_MANIFEST_BASE_URL}/${MANIFEST_FILE_NAME}`;
+  const manifestUrl = `${ACTIVE_MANIFEST_BASE_URL}/${MANIFEST_FILE_NAME}`;
   const sourceLabel = source.kind === 'cdn' ? manifestUrl : source.filePath;
   const dialogLocale = resolveDialogLocale();
   // 自检:写死的区域域名必须覆盖本构建实际使用的两个自举基址。域名迁移时忘了更新
@@ -1230,6 +1234,21 @@ export async function loadClientEndpointsForRealm(
   const cached = realmEndpointCache.get(region);
   if (cached) return cached;
   const baseUrl = realmManifestBaseUrls[region];
+  // 开发版可能没有注入 CDN 自举地址；此时区域切换复用仓内清单。正式包、
+  // 显式 CDN 模式以及注入了可信双区地址的测试仍走原有网络链路。
+  if (!baseUrl && !app.isPackaged && process.env.XDT_ENDPOINTS_CDN !== '1') {
+    const fileName = region === 'global' ? 'endpoint.global.json' : 'endpoint.json';
+    const filePath = path.resolve(app.getAppPath(), '..', '..', 'config', fileName);
+    const local = readManifestFromFile(filePath);
+    if (!local.ok) throw new Error(local.detail);
+    const parsed = resolveClientEndpointsStrict(local.text);
+    if (!parsed.ok) throw new Error(parsed.reason);
+    if (parsed.region !== null && parsed.region !== region) {
+      throw new Error('region-mismatch:' + region + ':' + parsed.region);
+    }
+    realmEndpointCache.set(region, parsed.endpoints);
+    return parsed.endpoints;
+  }
   if (!baseUrl) {
     throw new Error('realm-manifest-url-unavailable');
   }

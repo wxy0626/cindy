@@ -16,7 +16,7 @@ import {
 import { getSessionListCollapseView } from '../lib/sessionListCollapse';
 import { AutomationSessionGroupItem } from './AutomationSessionGroupItem';
 import { SessionItem } from './SessionItem';
-import type { SessionClickHandler } from './SessionItem';
+import type { SessionAction, SessionClickHandler } from './SessionItem';
 import type { FolderPickerOption } from '@/components/new-chat/FolderPickerPopover';
 import type { SessionMoveTarget } from './sessionMoveTarget';
 import { useCollapsibleShowAll } from './hooks/useCollapsibleShowAll';
@@ -46,7 +46,7 @@ export interface SessionEntryListProps {
   scheduleSessionIndex: ReadonlyMap<string, AutomationScheduleSessionInfo>;
   selectedSessionIds?: ReadonlySet<string>;
   onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
+  onAction: (id: string, action: SessionAction) => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   onMoveSession?: (id: string, target: SessionMoveTarget) => void;
@@ -67,6 +67,10 @@ export interface SessionEntryListProps {
   disableCollapse?: boolean;
   /** 父级 SectionCollapse 的折叠态;用于收起动画结束后复位「显示全部」。 */
   sectionCollapsed?: boolean;
+  /** 外部受控的「显示全部」状态;不传时由列表内部自管。 */
+  showAll?: boolean;
+  /** 外部受控时的切换回调,父级可跨卸载保存用户选择。 */
+  onShowAllChange?: (next: boolean) => void;
   /** 项目置顶到列表模式时，项目内会话复用满宽列表卡片；其它场景保持紧凑文字行。 */
   sessionVariant?: 'text' | 'list';
   /**
@@ -194,10 +198,18 @@ export function SessionEntryList({
   collapseLimit,
   disableCollapse = false,
   sectionCollapsed = false,
+  showAll: controlledShowAll,
+  onShowAllChange,
   ...props
 }: SessionEntryListProps) {
   const { t } = useTranslation();
-  const [showAll, setShowAll] = useCollapsibleShowAll(sectionCollapsed);
+  const [internalShowAll, setInternalShowAll] = useCollapsibleShowAll(sectionCollapsed);
+  // 受控模式由父级保存「显示全部」，否则沿用内部状态（含段落收起后复位）。
+  const showAll = controlledShowAll ?? internalShowAll;
+  const setShowAll = (next: boolean) => {
+    if (onShowAllChange) onShowAllChange(next);
+    else setInternalShowAll(next);
+  };
   const entries = useMemo(
     () => groupAutomationSidebarEntries(sessions, { notifications, scheduleSessionIndex }),
     [notifications, scheduleSessionIndex, sessions],

@@ -3,7 +3,8 @@
  * ---------------------------------------------------------------------------
  * Codex 风格布局后，右侧内容区顶栏（ContentHeader Shell）中部由路由视图注入。
  * 本组件即 cc-agent 会话视图注入的内容：
- *   - Pin 指示 + 会话标题（截断显示，双击进入行内重命名 —— 与 SessionItem 同交互）
+ *   - Pin 指示 + 会话标题（截断显示，双击进入行内重命名 —— 与 SessionItem 同交互；
+ *     右键弹出 ··· 菜单 —— 与 SessionItem 同款 coordinate-anchored DropdownMenu）
  *   - ··· 菜单：与 SessionItem 右键菜单同一套条目、变体与分组顺序（标准 /
  *     Draft / Archived 三分支），含「移动到项目」子菜单与「导出会话…」入口
  *
@@ -20,8 +21,9 @@
  * 输入的控件挖 no-drag 洞，避免标题和 git 信息整块变成不可拖区域。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Ellipsis, Pin } from 'lucide-react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
+import { ChevronRight, Pin } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
@@ -179,6 +181,8 @@ export function SessionContentHeader({
           输入框本体 + Magic AI 改名按钮统一在 SessionRenameInput） ---- */
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(displayTitle);
+  // 右键菜单锚点坐标：null 表示关闭，复用 SessionItem 的 coordinate-anchored 模式。
+  const [headerMenuPos, setHeaderMenuPos] = useState<{ x: number; y: number } | null>(null);
   // Enter 提交后 input 卸载又触发 onBlur 的二次提交，用 ref 拦掉。
   const committedRef = useRef(false);
 
@@ -202,6 +206,17 @@ export function SessionContentHeader({
   // 标题文字是 no-drag(否则 onDoubleClick 收不到,见 span 处注释),
   // 拖窗习惯由手动拖拽补回:按住标题移动超过死区即拖动窗口。
   const titleManualDrag = useManualWindowDrag();
+
+  // 右键标题 = 打开更多操作菜单；编辑态交给输入框自己的右键菜单。
+  const handleHeaderContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLElement>) => {
+      if (isEditing) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setHeaderMenuPos({ x: event.clientX, y: event.clientY });
+    },
+    [isEditing],
+  );
 
   // raw 由 SessionRenameInput 传入:输入框当前文本(Magic 生成的标题也先填入输入框,用户 Enter 确认后才走到这里)。
   const commitTitle = useCallback(
@@ -568,6 +583,7 @@ export function SessionContentHeader({
         <span
           {...titleManualDrag}
           onDoubleClick={startEdit}
+          onContextMenu={handleHeaderContextMenu}
           title={displayTitle}
           className="min-w-0 max-w-[40vw] cursor-default truncate text-sm font-medium text-foreground"
           style={WINDOW_NO_DRAG_STYLE}
@@ -577,28 +593,31 @@ export function SessionContentHeader({
       )}
 
       {!isEditing && (
+        // 右键菜单：与 SessionItem 同款 coordinate-anchored DropdownMenu。
         // 菜单打开就把归档/删除的 dirty 预检发出去:用户从展开菜单到点条目至少
         // 一次反应时间,足够这次 git status 跑完,点下去时命中缓存、零等待。
         <DropdownMenu
+          open={headerMenuPos !== null}
           onOpenChange={(open) => {
-            if (open) prefetchDirtyWorktreeForRemoval(session.id, session.deviceLinkDeviceId);
+            if (open) {
+              prefetchDirtyWorktreeForRemoval(session.id, session.deviceLinkDeviceId);
+            } else {
+              setHeaderMenuPos(null);
+            }
           }}
         >
           <DropdownMenuTrigger asChild>
-            <Tip text={t('ccAgent.sessionHeader.moreActions')} side="bottom">
-              <button
-                className={cn(
-                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
-                  'text-[var(--cmd-palette-item-meta)] transition-colors',
-                  'hover:bg-titlebar-button-hover hover:text-foreground',
-                  'focus-visible:outline-none data-[state=open]:bg-titlebar-button-hover',
-                )}
-                aria-label={t('ccAgent.sessionHeader.moreActions')}
-                style={WINDOW_NO_DRAG_STYLE}
-              >
-                <Ellipsis size={15} />
-              </button>
-            </Tip>
+            <span
+              aria-hidden
+              style={{
+                position: 'fixed',
+                left: headerMenuPos?.x ?? 0,
+                top: headerMenuPos?.y ?? 0,
+                width: 0,
+                height: 0,
+                pointerEvents: 'none',
+              }}
+            />
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="start"

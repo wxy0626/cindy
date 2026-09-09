@@ -98,6 +98,7 @@ export function VendorSegmentedSwitcher({
               'gap-0.5 p-[3px]',
               dense ? 'h-[30px]' : 'h-9',
               'bg-[var(--chat-input-bg)] dark:border dark:border-[var(--cmd-palette-border)]',
+              'focus-within:border-[var(--focus-ring)] focus-within:ring-1 focus-within:ring-[var(--focus-ring-soft)]',
             ],
         disabled && 'opacity-60 pointer-events-none',
         className,

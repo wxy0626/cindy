@@ -20,9 +20,9 @@ export type ModelsSyncPayloadParseResult =
   | { ok: false; error: string };
 
 /** 失败后的 LKG 只保留可执行模型；过期的付费差集不能继续作为升级营销事实。 */
-export function modelsWithoutStalePaymentUpsell(
-  models: readonly ModelAccessGatewayModel[],
-): ModelAccessGatewayModel[] {
+export function modelsWithoutStalePaymentUpsell<
+  T extends { availability?: 'available' | 'requires_payment' },
+>(models: readonly T[]): T[] {
   return models.filter((model) => model.availability !== 'requires_payment');
 }
 

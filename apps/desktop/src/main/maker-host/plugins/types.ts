@@ -87,10 +87,7 @@ export const HOSTED_ELSEWHERE_PLUGIN_IDS: ReadonlySet<string> = new Set([
 /** Builtin plugins that are intentionally opt-in by default.
  * Direct desktop control can click/type into local apps, so it must not appear
  * in new sessions until the user explicitly enables it for the project. */
-export const DEFAULT_DISABLED_PLUGIN_IDS: ReadonlySet<string> = new Set([
-  'android',
-  'computer',
-]);
+export const DEFAULT_DISABLED_PLUGIN_IDS: ReadonlySet<string> = new Set(['android', 'computer']);
 
 /** Builtin plugins whose enablement is machine-wide, not project-scoped.
  * Direct desktop control installs a local driver and requires OS-level

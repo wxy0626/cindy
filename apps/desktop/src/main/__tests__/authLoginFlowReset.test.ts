@@ -83,7 +83,7 @@ describe('auth login-flow reset', () => {
     expect(confirmBody).not.toContain("type: 'start-browser'");
   });
 
-  it('pins personal login to the build realm and clears stale realm before organization discovery', () => {
+  it('routes personal login through the runtime-selected realm and clears stale SSO discovery', () => {
     const discoveryStart = source.indexOf('async function discoverOrganizationRealm(');
     const discoveryBody = source.slice(discoveryStart, source.indexOf('\n}', discoveryStart));
     expect(discoveryBody).toContain('pendingAuthRealm = null;');
@@ -93,20 +93,16 @@ describe('auth login-flow reset', () => {
       actionStart,
       source.indexOf('const stateBeforeAction', actionStart),
     );
-    expect(actionPreamble).toContain("action.type === 'discover'");
-    expect(actionPreamble).toContain("action.type === 'request-code'");
-    expect(actionPreamble).toContain("action.type === 'verify-code'");
-    expect(actionPreamble).toContain("action.type === 'start-browser' && action.kind === 'social'");
-    expect(actionPreamble).toContain('? AUTH_REGION');
+    expect(actionPreamble).toContain('const loginRealm = pendingAuthRealm ?? activeAuthRealm;');
+    expect(actionPreamble).not.toContain('? AUTH_REGION');
     expect(actionPreamble).toContain('const client = createAuthClient(loginRealm);');
 
     const personalActionSetup = source.slice(
       source.indexOf('if (!providerConfig) await loadLoginProviders', actionStart),
       source.indexOf("if (action.type === 'discover')", actionStart),
     );
-    expect(personalActionSetup).toContain(
-      'if (startsBuildRealmFlow) pendingAuthRealm = loginRealm;',
-    );
+    expect(personalActionSetup).not.toContain('pendingAuthRealm = loginRealm;');
+    expect(source).toContain('return authServerUrl(activeAuthRealm) + LOGIN_CAPTCHA_PAGE_PATH;');
   });
 
   it('does not leave expired private tickets on a screen that can only reuse them', () => {
@@ -363,15 +359,12 @@ describe('auth login-flow reset', () => {
     expect(source).toContain('writeAuthAccountVaultOrThrow(vault);');
 
     const syncStart = source.indexOf('export async function syncSavedAccounts()');
-    const syncEnd = source.indexOf('\n}\n\nexport async function switchSavedAccount', syncStart);
+    const syncEnd = source.indexOf('async function switchSavedAccountInternal(', syncStart);
     const syncBody = source.slice(syncStart, syncEnd);
     expect(syncBody).toContain('refreshPassportSessionSingleFlight(');
 
-    const switchStart = syncEnd;
-    const switchEnd = source.indexOf(
-      '\n}\n\nexport async function beginAddAccountLogin',
-      switchStart,
-    );
+    const switchStart = source.indexOf('async function switchSavedAccountInternal(');
+    const switchEnd = source.indexOf('\n}\n\n/**', switchStart);
     const switchBody = source.slice(switchStart, switchEnd);
     const policyGuard = switchBody.indexOf('!canRestoreAuthSessionForMembership(');
     const commitRealm = switchBody.indexOf('pendingAuthRealm = realm;');
@@ -382,10 +375,23 @@ describe('auth login-flow reset', () => {
     expect(switchBody).not.toContain('client.refresh(resource.refreshToken)');
     expect(switchBody).not.toContain('removeVaultAccount(parsedKey)');
     expect(switchBody).toContain("'REGION_MISMATCH'");
-    expect(switchBody).toContain('const switchLoginFlowEpoch = loginFlowEpoch;');
+    expect(switchBody).toContain('const switchLoginFlowEpoch = expectedLoginFlowEpoch;');
+    expect(switchBody).toContain('parseDesktopAccountSwitchRequest(rawAccountKey)');
     expect(switchBody).toContain(
-      "await completeLogin({ status: 'ok', ...pair }, switchLoginFlowEpoch);",
+      'switchRequest.localProjectSync ? { ...switchRequest.localProjectSync } : null',
     );
+    expect(switchBody).toContain('await completeLogin(');
+    expect(source).toContain('let savedAccountSwitchQueue: Promise<void> = Promise.resolve();');
+    expect(source).toContain('await waitForPendingLocalProjectSyncForUser(pair.membership.id);');
+    expect(source).toContain('...createPendingLocalProjectSyncCompletion(),');
+    expect(source).toContain('removePendingLocalProjectSync(localProjectSyncRequest);');
+    expect(source).toContain('waitForPendingLocalProjectSyncImports');
+    expect(source).toContain('if (pending.capturePromise) work.push(pending.capturePromise);');
+    expect(source).toContain('if (pending.importPromise) work.push(pending.importPromise);');
+    expect(source).toContain('pending.authEpoch === authStateEpoch');
+    expect(source).toContain('if (pending.capturePromise || pending.importPromise) continue;');
+    expect(source).toContain('capture 本身包含异步查询；查询返回后必须再次检查边界');
+    expect(source).toContain('pending.sourceUserId !== getActiveAppSession().dataOwnerId');
 
     const resourceRefreshStart = source.indexOf('async function refreshSavedResourceSession(');
     const resourceRefreshEnd = source.indexOf(
@@ -612,7 +618,7 @@ describe('auth login-flow reset', () => {
     const loadEnd = source.indexOf('\n}\n\nasync function discoverOrganizationRealm(', loadStart);
     const loadBody = source.slice(loadStart, loadEnd);
     expect(loadBody).toContain('await awaitLoginProvidersWithPreparingGate(');
-    expect(loadBody).toContain('createAuthClient(AUTH_REGION).getProviders()');
+    expect(loadBody).toContain('createAuthClient(activeAuthRealm).getProviders()');
     // 闸只限时等待,不 abort 在途 getProviders(与 splash 冷启动闸同一语义)。
     expect(loadBody).not.toContain('.abort(');
 

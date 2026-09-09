@@ -9,6 +9,7 @@ import { SESSION_SOURCES } from '../../../../shared/sessionSource.js';
 import { buildDbWorkerBundle } from '../../__tests__/dbWorkerTestUtils.js';
 import type { DbClient } from '../DbClient.js';
 import { createDbClient } from '../DbClient.js';
+import type { AccountImportLocalProjectsArgs } from '../tx/types.js';
 
 const INIT_SQL = `
 CREATE TABLE migration_meta (key TEXT PRIMARY KEY, value TEXT);
@@ -36,20 +37,31 @@ CREATE TABLE sessions (
   context_tokens INTEGER NOT NULL DEFAULT 0,
   context_window INTEGER NOT NULL DEFAULT 0,
   fast_mode INTEGER NOT NULL DEFAULT 0,
+  plan_mode_enabled INTEGER NOT NULL DEFAULT 0,
   cleared_at INTEGER,
   pinned_at INTEGER,
+  summary TEXT,
   user_send_at INTEGER,
   agent_kind TEXT NOT NULL DEFAULT 'cc',
   orca_role TEXT,
   source TEXT NOT NULL DEFAULT 'desktop',
+  feishu_open_id TEXT,
+  feishu_bot_app_id TEXT,
+  im_bot_context_id TEXT,
+  im_user_id TEXT,
+  used_project_context INTEGER NOT NULL DEFAULT 0,
+  extra_dirs TEXT NOT NULL DEFAULT '[]',
+  writable_dirs TEXT NOT NULL DEFAULT '[]',
   remote_host_id TEXT,
   active_turn_started_at INTEGER,
+  active_turn_pid INTEGER,
   last_turn_ended_at INTEGER,
   workspace_kind TEXT NOT NULL DEFAULT 'project',
   codex_history_has_product_prompt INTEGER,
   codex_plan_json TEXT,
   parent_session_id TEXT,
   forked_at_message_id TEXT,
+  worktree_path TEXT,
   list_preview TEXT,
   list_preview_role TEXT,
   list_message_count INTEGER,
@@ -106,13 +118,26 @@ CREATE TABLE subagent_runs (
   provider TEXT NOT NULL DEFAULT 'claude-code',
   logical_agent_id TEXT NOT NULL DEFAULT '',
   parent_tool_use_id TEXT,
+  aliases TEXT NOT NULL DEFAULT '[]',
+  provider_run_ids TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'running',
   title TEXT,
   description TEXT,
   summary TEXT,
+  returned_result TEXT,
+  returned_result_empty INTEGER,
+  returned_result_truncated INTEGER,
+  model TEXT,
+  reasoning_effort TEXT,
+  total_tokens INTEGER,
+  tool_uses INTEGER,
+  duration_ms INTEGER,
+  cost_usd REAL,
+  capabilities TEXT NOT NULL DEFAULT '{}',
   activity TEXT NOT NULL DEFAULT '[]',
   started_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL DEFAULT 0,
+  ended_at INTEGER,
   rewind_at INTEGER,
   deleted_at INTEGER
 );
@@ -142,6 +167,15 @@ CREATE TABLE embedding_jobs (
   UNIQUE(source, source_id, chunk_index, model_id)
 );
 CREATE TABLE chat_vec (rowid INTEGER PRIMARY KEY, embedding BLOB NOT NULL);
+CREATE TABLE recent_workdirs (
+  path TEXT PRIMARY KEY,
+  last_used_at INTEGER NOT NULL
+);
+CREATE TABLE project_aliases (
+  project_key TEXT PRIMARY KEY,
+  alias TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `;
 
 let workerBundleDir: string;
@@ -2814,6 +2848,64 @@ describe('db worker tx handlers', () => {
       ).resolves.toEqual({ ok: true, occupiedSlotsBefore: 1 });
     });
   });
+
+  it.each([
+    { label: 'bundled worker', useInlineWorker: false },
+    { label: 'inline worker', useInlineWorker: true },
+  ])('imports local project snapshots idempotently through the $label tx path', async ({ useInlineWorker }) => {
+    await withClient(async (client) => {
+      const snapshot = createLocalProjectImportTestPayload();
+
+      await expect(client.tx('account.importLocalProjects', snapshot)).resolves.toEqual({
+        sessionCount: 1,
+        messageCount: 1,
+        recentWorkdirCount: 1,
+        projectAliasCount: 1,
+        subagentRunCount: 1,
+      });
+
+      const retrySnapshot: AccountImportLocalProjectsArgs = {
+        ...snapshot,
+        messages: snapshot.messages.map((message) => ({
+          ...message,
+          content: 'updated message content',
+        })),
+        recentWorkdirs: [{ path: 'E:/projects/demo', lastUsedAt: 50 }],
+        projectAliases: [{ projectKey: 'local:E:/projects/demo', alias: 'Demo (updated)', updatedAt: 20 }],
+      };
+      await expect(client.tx('account.importLocalProjects', retrySnapshot)).resolves.toEqual({
+        sessionCount: 1,
+        messageCount: 1,
+        recentWorkdirCount: 1,
+        projectAliasCount: 1,
+        subagentRunCount: 1,
+      });
+
+      await expect(
+        client.queryOne('SELECT COUNT(*) AS count FROM sessions WHERE id = ?', ['shared-session']),
+      ).resolves.toEqual({ count: 1 });
+      await expect(
+        client.queryOne('SELECT COUNT(*) AS count FROM messages WHERE session_id = ?', ['shared-session']),
+      ).resolves.toEqual({ count: 1 });
+      await expect(
+        client.queryOne('SELECT content FROM messages WHERE session_id = ? AND client_id = ?', [
+          'shared-session',
+          'message-client',
+        ]),
+      ).resolves.toEqual({ content: 'updated message content' });
+      await expect(
+        client.queryOne('SELECT COUNT(*) AS count FROM subagent_runs WHERE id = ?', ['shared-run']),
+      ).resolves.toEqual({ count: 1 });
+      await expect(
+        client.queryOne('SELECT last_used_at FROM recent_workdirs WHERE path = ?', ['E:/projects/demo']),
+      ).resolves.toEqual({ last_used_at: 100 });
+      await expect(
+        client.queryOne('SELECT alias, updated_at FROM project_aliases WHERE project_key = ?', [
+          'local:E:/projects/demo',
+        ]),
+      ).resolves.toEqual({ alias: 'Demo (updated)', updated_at: 20 });
+    }, { useInlineWorker });
+  });
 });
 
 async function withClient(
@@ -2954,6 +3046,104 @@ function sessionRow(id: string, overrides: Partial<TestSessionRow> = {}): TestSe
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
+  };
+}
+
+/** 构造覆盖全部同步表的最小快照，便于同时验证 bundled 与 inline worker。 */
+function createLocalProjectImportTestPayload(): AccountImportLocalProjectsArgs {
+  return {
+    sessions: [{
+      id: 'shared-session',
+      title: 'Demo project',
+      workingDir: 'E:/projects/demo',
+      workspaceKind: 'project',
+      worktreePath: null,
+      model: 'claude',
+      effort: 'high',
+      permissionMode: 'ask',
+      providerId: null,
+      status: 'active',
+      sdkSessionId: null,
+      totalTokenUsage: 0,
+      totalCostUsd: 0,
+      totalCostAmount: 0,
+      totalCostCurrency: null,
+      totalCostIsApproximate: false,
+      contextTokens: 0,
+      contextWindow: 100,
+      fastMode: false,
+      planModeEnabled: false,
+      clearedAt: null,
+      pinnedAt: null,
+      summary: 'summary',
+      userSendAt: null,
+      agentKind: 'cc',
+      orcaRole: null,
+      parentSessionId: null,
+      forkedAtMessageId: null,
+      source: 'shared',
+      feishuOpenId: null,
+      feishuBotAppId: null,
+      imBotContextId: null,
+      imUserId: null,
+      usedProjectContext: false,
+      codexHistoryHasProductPrompt: null,
+      codexPlanJson: null,
+      extraDirs: '[]',
+      writableDirs: '[]',
+      remoteHostId: null,
+      activeTurnStartedAt: null,
+      activeTurnPid: null,
+      lastTurnEndedAt: null,
+      listPreview: 'preview',
+      listPreviewRole: 'user',
+      listMessageCount: 1,
+      createdAt: 1,
+      updatedAt: 100,
+    }],
+    messages: [{
+      id: 'shared-message',
+      clientId: 'message-client',
+      sessionId: 'shared-session',
+      role: 'user',
+      content: 'original message content',
+      toolUseId: null,
+      agentMeta: null,
+      agentKind: 'cc',
+      createdAt: 2,
+      rewindAt: null,
+    }],
+    recentWorkdirs: [{ path: 'E:/projects/demo', lastUsedAt: 100 }],
+    projectAliases: [{ projectKey: 'local:E:/projects/demo', alias: 'Demo', updatedAt: 10 }],
+    subagentRuns: [{
+      id: 'shared-run',
+      sessionId: 'shared-session',
+      provider: 'claude-code',
+      logicalAgentId: 'agent-1',
+      parentToolUseId: null,
+      aliases: '[]',
+      providerRunIds: '[]',
+      status: 'completed',
+      title: 'Task',
+      description: 'Description',
+      summary: 'Result',
+      returnedResult: 'Result',
+      returnedResultEmpty: 0,
+      returnedResultTruncated: 0,
+      model: 'claude',
+      reasoningEffort: 'high',
+      totalTokens: 10,
+      toolUses: 1,
+      durationMs: 100,
+      costUsd: 0,
+      capabilities: '{}',
+      activity: '[]',
+      startedAt: 3,
+      updatedAt: 4,
+      endedAt: 4,
+      rewindAt: null,
+      deletedAt: null,
+    }],
   };
 }
 

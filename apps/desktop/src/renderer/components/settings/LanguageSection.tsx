@@ -10,13 +10,13 @@ import * as Select from '@radix-ui/react-select';
 
 import { cn } from '@/lib/utils';
 import { useLocale } from '@/hooks/useLocale';
-import { SUPPORTED_LOCALES, type LocalePreference } from '@/i18n';
+import type { LocalePreference } from '@/i18n';
 
 // 「跟随系统」优先,英语作为第一个显式语言,其余语言按支持列表顺序排列。
 const LANGUAGE_OPTIONS: ReadonlyArray<LocalePreference> = [
   'system',
+  'zh-CN',
   'en',
-  ...SUPPORTED_LOCALES.filter((locale) => locale !== 'en'),
 ];
 
 export function LanguageSection() {
@@ -52,9 +52,9 @@ export function LanguageSection() {
           <Select.Trigger
             aria-label={t('settings.language.ariaLabel')}
             className={cn(
-              'flex h-9 w-[320px] max-w-full shrink-0 items-center justify-between gap-3 rounded-full border px-3.5 text-13 outline-none transition-colors',
+              'settings-dropdown-trigger flex h-9 w-[320px] max-w-full shrink-0 items-center justify-between gap-3 rounded-full px-3.5 text-13 outline-none transition-colors',
               'border-[var(--settings-input-border)] bg-[var(--settings-input-bg)] text-[var(--settings-input-text)]',
-              'hover:bg-[var(--settings-menu-bg-hover)] focus:ring-2 focus:ring-[var(--focus-ring-soft)]',
+              'hover:bg-[var(--settings-menu-bg-hover)]',
             )}
           >
             <span className="min-w-0 truncate text-left">

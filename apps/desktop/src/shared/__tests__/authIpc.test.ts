@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseDesktopAccountDeletionConfirmInput,
   parseDesktopAccountKey,
+  parseDesktopAccountSwitchRequest,
   parseDesktopLoginAction,
 } from '../authIpc';
 
@@ -12,6 +13,49 @@ describe('desktop auth IPC validation', () => {
     expect(parseDesktopAccountKey('')).toBeNull();
     expect(parseDesktopAccountKey('x'.repeat(513))).toBeNull();
     expect(parseDesktopAccountKey({ accountKey: 'membership-1' })).toBeNull();
+  });
+
+  it('supports legacy account keys and strictly validates shortcut-switch sync options', () => {
+    expect(parseDesktopAccountSwitchRequest('membership-1')).toEqual({
+      accountKey: 'membership-1',
+    });
+    expect(
+      parseDesktopAccountSwitchRequest({
+        accountKey: 'membership-1',
+        localProjectSync: {
+          projectConversation: true,
+          projectFiles: true,
+          projectList: false,
+          projectRuntimeRecords: true,
+          independentConversations: false,
+          nonSensitivePreferences: false,
+        },
+        ignored: 'must not cross the IPC boundary',
+      }),
+    ).toEqual({
+      accountKey: 'membership-1',
+      localProjectSync: {
+        projectConversation: true,
+        projectFiles: true,
+        projectList: false,
+        projectRuntimeRecords: true,
+        independentConversations: false,
+        nonSensitivePreferences: false,
+      },
+    });
+    expect(
+      parseDesktopAccountSwitchRequest({
+        accountKey: 'membership-1',
+        localProjectSync: {
+          projectConversation: true,
+          projectFiles: true,
+          projectList: false,
+          projectRuntimeRecords: true,
+          independentConversations: false,
+        },
+      }),
+    ).toBeNull();
+    expect(parseDesktopAccountSwitchRequest({ accountKey: 'membership-1', localProjectSync: null })).toBeNull();
   });
 
   it('projects recognized actions onto their typed fields', () => {

@@ -16,7 +16,11 @@ import {
   type PriceVariant,
   type RegionalMoney,
 } from '../../shared/regionalMoney.js';
-import { buildTurnUsageDetails, type TurnUsageDetails } from '../../shared/turnUsageDetails.js';
+import {
+  buildTurnUsageDetails,
+  type TurnUsageBucket,
+  type TurnUsageDetails,
+} from '../../shared/turnUsageDetails.js';
 import { isSubscriptionDirectRoute } from '../../shared/subscriptionModels.js';
 import { currentLedgerCurrency } from './ledgerCurrency.js';
 import type { ModelUsageDeltaEntry } from './modelUsageDelta.js';
@@ -28,8 +32,13 @@ export interface TurnTokenDeltas {
   cacheCreateTokens: number;
 }
 
+/** 用量归属范围；历史缺省值按 parent 解释。 */
+export type TurnUsageScope = 'parent' | 'subagent';
+
 export interface TurnUsageSegment extends TurnTokenDeltas {
   id?: string;
+  /** 用量归属范围；normalize 只保留合法值。 */
+  scope?: TurnUsageScope;
   model?: string;
   priceVariant?: PriceVariant;
   costUsd?: number;
@@ -62,6 +71,7 @@ export function normalizeTurnUsageSegments(value: unknown): TurnUsageSegment[] {
     )
       continue;
     if (typeof raw.id === 'string' && raw.id) segment.id = raw.id;
+    if (raw.scope === 'parent' || raw.scope === 'subagent') segment.scope = raw.scope;
     if (typeof raw.model === 'string' && raw.model.trim()) segment.model = raw.model.trim();
     if (
       raw.priceVariant === 'standard' ||
@@ -88,6 +98,24 @@ export function sumTurnUsageSegments(segments: readonly TurnUsageSegment[]): Tur
     }),
     { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0 },
   );
+}
+
+/** 按 parent/subagent 汇总 token；缺省 scope 的历史分段归入 parent。 */
+export function sumTurnUsageSegmentsByScope(
+  segments: readonly TurnUsageSegment[],
+): Record<TurnUsageScope, TurnTokenDeltas> {
+  const totals: Record<TurnUsageScope, TurnTokenDeltas> = {
+    parent: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0 },
+    subagent: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0 },
+  };
+  for (const segment of segments) {
+    const total = totals[segment.scope === 'subagent' ? 'subagent' : 'parent'];
+    total.inputTokens += segment.inputTokens;
+    total.outputTokens += segment.outputTokens;
+    total.cacheReadTokens += segment.cacheReadTokens;
+    total.cacheCreateTokens += segment.cacheCreateTokens;
+  }
+  return totals;
 }
 
 export type BillingRoute = 'xd-gateway' | 'provider-api' | 'subscription' | 'unknown';
@@ -542,6 +570,10 @@ export function buildClaudeTurnUsageDetails(
   perModel?: ResolvedModelCost[],
   durationMs?: number,
   turnDurationMs?: number,
+  /** 主代理 token 分桶；缺失时由顶层 usage 兼容推导。 */
+  parentUsage?: Readonly<Partial<TurnUsageBucket>> | null,
+  /** 子代理 token 分桶；缺失时由顶层 usage 兼容推导。 */
+  subagentUsage?: Readonly<Partial<TurnUsageBucket>> | null,
 ): TurnUsageDetails | null {
   const hasModelUsageDeltas = Boolean(deltas && deltas.length > 0);
   const perModelCost = perModel
@@ -565,5 +597,7 @@ export function buildClaudeTurnUsageDetails(
     perModelCost: perModelCost && perModelCost.length > 0 ? perModelCost : undefined,
     durationMs,
     turnDurationMs,
+    parentUsage,
+    subagentUsage,
   });
 }

@@ -6,12 +6,14 @@ import type {
   DesktopAccountDeletionConfirmInput,
   DesktopAccountDeletionConfirmResult,
   DesktopAccountDeletionStatusResult,
+  DesktopAccountSwitchRequest,
   DesktopAccountSwitcherSnapshot,
   DesktopLoginAction,
   DesktopLoginActionResult,
 } from '../../shared/authIpc';
 export type { DesktopSavedAccount } from '../../shared/authIpc';
 import type { Effort } from '@/lib/userPreferences.types';
+import type { LocalProjectSyncOptions } from '../../shared/localProjectSync';
 
 /** Renderer-safe projection of the authenticated auth-server membership. */
 // role 已随 /api/user/me、/api/me 退役；isCanary 改由 main 进程从专用
@@ -21,6 +23,8 @@ export interface User {
   name: string;
   avatar: string | null;
   email: string | null;
+  /** 账号按钮安全展示值；中国手机号已脱敏。 */
+  accountLabel?: string;
   defaultModel: string;
   defaultEffort: Effort;
   membershipKind: 'personal' | 'org';
@@ -52,11 +56,13 @@ export interface AuthState {
 export interface AuthService {
   initialize(): Promise<AuthState>;
   getLoginState(): Promise<DesktopLoginActionResult>;
+  /** 登录页选择中国版或国际版，并返回目标区域的登录状态。 */
+  selectLoginRegion(region: 'cn' | 'global'): Promise<DesktopLoginActionResult>;
   dispatchLoginAction(action: DesktopLoginAction): Promise<DesktopLoginActionResult>;
   logout(): Promise<void>;
   listAccounts(): Promise<DesktopAccountSwitcherSnapshot>;
   syncAccounts(): Promise<DesktopAccountSwitcherSnapshot>;
-  switchAccount(accountKey: string): Promise<void>;
+  switchAccount(accountKey: string, localProjectSync?: LocalProjectSyncOptions): Promise<void>;
   beginAddAccount(): Promise<DesktopLoginActionResult>;
   cancelAddAccount(): Promise<void>;
   enterLocalMode(): Promise<AuthState>;
@@ -113,6 +119,10 @@ export function createAuthService(): AuthService {
       return window.electronAPI.authGetLoginState();
     },
 
+    selectLoginRegion(region: 'cn' | 'global'): Promise<DesktopLoginActionResult> {
+      return window.electronAPI.selectCindyRegion(region) as Promise<DesktopLoginActionResult>;
+    },
+
     dispatchLoginAction(action: DesktopLoginAction): Promise<DesktopLoginActionResult> {
       return window.electronAPI.authDispatchLoginAction(action);
     },
@@ -129,8 +139,11 @@ export function createAuthService(): AuthService {
       return window.electronAPI.authSyncAccounts();
     },
 
-    switchAccount(accountKey) {
-      return window.electronAPI.authSwitchAccount(accountKey);
+    switchAccount(accountKey, localProjectSync) {
+      const request: string | DesktopAccountSwitchRequest = localProjectSync
+        ? { accountKey, localProjectSync: { ...localProjectSync } }
+        : accountKey;
+      return window.electronAPI.authSwitchAccount(request);
     },
 
     beginAddAccount() {

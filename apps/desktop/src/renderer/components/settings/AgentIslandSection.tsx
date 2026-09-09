@@ -304,9 +304,9 @@ export function AgentIslandSection() {
                 value={displayTargetToOptionValue(displayTarget)}
                 onChange={(event) => setDisplayTarget(displayTargetFromOptionValue(event.target.value))}
                 className={cn(
-                  'h-9 w-full min-w-0 appearance-none rounded-full border py-0 pl-3 pr-9 text-12 outline-none',
+                  'settings-dropdown-trigger h-9 w-full min-w-0 appearance-none rounded-full py-0 pl-3 pr-9 text-12 outline-none',
                   'bg-[var(--settings-input-bg)] text-[var(--settings-input-text)]',
-                  'border-[var(--settings-input-border)] focus:ring-2 focus:ring-[var(--focus-ring-soft)]',
+                  '',
                 )}
                 aria-label={t('settings.agentIsland.displaySelectAria')}
               >
@@ -735,9 +735,9 @@ function AgentIslandSoundRow({
             onChange({ type: 'builtin', id: next as AgentIslandSoundId });
           }}
           className={cn(
-            'h-8 w-full min-w-0 appearance-none rounded-full border py-0 pl-3 pr-8 text-12 outline-none',
+            'settings-dropdown-trigger h-8 w-full min-w-0 appearance-none rounded-full py-0 pl-3 pr-8 text-12 outline-none',
             'bg-[var(--settings-input-bg)] text-[var(--settings-input-text)]',
-            'border-[var(--settings-input-border)] focus:ring-2 focus:ring-[var(--focus-ring-soft)]',
+            '',
           )}
           aria-label={t('settings.agentIsland.soundSelectAria', {
             event: t(`settings.agentIsland.soundEvents.${event}`),

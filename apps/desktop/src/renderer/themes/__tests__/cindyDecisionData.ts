@@ -197,7 +197,7 @@ export const CINDY_EXPECTED_VALUES: Record<string, { light: string; dark: string
   'surface-card-ivory': { light: '#FDFDF8', dark: '#1F1F1F' },
   'surface-chip': { light: '#EEEEE9', dark: '#1D1D1D' },
   'surface-chip-alt': { light: '#FAFAF5', dark: '#1D1D1D' },
-  'surface-hover': { light: '#EEEEE9', dark: '#1D1D1D' },
+  'surface-hover': { light: '#E5E5E0', dark: '#2A2A2A' },
   'surface-hover-soft': { light: '#F0F0EB', dark: '#191919' },
   'surface-hover-hsl': { light: '60.0 12.8% 92.4%', dark: '0 0% 11.4%' },
   'surface-on-card': { light: '#FFFFFF', dark: '#181818' },
@@ -273,7 +273,7 @@ export const CINDY_EXPECTED_VALUES: Record<string, { light: string; dark: string
   'perm-allow-kbd-bg': { light: 'rgba(255, 255, 255, 0.16)', dark: 'rgba(0, 0, 0, 0.08)' }, // 2026-07-19 修复:kbd 随按钮反相
   'perm-allow-kbd-border': { light: 'rgba(255, 255, 255, 0.30)', dark: 'rgba(0, 0, 0, 0.20)' },
   'perm-code-bg': { light: '#FAFAF5', dark: '#191919' },
-  'perm-item-selected-bg': { light: '#F6F6F1', dark: '#1D1D1D' },
+  'perm-item-selected-bg': { light: 'var(--model-item-hover)', dark: 'var(--model-item-hover)' },
   'plan-outline-active-bg': { light: '#F6F6F1', dark: '#1D1D1D' },
   'plan-toolbar-btn-hover-bg': { light: '#E8E8E3', dark: '#323232' }, // 2026-08 §9 更新;沿革: 用户改稿 2026-07-23(ask 卡整改):原值贴着卡底(#F8F8F8/#312F2F)不可见,借 settings-menu-bg-hover(light)/send-btn-disabled-bg(dark)同档
   popover: { light: '60.0 55.6% 98.2%', dark: '0 0% 12.2%' },
@@ -286,14 +286,14 @@ export const CINDY_EXPECTED_VALUES: Record<string, { light: string; dark: string
   'settings-integration-avatar-bg': { light: '#FDFDF8', dark: '#1D1D1D' },
   'settings-logout-bg': { light: '#FDFDF8', dark: '#1F1F1F' },
   'settings-menu-bg-hover': { light: '#E8E8E3', dark: '#282828' }, // 2026-08 §9 更新;沿革: 用户改稿 2026-07-21:原值贴着页底(#EDEDED/#2A2828)不可见,light 压暗 / dark 提亮到 ~5-6% 亮度差
-  'settings-menu-bg-selected': { light: '#F6F6F1', dark: '#282828' }, // 2026-08-13: dark 从页底锚定 #1D1D1D 抬到卡片之上,与 settings-menu-bg-hover 同档
+  'settings-menu-bg-selected': { light: '#E2E2DE', dark: '#333333' }, // 卡片内选中态背景
   'settings-source-link': { light: '#1D4ED8', dark: '#93C5FD' },
   'settings-theme-auto-dark': { light: '#181818', dark: '#181818' },
   'sidebar-action-icon': { light: '60.0 2.1% 52.4%', dark: '0 0% 43.5%' }, // 2026-08 §9 更新;沿革: E1D 侧栏层级 #9A9DA3/#6F6F6F
   'cmd-palette-item-meta': { light: '#888883', dark: '#6F6F6F' }, // 2026-08 §9 更新;沿革: E1D 侧栏二级暗灰
   'sidebar-item-active-foreground': { light: '#FCFCFC', dark: '#151515' }, // 2026-08 §9 更新;沿革: 用户二次改稿 2026-07-20:反相胶囊浅字/深字(同 accent-pure-cta-fg)
-  'sidebar-item-active-border': { light: 'transparent', dark: 'transparent' }, // 用户三次改稿 2026-07-20:去描边
-  'sidebar-item-active': { light: '214.3 5.5% 24.9%', dark: '0.0 0.0% 93.3%' }, // 用户二次改稿 2026-07-20:反相胶囊 #3C3F43/#EEEEEE(同 accent-cta-bg)
+  'sidebar-item-active-border': { light: '#686866', dark: '#6B6B6B' }, // 2026-09:选中态细描边,避免与背景融合
+  'sidebar-item-active': { light: '214.3 8.0% 31.0%', dark: '0.0 0.0% 88.0%' }, // 2026-09:柔和但明确的反相选中胶囊
   'splash-bg': { light: '60.0 16.1% 93.9%', dark: '0 0% 9.4%' },
   'splash-text': { light: '60.0 1.9% 41.2%', dark: '0.0 0.0% 75.7%' },
   'splash-text-destructive': { light: '0.0 0.0% 10.2%', dark: '0.0 0.0% 100.0%' },
@@ -365,7 +365,7 @@ export const CINDY_EXPECTED_VALUES: Record<string, { light: string; dark: string
   'create-agent-send-disabled-icon': { light: '#9D9D98', dark: '#464646' },
   'create-agent-send-icon': { light: '#FCFCFC', dark: '#151515' },
   'md-table-bg': { light: 'rgba(241, 241, 236, 0.55)', dark: 'rgba(26, 26, 26, 0.55)' },
-  'model-item-hover': { light: '#EFEFEA', dark: '#2B2B2B' },
+  'model-item-hover': { light: '#E1E1DC', dark: '#3A3A3A' },
   'settings-integration-avatar-border': { light: '#EDEDE8', dark: 'rgba(255, 255, 255, 0.08)' },
   'sidebar-list-muted': { light: '#888883', dark: '#6F6F6F' },
   'sidebar-nav-text': { light: '#1A1A1A', dark: '#D4D4D4' },

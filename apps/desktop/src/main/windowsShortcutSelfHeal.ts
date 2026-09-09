@@ -57,6 +57,8 @@ export interface ShortcutSelfHealDeps {
   /** Roaming AppData(开始菜单 / 任务栏固定目录的根)。 */
   appDataDir: () => string | null;
   exists: (p: string) => Promise<boolean>;
+  /** 快捷方式 target 是否仍存在;与 exists 分开,避免把 .lnk 存在误当成 exe 存在。 */
+  targetExists: (p: string) => Promise<boolean>;
   unlink: (p: string) => Promise<void>;
   readShortcut: (p: string) => Electron.ShortcutDetails;
   writeShortcut: (p: string, op: 'create' | 'update', details: Electron.ShortcutDetails) => boolean;
@@ -90,6 +92,14 @@ function defaultDeps(): ShortcutSelfHealDeps {
         return false;
       }
     },
+    targetExists: async (p) => {
+      try {
+        await fs.access(p);
+        return true;
+      } catch {
+        return false;
+      }
+    },
     unlink: (p) => fs.unlink(p),
     readShortcut: (p) => shell.readShortcutLink(p),
     writeShortcut: (p, op, details) => shell.writeShortcutLink(p, op, details),
@@ -113,9 +123,62 @@ function targetsThisExe(deps: ShortcutSelfHealDeps, lnkPath: string): boolean {
   }
 }
 
+/** 目标文件存在性检查失败时按不存在处理,确保快捷方式自愈不影响应用启动。 */
+async function shortcutTargetExists(deps: ShortcutSelfHealDeps, target: unknown): Promise<boolean> {
+  if (typeof target !== 'string' || target.length === 0) return false;
+  try {
+    return await deps.targetExists(target);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 当前名称 .lnk 原地刷新:修复失效目标,或修复当前 Cindy 的图标/AUMID 元数据。
+ *
+ * Explorer 会缓存快捷方式的 IconLocation。即使 target 已经正确,旧版留下的
+ * resources\\icon.ico 仍可能显示成空白;因此当前 EXE 的快捷方式也要把 icon
+ * 统一改成 EXE 内嵌图标,让任务栏/桌面共享同一个稳定来源。
+ */
+async function healCurrentShortcut(deps: ShortcutSelfHealDeps, dir: string): Promise<boolean> {
+  const lnkPath = path.join(dir, `${SHORTCUT_BASENAME}.lnk`);
+  if (!(await deps.exists(lnkPath))) return false;
+
+  let prev: Electron.ShortcutDetails;
+  try {
+    prev = deps.readShortcut(lnkPath);
+  } catch {
+    return false;
+  }
+
+  const targetIsAvailable = await shortcutTargetExists(deps, prev.target);
+  const targetIsCurrentExe =
+    typeof prev.target === 'string' && isSameWindowsPath(prev.target, deps.execPath);
+  // 目标仍有效但属于其它安装版本时保留当前快捷方式,避免抢走用户入口。
+  if (targetIsAvailable && !targetIsCurrentExe) return false;
+
+  const iconIsCurrentExe =
+    typeof prev.icon === 'string' && isSameWindowsPath(prev.icon, deps.execPath);
+  const metadataNeedsRepair =
+    !targetIsCurrentExe ||
+    !iconIsCurrentExe ||
+    prev.iconIndex !== 0 ||
+    prev.appUserModelId !== CURRENT_APP_ID;
+  if (targetIsAvailable && !metadataNeedsRepair) return false;
+
+  const ok = deps.writeShortcut(lnkPath, 'update', {
+    ...prev,
+    target: deps.execPath,
+    icon: deps.execPath,
+    iconIndex: 0,
+    appUserModelId: CURRENT_APP_ID,
+  });
+  return ok;
+}
+
 /** 桌面 / 开始菜单:旧名 → 新名重建。返回是否发生了改动(日志用)。 */
 async function healRenameable(deps: ShortcutSelfHealDeps, dir: string): Promise<boolean> {
-  let changed = false;
+  let changed = await healCurrentShortcut(deps, dir);
   const newPath = path.join(dir, `${SHORTCUT_BASENAME}.lnk`);
   for (const base of LEGACY_SHORTCUT_BASENAMES) {
     const oldPath = path.join(dir, `${base}.lnk`);
@@ -142,7 +205,7 @@ async function healRenameable(deps: ShortcutSelfHealDeps, dir: string): Promise<
 
 /** 任务栏固定:原地刷属性(icon / AUMID),文件名不动。 */
 async function healPinnedInPlace(deps: ShortcutSelfHealDeps, dir: string): Promise<boolean> {
-  let changed = false;
+  let changed = await healCurrentShortcut(deps, dir);
   for (const base of LEGACY_SHORTCUT_BASENAMES) {
     const lnkPath = path.join(dir, `${base}.lnk`);
     if (!(await deps.exists(lnkPath))) continue;
@@ -187,7 +250,14 @@ export async function healWindowsShortcuts(
         pinned: false,
       });
       dirs.push({
-        dir: path.join(appData, 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar'),
+        dir: path.join(
+          appData,
+          'Microsoft',
+          'Internet Explorer',
+          'Quick Launch',
+          'User Pinned',
+          'TaskBar',
+        ),
         pinned: true,
       });
     }

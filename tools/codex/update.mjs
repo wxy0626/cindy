@@ -47,11 +47,15 @@ const PLATFORMS = [
     key: 'darwin-arm64',
     asset: 'codex-aarch64-apple-darwin.tar.gz',
     binFile: 'codex',
+    companionAsset: 'codex-code-mode-host-aarch64-apple-darwin.tar.gz',
+    companionBinFile: 'codex-code-mode-host',
   },
   {
     key: 'darwin-x64',
     asset: 'codex-x86_64-apple-darwin.tar.gz',
     binFile: 'codex',
+    companionAsset: 'codex-code-mode-host-x86_64-apple-darwin.tar.gz',
+    companionBinFile: 'codex-code-mode-host',
   },
   {
     key: 'linux-x64',
@@ -59,6 +63,8 @@ const PLATFORMS = [
     // list: x86_64 Linux is published as the musl tarball, not a gnu/glibc one.
     asset: 'codex-x86_64-unknown-linux-musl.tar.gz',
     binFile: 'codex',
+    companionAsset: 'codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz',
+    companionBinFile: 'codex-code-mode-host',
   },
   {
     key: 'linux-arm64',
@@ -66,11 +72,15 @@ const PLATFORMS = [
     // list: aarch64 Linux is likewise published as the musl tarball only.
     asset: 'codex-aarch64-unknown-linux-musl.tar.gz',
     binFile: 'codex',
+    companionAsset: 'codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz',
+    companionBinFile: 'codex-code-mode-host',
   },
   {
     key: 'win32-x64',
     asset: 'codex-x86_64-pc-windows-msvc.exe.tar.gz',
     binFile: 'codex.exe',
+    companionAsset: 'codex-code-mode-host-x86_64-pc-windows-msvc.exe.tar.gz',
+    companionBinFile: 'codex-code-mode-host.exe',
   },
 ];
 
@@ -104,17 +114,29 @@ function readCachedVersion() {
 }
 
 function runtimeAssetPins(meta, version) {
-  return Object.fromEntries(PLATFORMS.map(({ key, asset: assetName }) => {
+  return Object.fromEntries(PLATFORMS.map(({ key, asset: assetName, companionAsset, companionBinFile }) => {
     const asset = (meta.assets || []).find((candidate) => candidate.name === assetName);
     const sha256 = normalizeExpectedSha256(asset?.digest);
     if (!asset || typeof asset.browser_download_url !== 'string' || !sha256) {
       throw new Error(`Cannot pin codex ${version} ${key}: release asset metadata is incomplete`);
     }
-    return [key, {
+    const pin = {
       url: asset.browser_download_url,
       sha256,
       ...(typeof asset.size === 'number' && asset.size > 0 ? { size: asset.size } : {}),
-    }];
+    };
+    const companion = (meta.assets || []).find((candidate) => candidate.name === companionAsset);
+    const companionSha256 = normalizeExpectedSha256(companion?.digest);
+    if (!companion || !companionSha256) {
+      throw new Error(`Cannot pin codex ${version} ${key}: code-mode host asset metadata is incomplete`);
+    }
+    pin.companion = {
+      binFile: companionBinFile,
+      url: companion.browser_download_url,
+      sha256: companionSha256,
+      ...(typeof companion.size === 'number' && companion.size > 0 ? { size: companion.size } : {}),
+    };
+    return [key, pin];
   }));
 }
 
@@ -160,7 +182,9 @@ function isUsableCache(filePath) {
 
 /** 指定版本下，目标平台的 updates/<version>/<platform>/<binFile> 是否都已是可用缓存。 */
 function targetsExist(version, targets) {
-  return targets.every(({ key, binFile }) => isUsableCache(path.join(UPDATES_DIR, version, key, binFile)));
+  return targets.every(({ key, binFile, companionBinFile }) =>
+    isUsableCache(path.join(UPDATES_DIR, version, key, binFile)) &&
+    isUsableCache(path.join(UPDATES_DIR, version, key, companionBinFile)));
 }
 
 async function extractTarGz(archivePath, destDir) {
@@ -307,8 +331,9 @@ function promoteOnePlatform(version, key, binFile) {
 function promoteToVendorBin(version, platforms = PLATFORMS) {
   console.log('');
   console.log(`==> Promoting to apps/codex-bin/ ...`);
-  for (const { key, binFile } of platforms) {
+  for (const { key, binFile, companionBinFile } of platforms) {
     promoteOnePlatform(version, key, binFile);
+    promoteOnePlatform(version, key, companionBinFile);
   }
 }
 
@@ -329,7 +354,9 @@ export async function ensurePlatform({ version, platformKey, force = false }) {
   const meta = await fetchReleaseMeta(`rust-v${version}`);
   // install 链路（ensure-agent-binaries）有 CDN 兜底，开启吞吐守卫尽早切换
   await downloadAsset(meta, version, platformKey, entry.asset, entry.binFile, { force, throughputGuard: true });
+  await downloadAsset(meta, version, platformKey, entry.companionAsset, entry.companionBinFile, { force, throughputGuard: true });
   promoteOnePlatform(version, platformKey, entry.binFile);
+  promoteOnePlatform(version, platformKey, entry.companionBinFile);
 }
 
 // ── Args ───────────────────────────────────────────────────────────────────
@@ -362,8 +389,9 @@ async function main() {
     const tag = `rust-v${requestedVersion}`;
     console.log(`==> Pinning codex to ${requestedVersion} (specified, tag=${tag})...`);
     const meta = await fetchReleaseMeta(tag);
-    for (const { key, asset, binFile } of targets) {
+    for (const { key, asset, binFile, companionAsset, companionBinFile } of targets) {
       await downloadAsset(meta, requestedVersion, key, asset, binFile, { force });
+      await downloadAsset(meta, requestedVersion, key, companionAsset, companionBinFile, { force });
     }
     promoteToVendorBin(requestedVersion, targets);
     // 指定版本 == bump pin：写回 latest.json，使其成为唯一真相源（install / ensure 据此对齐）。
@@ -394,8 +422,9 @@ async function main() {
   }
 
   console.log(`==> New version detected (${cachedVersion ?? 'none'} → ${latestVersion}), downloading...`);
-  for (const { key, asset, binFile } of targets) {
+  for (const { key, asset, binFile, companionAsset, companionBinFile } of targets) {
     await downloadAsset(meta, latestVersion, key, asset, binFile, { force });
+    await downloadAsset(meta, latestVersion, key, companionAsset, companionBinFile, { force });
   }
 
   // 所有平台下载成功后再更新缓存，中途失败下一次会自动重试

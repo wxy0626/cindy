@@ -123,7 +123,7 @@ export function SidebarInlineSearch({
         setForceOpen(false);
       }}
       className={cn(
-        'flex h-8 w-full items-center gap-2.5 rounded-full border pl-3 transition-colors',
+        'search-capsule-control flex h-8 w-full items-center gap-2.5 rounded-full pl-3 transition-colors',
         expanded
           ? 'border-[var(--border-default)] bg-[var(--sidebar-search-input-bg)] pr-1.5'
           : 'border-transparent pr-3',

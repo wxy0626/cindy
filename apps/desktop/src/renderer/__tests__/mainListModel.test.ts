@@ -77,6 +77,21 @@ const NO_PRIORITY = {
 };
 
 describe('buildMainListEntries — 混排(recency)', () => {
+  it('keeps an empty project row after all of its sessions leave the current status filter', () => {
+    const projectWithNoVisibleSessions = project('/repo/archived-only', []);
+    const entries = buildMainListEntries({
+      projects: [projectWithNoVisibleSessions],
+      dialogues: [],
+      groupBy: 'project',
+      groupDialogue: false,
+      sortBy: 'recency',
+      manualProjectOrder: [],
+    });
+
+    expect(labels(entries)).toEqual(['p:/repo/archived-only']);
+    expect(getMainListEntrySessions(entries[0]!)).toEqual([]);
+  });
+
   it('interleaves project rows and stray dialogues by latest activity', () => {
     const projNew = project('alpha', [session({ updatedAt: '2026-08-12T10:00:00Z' })]);
     const projOld = project('beta', [session({ updatedAt: '2026-08-10T10:00:00Z' })]);
@@ -941,5 +956,34 @@ describe('splitEntriesByDevice — 拆段后按本段重排', () => {
     const sections = splitEntriesByDevice(entries, ['dev-a'], { sortBy: 'recency' });
     expect(sections.map((section) => section.deviceId)).toEqual(['dev-a']);
     expect(labels(sections[0].entries)).toEqual(['s:remote-draft']);
+  });
+
+  it('keeps custom project order inside a device section', () => {
+    // 设备切段后仍要沿用手动项目序；否则这里会被较新的 beta 排到 alpha 前面。
+    const alpha = {
+      ...project('/alpha', [session({ updatedAt: '2026-08-01T00:00:00Z' })]),
+      deviceLinkDeviceId: 'dev-a',
+    } as ProjectNode;
+    const beta = {
+      ...project('/beta', [session({ updatedAt: '2026-08-13T00:00:00Z' })]),
+      deviceLinkDeviceId: 'dev-a',
+    } as ProjectNode;
+    const entries = buildMainListEntries({
+      projects: [alpha, beta],
+      dialogues: [],
+      groupBy: 'project',
+      groupDialogue: false,
+      sortBy: 'recency',
+      projectOrder: 'custom',
+      manualProjectOrder: ['local:/alpha', 'local:/beta'],
+    });
+
+    const sections = splitEntriesByDevice(entries, ['dev-a'], {
+      sortBy: 'recency',
+      projectOrder: 'custom',
+      manualProjectOrder: ['local:/alpha', 'local:/beta'],
+    });
+
+    expect(labels(sections[0].entries)).toEqual(['p:/alpha', 'p:/beta']);
   });
 });

@@ -563,7 +563,7 @@ describe('custom provider runtime fill', () => {
     });
   });
 
-  it('preserves Pi-only model capabilities when portable model fields are filled', () => {
+  it('turns on Pi model capabilities by default when portable model fields are filled', () => {
     const source = draft({
       models: [{ id: 'model-a', name: 'Model A', contextWindow: 128_000 }],
     });
@@ -592,8 +592,34 @@ describe('custom provider runtime fill', () => {
         contextWindow: 128_000,
         supportsImageInput: true,
         reasoning: true,
-        reasoningEfforts: ['low', 'high'],
-        reasoningDefaultEffort: 'high',
+        reasoningEfforts: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+        reasoningDefaultEffort: 'max',
+      },
+    ]);
+  });
+
+  it('keeps the target piApi when filling portable models into Pi', () => {
+    const source = draft({
+      models: [{ id: 'model-a', name: 'Model A' }],
+    });
+    const target = draft({
+      models: [{ id: 'model-a', name: 'Old name', piApi: 'openai-responses' }],
+    });
+
+    const result = applyRuntimeFillFields(target, source, ['models'], {
+      sourceAgent: 'codex',
+      targetAgent: 'pi',
+    });
+
+    expect(result.models).toEqual([
+      {
+        id: 'model-a',
+        name: 'Model A',
+        piApi: 'openai-responses',
+        supportsImageInput: true,
+        reasoning: true,
+        reasoningEfforts: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+        reasoningDefaultEffort: 'max',
       },
     ]);
   });

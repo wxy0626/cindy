@@ -76,8 +76,8 @@ export const LOGIN_DELETION_BUBBLE = {
  * 最大高度，以及窗口底部安全边距。
  */
 export const LOGIN_LOCAL_MODE = {
-  gap: 16,
-  reservedHeight: 124,
+  gap: 48,
+  reservedHeight: 176,
   descriptionLineHeight: 18,
 } as const;
 

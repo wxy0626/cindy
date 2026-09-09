@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useAuth } from '@/contexts/AuthContext';
 import {
+  CatalogSourceSwitcher,
   PLUGIN_MANAGEMENT_CARD_GRID_CLASS,
   PluginManagementLayout,
   PluginManagementPage,
@@ -67,6 +68,7 @@ export function SkillhubHomeView({
   const navigate = useNavigate();
   const { skills, projects, bootstrapped, syncResults } = useSkillhub();
   const [query, setQuery] = useState('');
+  const [catalogSource, setCatalogSource] = useState<'external' | 'internal'>('external');
   const normalizedQuery = query.trim().toLocaleLowerCase();
 
   // 市场可见性门禁:仅 xd 组织的企业账号可见 Skill Hub 入口与推荐安装;
@@ -84,22 +86,40 @@ export function SkillhubHomeView({
     setSortBy('trending');
   }, [setSortBy]);
   const recommended = useMemo(
-    () =>
-      marketItems
+    () => {
+      if (catalogSource === 'internal') return [];
+      return marketItems
         .filter((skill) =>
           includesSkillQuery(
             [skill.displayName, skill.name, skill.description, skill.authorName],
             normalizedQuery,
           ),
         )
-        .slice(0, RECOMMENDED_LIMIT),
-    [marketItems, normalizedQuery],
+        .slice(0, RECOMMENDED_LIMIT);
+    },
+    [catalogSource, marketItems, normalizedQuery],
   );
+
+  // 复用 SkillHub 已有来源推断:外部 = SkillHub 安装来源,内部 = 本地来源。
+  const visibleSkills = useMemo(() => {
+    const expectedSource = catalogSource === 'external' ? 'external' : 'internal';
+    return skills.filter((skill) => {
+      const sync = syncResults.get(skill.name);
+      const isMine = sync?.exists === true ? sync.isMine : null;
+      return (
+        deriveSkillSource(
+          skill.registryEntry?.origin,
+          skill.registryEntry !== null,
+          isMine,
+        ) === expectedSource
+      );
+    });
+  }, [catalogSource, skills, syncResults]);
 
   // 本地技能:global 一组 + 每个 project 一组(displayName 取自 store.projects,兜底 basename)。
   const globalSkills = useMemo(
     () =>
-      skills.filter(
+      visibleSkills.filter(
         (skill) =>
           skill.scope === 'global' &&
           includesSkillQuery(
@@ -107,11 +127,11 @@ export function SkillhubHomeView({
             normalizedQuery,
           ),
       ),
-    [normalizedQuery, skills],
+    [normalizedQuery, visibleSkills],
   );
   const projectGroups = useMemo(() => {
     const byRoot = new Map<string, SkillhubSkill[]>();
-    for (const s of skills) {
+    for (const s of visibleSkills) {
       if (s.scope !== 'project' || !s.projectRoot) continue;
       const arr = byRoot.get(s.projectRoot);
       if (arr) arr.push(s);
@@ -133,13 +153,15 @@ export function SkillhubHomeView({
         };
       })
       .filter((group) => group.skills.length > 0);
-  }, [normalizedQuery, skills, projects]);
+  }, [normalizedQuery, projects, visibleSkills]);
   const visibleLocalCount = useMemo(
     () =>
       globalSkills.length + projectGroups.reduce((count, group) => count + group.skills.length, 0),
     [globalSkills.length, projectGroups],
   );
-  const hasSearchResults = (marketAllowed && recommended.length > 0) || visibleLocalCount > 0;
+  const hasSearchResults =
+    (catalogSource === 'external' && marketAllowed && recommended.length > 0) ||
+    visibleLocalCount > 0;
 
   // 推荐技能的预览浮层 + 安装选择器(复用 Market 那套):点推荐卡 = 下一步直接
   // 进入该技能的预览;关闭 = 回退到首页。
@@ -248,8 +270,16 @@ export function SkillhubHomeView({
             </button>
           </header>
 
+          <CatalogSourceSwitcher
+            activeSource={catalogSource}
+            externalLabel={t('skillhub.home.externalTab')}
+            internalLabel={t('skillhub.home.builtinTab')}
+            ariaLabel={t('skillhub.home.sourceTabsAria')}
+            onChange={setCatalogSource}
+          />
+
           {/* ① Skill Hub 入口 → 完整 Market 浏览页(仅市场可见账号) */}
-          {marketAllowed && !normalizedQuery ? (
+          {catalogSource === 'external' && marketAllowed && !normalizedQuery ? (
             <button
               type="button"
               onClick={openMarket}
@@ -281,7 +311,9 @@ export function SkillhubHomeView({
           ) : null}
 
           {/* ② 推荐安装(仅市场可见账号) */}
-          {marketAllowed && (!normalizedQuery || recommended.length > 0 || marketLoading) ? (
+          {catalogSource === 'external' &&
+          marketAllowed &&
+          (!normalizedQuery || recommended.length > 0 || marketLoading) ? (
             <section className="plugin-motion-page-section min-w-0">
               <SkillSectionHeading
                 title={t('skillhub.home.recommended')}
@@ -540,9 +572,9 @@ function LocalGroup({
                     {s.name}
                   </span>
                   <span className="shrink-0 text-10 text-[var(--text-tertiary)]">
-                    {source === 'skillhub'
-                      ? t('skillhub.home.sourceSkillhub')
-                      : t('skillhub.home.sourceLocal')}
+                    {source === 'internal'
+                      ? t('skillhub.home.sourceBuiltin')
+                      : t('skillhub.home.sourceExternal')}
                   </span>
                 </span>
                 {s.description && (

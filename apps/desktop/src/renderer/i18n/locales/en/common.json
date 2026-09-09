@@ -1242,7 +1242,12 @@
       }
     },
     "sessionImport": {
-      "title": "Local Session Import",
+      "title": "Local Import",
+      "localImport": "Local Import",
+      "importSettings": "Import Settings",
+      "pageTabs": "Import pages",
+      "dialogueSharing": "Conversation Sharing",
+      "dialogueSharingDescription": "Choose what local content is synchronized when signing in or switching accounts.",
       "description": "Read-only scan of local Claude Code and Codex history. Only checked sessions in the list will be imported; skipped internal sessions are hidden and cannot be imported.",
       "scan": "Scan",
       "scanning": "Scanning",
@@ -4412,6 +4417,9 @@
       "page": {
         "search": "Search plugins",
         "clearSearch": "Clear Plugin Search",
+        "sourceTabsAria": "Plugin source",
+        "externalTab": "External plugins",
+        "internalTab": "Built-in plugins",
         "secondaryTabsAria": "Plugin page sections",
         "overviewTab": "Overview",
         "addPlugin": "Add plugin",
@@ -5396,6 +5404,44 @@
     "localModeOpening": "Skipping sign-in…",
     "localModeDescription": "No Cindy account required. Data stays on this device; cloud models, cross-device access, and marketplace services are unavailable.",
     "consentStatement": "I have read and agree to the <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>",
+    "syncLocalProjects": "Show local projects after sign-in",
+    "syncLocalProjectsDescription": "Share your existing local projects and conversations with the account you are signing in to.",
+    "syncLocalProjectsConfirm": "Apply",
+    "syncLocalProjectsCancel": "Cancel",
+    "localProjectSync": {
+      "title": "Local project sync",
+      "description": "Choose which local content to share after signing in to this account.",
+      "confirm": "Confirm",
+      "cancel": "Cancel",
+      "enableAll": "Enable all",
+      "disableAll": "Disable all",
+      "items": {
+        "projectConversation": {
+          "title": "Project conversations",
+          "description": "Project sessions, messages, titles, and session status"
+        },
+        "projectFiles": {
+          "title": "Project file access",
+          "description": "Share local project path references without copying code, assets, or configuration contents"
+        },
+        "projectList": {
+          "title": "Project list and details",
+          "description": "Project names, aliases, paths, and recent-open state"
+        },
+        "projectRuntimeRecords": {
+          "title": "Project runtime records",
+          "description": "Project terminal logs, task records, and execution results"
+        },
+        "independentConversations": {
+          "title": "Independent conversations",
+          "description": "Regular chats that are not linked to a project"
+        },
+        "nonSensitivePreferences": {
+          "title": "Non-sensitive app preferences",
+          "description": "Theme, language, layout, default model selection, and similar settings"
+        }
+      }
+    },
     "consentDialog": {
       "title": "Terms of Service & Privacy Policy",
       "body": "Read and agree to Cindy's <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy> to continue.",
@@ -5461,6 +5507,7 @@
       "fallback": "Sign-in failed. Please try again.",
       "AUTH_SERVICE_UNAVAILABLE": "The sign-in service is temporarily unavailable.",
       "AUTH_REQUEST_FAILED": "The sign-in request failed. Please try again.",
+      "AUTH_REQUEST_TIMEOUT": "The sign-in request timed out. Check your network and try again.",
       "NETWORK_ERROR": "Could not connect. Check your network and try again.",
       "REQUEST_TIMEOUT": "The request timed out. Please try again.",
       "INVALID_PARAMS": "Check the value you entered.",
@@ -6721,6 +6768,8 @@
       "settingsLinkBeta": "Settings, current user: {{name}}, Beta channel enabled",
       "moreLabel": "More, current user: {{name}}",
       "menuSettings": "Settings",
+      "menuSwitchGlobalDev": "Switch to Global",
+      "menuSwitchCnDev": "Switch to China",
       "menuAddAccount": "Sign in to another account",
       "menuLogout": "Log out",
       "canaryBadge": "Canary user",
@@ -7018,7 +7067,7 @@
           "claudeCode": "Claude Code",
           "codex": "Codex",
           "pi": "Pi",
-          "pending": "Next: {{agent}}"
+          "pending": "{{agent}}"
         }
       },
       "category": {
@@ -8029,14 +8078,20 @@
         "includedCount": "{{included}} / {{total}} included",
         "categories": {
           "systemPrompt": "System prompt",
+          "systemPromptSource": "System prompt",
           "systemTools": "System tools",
+          "toolsSource": "Tools",
           "mcpTools": "MCP tools",
+          "mcpSource": "MCP",
           "mcpToolsDeferred": "MCP tools (deferred)",
           "systemToolsDeferred": "System tools (deferred)",
           "customAgents": "Custom agents",
           "memoryFiles": "Memory files",
           "skills": "Skills",
+          "skillsSource": "Skills",
           "messages": "Messages",
+          "conversationSource": "Conversation",
+          "subagentsSource": "Subagents",
           "autocompactBuffer": "Autocompact buffer",
           "compactBuffer": "Compact buffer",
           "freeSpace": "Free space"
@@ -8475,6 +8530,25 @@
       "contextRing": {
         "compactHint": "Click to compact context",
         "codexAutoHint": "Codex compacts automatically on the server side; manual compaction is not supported",
+        "piApproximateHint": "Source breakdown is approximate; total follows Pi's current context usage",
+        "tokenSplitTitle": "Token split this turn",
+        "tokenSplitAria": "Token split progress for this turn",
+        "tokenSplitInput": "Input",
+        "tokenSplitCacheRead": "Cache read",
+        "tokenSplitCacheCreate": "Cache write",
+        "tokenSplitOutput": "Output",
+        "agentUsageTitle": "Agent usage",
+        "agentUsageAgent": "Agent",
+        "agentUsageTokens": "Tokens",
+        "agentUsageShare": "Share",
+        "mainAgent": "Main agent",
+        "subAgent": "Subagent",
+        "speedLabel": "Speed",
+        "suggestionLabel": "Suggestion",
+        "hintLabel": "Hint",
+        "performanceValue": "{{rate}} token/s · {{duration}} elapsed",
+        "performanceRateValue": "{{rate}} token/s",
+        "performanceTimeValue": "{{duration}} elapsed",
         "confirmTitle": "Compact context?",
         "confirmDescription": "Current usage: {{used}} / {{total}} ({{pct}}%). This silently compacts context — the agent summarizes chat history to free up context space.",
         "confirmAction": "Compact",
@@ -8568,7 +8642,9 @@
         "awaitingPluginSetup": "Awaiting plugin setup"
       },
       "showAllSessions": "Show all {{count}}",
-      "allSessions": "All sessions",
+      "allSessions": "Projects",
+      "archivedTasks": "Archive",
+      "activeTasks": "Active tasks",
       "scopeLocalSessions": "This device’s sessions",
       "dialogues": "Chat",
       "newDialogue": "New session",
@@ -8770,6 +8846,16 @@
         "partialFailure": "Restored {{ok}}, {{fail}} failed, please retry",
         "empty": "No archived sessions to restore in this Project"
       },
+      "deleteProject": {
+        "title": "Permanently delete archived '{{name}}'?",
+        "description": "This permanently deletes {{count}} archived sessions from the local database. The project folder and files on your computer will not be deleted. This cannot be undone.",
+        "dirtyWorktreeWarning": "{{count}} sessions have uncommitted worktree changes; a git snapshot will be saved before deletion.",
+        "confirm": "Permanently delete archived",
+        "cancel": "Cancel",
+        "deleted": "Permanently deleted {{count}} archived sessions",
+        "partialFailure": "Deleted {{ok}} sessions; {{fail}} failed. Please try again.",
+        "empty": "No archived sessions in this project can be deleted"
+      },
       "bulkSelection": {
         "selected": "{{count}} selected",
         "archive": "Archive selected sessions",
@@ -8873,6 +8959,8 @@
         "showFiles": "Show Files",
         "archivedAll": "Archive all",
         "unarchiveAll": "Restore all",
+        "deleteProject": "Delete project",
+        "deleteArchived": "Permanently delete archived",
         "openInExplorer": "Open in file manager",
         "newInDirectory": "New session in this directory",
         "copyDeepLink": "Copy deep link",
@@ -10012,6 +10100,10 @@
       "descriptionLocalOnly": "Manage the local skills installed on this device.",
       "search": "Search skills",
       "clearSearch": "Clear skill search",
+      "sourceTabsAria": "Skill source",
+      "externalTab": "External skills",
+      "internalTab": "Built-in skills",
+      "builtinTab": "Built-in skills",
       "noSearchResults": "No matching skills found",
       "browseTitle": "Browse Skill Hub",
       "browseDesc": "Discover and install more skills",
@@ -10021,8 +10113,9 @@
       "localEmpty": "No local skills yet",
       "installed": "Installed",
       "globalScope": "Global",
-      "sourceSkillhub": "SkillHub",
-      "sourceLocal": "Local",
+      "sourceExternal": "External",
+      "sourceInternal": "Built-in",
+      "sourceBuiltin": "Built-in",
       "import": "Import skill",
       "importAria": "Import a skill from a local zip or SKILL.md",
       "importPickerTitle": "Choose import location",

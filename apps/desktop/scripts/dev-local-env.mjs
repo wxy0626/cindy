@@ -2,8 +2,9 @@
 /**
  * dev-local-env.mjs — dev(local 模式)的端点清单包装。
  *
- * 生成 config/endpoint.local.json(api/auth/device-link 指 localhost,其余抄
- * 所选 region 正本;见 scripts/shared/endpoint-local-file.mjs)并经
+ * 普通 local 生成 config/endpoint.local.json(api/auth/device-link 指 localhost);
+ * local + --region=cn 则直接使用 CN 云端 config/endpoint.json;见
+ * scripts/shared/endpoint-local-file.mjs)并经
  * XDT_ENDPOINT_MANIFEST_FILE 指给主进程(clientEndpointsService file 模式)。
  * 已显式设置 XDT_ENDPOINT_MANIFEST_FILE 时尊重用户值,不生成不覆盖。
  *
@@ -29,7 +30,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const env = { ...process.env, XDT_DESKTOP_DEV_MODE: 'local' };
 const startupConfig = applyDesktopDevStartupConfig({ argv: rawArgs, env, mode: 'local' });
 const args = stripDesktopDevRegionArgs(rawArgs);
-if (!env.XDT_ENDPOINT_MANIFEST_FILE?.trim()) {
+// local + cn 是本地运行桌面端但连接 CN 云端；startupConfig 已注入
+// config/endpoint.json，不能再被 localhost 本地服务清单覆盖。
+if (!env.XDT_ENDPOINT_MANIFEST_FILE?.trim() && !startupConfig.endpointsCdn) {
   env.XDT_ENDPOINT_MANIFEST_FILE = generateEndpointLocalFile({
     repoRoot,
     region: startupConfig.region,

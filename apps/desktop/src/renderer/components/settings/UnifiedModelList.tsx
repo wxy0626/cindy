@@ -630,11 +630,7 @@ export function UnifiedModelList({
             /* basis 200px 但允许收缩:窄窗口(右栏可被压到 ~270px)时先压缩搜索框,
              不让右侧操作被 overflow-hidden 裁掉(PR #1102 review)。 */
             <div
-              className="flex h-8 min-w-0 basis-[200px] items-center gap-2 rounded-full px-3"
-              style={{
-                backgroundColor: 'var(--surface-elevated)',
-                border: '1px solid var(--border-default)',
-              }}
+              className="settings-search-shell search-capsule-control flex h-8 min-w-0 basis-[200px] items-center gap-2 rounded-full px-3"
             >
               <Search size={14} className="shrink-0" style={{ color: 'var(--text-tertiary)' }} />
               <input
@@ -643,7 +639,7 @@ export function UnifiedModelList({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('settings.providers.models.search')}
                 aria-label={t('settings.providers.models.search')}
-                className="min-w-0 flex-1 bg-transparent text-13 outline-none placeholder:text-[var(--text-placeholder)]"
+                className="settings-search-input min-w-0 flex-1 bg-transparent text-13 outline-none placeholder:text-[var(--text-placeholder)]"
                 style={{ color: 'var(--settings-section-title)' }}
               />
             </div>

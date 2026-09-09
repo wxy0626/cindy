@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown, ChevronRight, Download, FileUp, RefreshCw } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import {
+  copyLocalProjectSyncOptions,
+  DEFAULT_LOCAL_PROJECT_SYNC_OPTIONS,
+  type LocalProjectSyncOptions,
+} from '../../../shared/localProjectSync';
 
 import { basename, cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
@@ -46,7 +52,7 @@ type ImportListItem =
 
 let cachedSessionImportScan: ScanResult | null = null;
 
-export function SessionImportSection() {
+function LocalImportContent() {
   const { t } = useTranslation();
   const [scan, setScan] = useState<ScanResult | null>(() => cachedSessionImportScan);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
@@ -419,6 +425,67 @@ function buildImportListItems(candidates: ImportCandidate[]): ImportListItem[] {
   return listItems.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
 }
 
+export function SessionImportSection() {
+  const { t } = useTranslation();
+  const [view, setView] = useState<'local' | 'settings'>('local');
+  const [options, setOptions] = useState<LocalProjectSyncOptions>(() => {
+    try {
+      const raw = window.localStorage.getItem('account-local-project-sync');
+      if (raw) return { ...DEFAULT_LOCAL_PROJECT_SYNC_OPTIONS, ...JSON.parse(raw) };
+    } catch {
+      // 损坏的旧设置回退到共享默认值。
+    }
+    return copyLocalProjectSyncOptions(DEFAULT_LOCAL_PROJECT_SYNC_OPTIONS);
+  });
+
+  const updateOption = (key: keyof LocalProjectSyncOptions, checked: boolean) => {
+    const next = { ...options, [key]: checked };
+    setOptions(next);
+    window.localStorage.setItem('account-local-project-sync', JSON.stringify(next));
+  };
+
+  const fields: Array<{ key: keyof LocalProjectSyncOptions; title: string; description: string }> = [
+    { key: 'projectConversation', title: t('login.localProjectSync.items.projectConversation.title'), description: t('login.localProjectSync.items.projectConversation.description') },
+    { key: 'projectFiles', title: t('login.localProjectSync.items.projectFiles.title'), description: t('login.localProjectSync.items.projectFiles.description') },
+    { key: 'projectList', title: t('login.localProjectSync.items.projectList.title'), description: t('login.localProjectSync.items.projectList.description') },
+    { key: 'projectRuntimeRecords', title: t('login.localProjectSync.items.projectRuntimeRecords.title'), description: t('login.localProjectSync.items.projectRuntimeRecords.description') },
+    { key: 'independentConversations', title: t('login.localProjectSync.items.independentConversations.title'), description: t('login.localProjectSync.items.independentConversations.description') },
+    { key: 'nonSensitivePreferences', title: t('login.localProjectSync.items.nonSensitivePreferences.title'), description: t('login.localProjectSync.items.nonSensitivePreferences.description') },
+  ];
+
+  return (
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col gap-4">
+      <div className="flex shrink-0 rounded-xl border border-[var(--settings-input-border)] bg-[var(--settings-theme-card-bg)] p-1" role="tablist" aria-label={t('settings.sessionImport.pageTabs')}>
+        {(['local', 'settings'] as const).map((item) => (
+          <button key={item} type="button" role="tab" aria-selected={view === item} onClick={() => setView(item)} className={cn('h-9 flex-1 rounded-lg px-4 text-13 font-medium transition-colors', view === item ? 'bg-[var(--settings-menu-bg-selected)] text-[var(--settings-menu-text-selected)]' : 'text-[var(--settings-section-desc)] hover:bg-[var(--settings-menu-bg-hover)]')}>
+            {item === 'local' ? t('settings.sessionImport.localImport') : t('settings.sessionImport.importSettings')}
+          </button>
+        ))}
+      </div>
+      {view === 'local' ? <LocalImportContent /> : (
+        <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-[var(--settings-theme-card-border)] bg-[var(--settings-theme-card-bg)]">
+          <aside className="w-44 shrink-0 border-r border-[var(--settings-input-border)] p-3">
+            <button type="button" className="flex h-10 w-full items-center rounded-lg bg-[var(--settings-menu-bg-selected)] px-3 text-left text-13 font-medium text-[var(--settings-menu-text-selected)]">
+              {t('settings.sessionImport.dialogueSharing')}
+            </button>
+          </aside>
+          <section className="min-w-0 flex-1 overflow-y-auto p-5">
+            <h2 className="text-16 font-medium text-[var(--settings-section-title)]">{t('settings.sessionImport.dialogueSharing')}</h2>
+            <p className="mt-1 text-13 text-[var(--settings-section-desc)]">{t('settings.sessionImport.dialogueSharingDescription')}</p>
+            <div className="mt-5 divide-y divide-[var(--settings-input-border)]">
+              {fields.map((field) => (
+                <div key={field.key} className="flex items-center justify-between gap-4 py-4">
+                  <div className="min-w-0"><p className="text-14 font-medium text-[var(--settings-section-title)]">{field.title}</p><p className="mt-1 text-12 text-[var(--settings-section-desc)]">{field.description}</p></div>
+                  <Switch checked={options[field.key]} onCheckedChange={(checked) => updateOption(field.key, checked)} aria-label={field.title} />
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
 function ScanSummary({ scan }: { scan: ScanResult }) {
   const { t } = useTranslation();
   const projectCount = scan.candidates.filter((item) => item.sidebarBucket === 'project').length;

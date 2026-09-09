@@ -236,12 +236,14 @@ export function basenameOf(p?: string | null): string | null {
 }
 
 /**
- * 'claude-code' → 'Claude'（agent 标识对齐草稿界面 vendor 切换；provider 分离后
- * cc agent 统一以 Claude 品牌呈现，路由到哪个供应商由来源选择器单独控制）。
- * 'codex' → 'Codex'（保持 OpenAI 原品牌名）。
+ * agent 显示名（各 agent 品牌对齐）：
+ * 'claude-code' → 'Claude'、'codex' → 'Codex'、'pi' → 'Pi'。
+ * （pi 此前被兜底成 'Claude'，属显示 bug，已修正。）
  */
 export function humanizeAgentKind(k: AgentKind): string {
-  return k === 'codex' ? 'Codex' : 'Claude';
+  if (k === 'codex') return 'Codex';
+  if (k === 'pi') return 'Pi';
+  return 'Claude';
 }
 
 /**

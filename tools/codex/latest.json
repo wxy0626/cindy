@@ -1,33 +1,13 @@
 {
-  "version": "0.145.0",
-  "tag_name": "rust-v0.145.0",
-  "name": "0.145.0",
-  "published_at": "2026-07-21T18:21:04Z",
+  "version": "0.152.1",
+  "tag_name": "rust-v0.152.1",
+  "name": "0.152.1",
+  "published_at": "2026-09-01T22:33:02Z",
   "runtimeAssets": {
-    "darwin-arm64": {
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.145.0/codex-aarch64-apple-darwin.tar.gz",
-      "sha256": "072a30a65f05666735889ef0f60b56db186adbdde9d5c5cc1a64be0b598530fe",
-      "size": 102106051
-    },
-    "darwin-x64": {
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.145.0/codex-x86_64-apple-darwin.tar.gz",
-      "sha256": "4216d7a40aa49d74b65fab93d2a86d2e25a902482b827dbdb3f357777b09fadf",
-      "size": 111434065
-    },
-    "linux-x64": {
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.145.0/codex-x86_64-unknown-linux-musl.tar.gz",
-      "sha256": "bfaf13c9ba34f2ad764e4a916c49cf7177aeba329cf0f719e2227566fc8d662a",
-      "size": 113724150
-    },
-    "linux-arm64": {
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.145.0/codex-aarch64-unknown-linux-musl.tar.gz",
-      "sha256": "d384f90bc842450b42bd675feef06a12a46a3b1ca97efcb22566b270e4a11227",
-      "size": 105110610
-    },
-    "win32-x64": {
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.145.0/codex-x86_64-pc-windows-msvc.exe.tar.gz",
-      "sha256": "2feb4ed809f4f71ccddbed531a19dd0652084d84e3ff66626d65f1e01f4963c0",
-      "size": 119781647
-    }
+    "darwin-arm64": { "url": "https://github.com/openai/codex/releases/download/rust-v0.152.1/codex-aarch64-apple-darwin.tar.gz", "sha256": "8ddde1fcf5c9842e9baa09c7c108088bb22a39feb86e4344e45dc0986764b9d7", "size": 86499260, "companion": { "binFile": "codex-code-mode-host", "url": "https://github.com/openai/codex/releases/download/rust-v0.152.1/codex-code-mode-host-aarch64-apple-darwin.tar.gz", "sha256": "9b1dddcb3e35c8c545cc7ea1858a07f7e1c54ff8e59ab26693adf897fbb35363", "size": 22539511 } },
+    "darwin-x64": { "url": "https://github.com/openai/codex/releases/download/rust-v0.152.1/codex-x86_64-apple-darwin.tar.gz", "sha256": "98cca497505c70f93b49d79bf7c41d1ea787c393b9187de914bcc85d7df89fe8", "size": 94371723, "companion": { "binFile": "codex-code-mode-host", "url": "https://github.com/openai/codex/releases/download/rust-v0.152.1/codex-code-mode-host-x86_64-apple-darwin.tar.gz", "sha256": "de08ee883fa8bb2abb8933aeeda16f56f31558c6963f50708aea5f5a3c79ef76", "size": 24276204 } },
+    "linux-x64": { "url": "https://github.com/openai/codex/releases/download/rust-v0.152.1/codex-x86_64-unknown-linux-musl.tar.gz", "sha256": "a0ed1b40b1d597b340f09ae00ecebc46670b06cb52aac315b9dc84fed0289fd0", "size": 97417374, "companion": { "binFile": "codex-code-mode-host", "url": "https://github.com/openai/codex/releases/download/rust-v0.152.1/codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz", "sha256": "0f1a544d5c1e89aed769a91d8e63421eb8eef9db554e861ed90704126a4191ed", "size": 25676959 } },
+    "linux-arm64": { "url": "https://github.com/openai/codex/releases/download/rust-v0.152.1/codex-aarch64-unknown-linux-musl.tar.gz", "sha256": "b65f964600972a948b898f4782e316a741a1b81c044622aa6bdf37ca4525debc", "size": 89872948, "companion": { "binFile": "codex-code-mode-host", "url": "https://github.com/openai/codex/releases/download/rust-v0.152.1/codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz", "sha256": "21c4a1afb132a5cf69aa1ac4262d50728ea73894f6fada11364e64c4887343f3", "size": 24318200 } },
+    "win32-x64": { "url": "https://github.com/openai/codex/releases/download/rust-v0.152.1/codex-x86_64-pc-windows-msvc.exe.tar.gz", "sha256": "e3c676199d5a3bc1eb720909901c677d197d14eae535d44daa424437d98d269a", "size": 98000489, "companion": { "binFile": "codex-code-mode-host.exe", "url": "https://github.com/openai/codex/releases/download/rust-v0.152.1/codex-code-mode-host-x86_64-pc-windows-msvc.exe.tar.gz", "sha256": "533dcefc1d74dd6448825b4ba1fd4d5f0efc06b174f10bab5e6dbe0ecdea8a71", "size": 27873745 } }
   }
 }

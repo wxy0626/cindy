@@ -60,7 +60,7 @@ import {
 } from '@cindy/maker-shared/turn-continuation';
 import { normalizeAutoTitle } from '@cindy/maker-shared/session-title';
 import { parseToolLoopErrorDetails } from '@cindy/maker-shared/tool-loop-error';
-import type { ToolLoopErrorDetails } from '@cindy/maker-core';
+import type { ContextUsageData, ToolLoopErrorDetails } from '@cindy/maker-core';
 import type { AgentMeta, MessageRole, Message, MessageAutomationOrigin } from '@/lib/ccAgent.types';
 import type { AttachedFile, MentionedResource, SerializedAttachedFile } from '@/lib/fileTypes';
 import type {
@@ -172,6 +172,7 @@ import {
   type UsageLimitRecoveryHint,
 } from '@/lib/usageLimitRecovery';
 import { parseReconnectAttemptMessage } from '@/utils/networkError';
+import { isContextUsageData } from '@/lib/contextUsage';
 
 import {
   materializeAnnotatedAttachmentsForSend,
@@ -585,6 +586,10 @@ export interface ChatMessage {
   userTurnCostIsEstimate?: boolean;
   /** 本轮 token/cache 明细;旧消息或未拿到 usage 时缺省。 */
   turnUsageDetails?: TurnUsageDetails;
+  /**
+   * 从 assistant agentMeta 恢复的完整上下文详情；悬浮卡只读该缓存。
+   */
+  contextUsage?: ContextUsageData;
   /**
    * 本轮模型降级标记 — main 在 turn 结束检测到所选模型家族整轮缺席于实际
    * modelUsage 时挂到该轮收尾 assistant 上(agentMeta.modelMismatch 持久化 +
@@ -2301,6 +2306,7 @@ export type MessageDeliveryMode = 'queue' | 'steer';
 
 /** 仅影响 selector/chip 的乐观展示；agentKind 始终保留真实 reducer 路由。 */
 export interface AgentSwitchIntentRecord {
+  /** 切换目标引擎。 */
   target: 'claude-code' | 'codex' | 'pi';
   model: string;
   providerId: string | null;
@@ -14979,7 +14985,10 @@ function sendUiTrigger(sessionId: string, prompt: string): Promise<void> {
  * sdkSessionId——否则 buildCreateOpts 会把旧引擎的原生会话 id 当 resume 目标
  * (main 侧 reconcileCreateOptsWithDb 是兜底,这里是第一现场收敛)。
  */
-function noteAgentSwitched(sessionId: string, agentKind: 'claude-code' | 'codex' | 'pi'): void {
+function noteAgentSwitched(
+  sessionId: string,
+  agentKind: 'claude-code' | 'codex' | 'pi',
+): void {
   if (!sessionId) return;
   setState(sessionId, (s) => {
     const nextProviderId = s.agentSwitchIntent ? s.agentSwitchIntent.providerId : s.sessionProviderId;
@@ -16430,6 +16439,11 @@ function mapServerMessages(serverMsgs: Message[]): ChatMessage[] {
       };
     }
     const agentMeta = m.agentMeta;
+    // 历史 JSON 来自数据库，只有通过完整结构校验的上下文快照才进入渲染状态。
+    const contextUsage =
+      m.role === 'assistant' && isContextUsageData(agentMeta?.contextUsage)
+        ? agentMeta.contextUsage
+        : undefined;
     const turnUsageDetails =
       m.role === 'assistant' ? normalizeTurnUsageDetails(agentMeta?.turnUsageDetails) : undefined;
     const normalizedTurnMoney =
@@ -16493,6 +16507,8 @@ function mapServerMessages(serverMsgs: Message[]): ChatMessage[] {
       // 本轮 token 明细独立于金额挂载:Pi/新模型算不出报价的轮次只有它，
       // UI 据此退回显示 token，历史加载不能把它绑在 money 分支。
       ...(m.role === 'assistant' && turnUsageDetails ? { turnUsageDetails } : {}),
+      // 回合结束时 main 写入的完整上下文来源快照；重开任务时直接复用，不再实时查询。
+      ...(contextUsage ? { contextUsage } : {}),
       // 整轮累计费用同样独立挂载:无价收尾轮只有它,没有 turnCost。
       ...persistedUserTurnCostPatch,
       // assistant 上挂的 per-turn 费用(main turn 结束时 patch 进 agent_meta)

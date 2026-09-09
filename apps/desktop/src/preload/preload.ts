@@ -201,6 +201,7 @@ import type {
   DesktopAccountDeletionConfirmInput,
   DesktopAccountDeletionConfirmResult,
   DesktopAccountDeletionStatusResult,
+  DesktopAccountSwitchRequest,
   DesktopAccountSwitcherSnapshot,
   DesktopLoginAction,
   DesktopLoginActionResult,
@@ -900,8 +901,10 @@ interface ComputerDriverUpdateCheck {
 }
 
 const appDisplayVersionInfo = ipcRenderer.sendSync('get-app-display-version-info') as {
+  version: string;
   display: string;
   detail: string;
+  isPackaged: boolean;
 };
 
 // 运行期端点清单(main 在 createWindow 前解析完成;首帧同步可用)。
@@ -946,7 +949,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clientEndpoints: { websiteUrl: clientEndpointsInfo?.websiteUrl ?? '' },
   preferredSystemLocale: readInitialPreferredSystemLocale(),
   appDisplayVersion: appDisplayVersionInfo.display,
+  appSemanticVersion: appDisplayVersionInfo.version,
   appDisplayVersionDetail: appDisplayVersionInfo.detail,
+  appIsPackaged: appDisplayVersionInfo.isPackaged,
+  /** 开发版切换到 Global 后，由主进程负责完整重启 Forge/Vite。 */
+  switchDevRegion: (targetRegion: 'cn' | 'global'): Promise<{ ok: true }> =>
+    ipcRenderer.invoke('dev:switch-region', targetRegion),
+  /** 首次登录前选择中国版或国际版，重启仍使用当前这一份 Cindy.exe。 */
+  currentCindyRegion: ipcRenderer.sendSync('cindy:get-current-region') as 'cn' | 'global',
+  selectCindyRegion: (targetRegion: 'cn' | 'global'): Promise<DesktopLoginActionResult> =>
+    ipcRenderer.invoke('auth:select-login-region', targetRegion),
   getDeviceId: (): Promise<string> => ipcRenderer.invoke('get-device-id'),
   windowMinimize: () => ipcRenderer.send('window-minimize'),
   windowMaximize: () => ipcRenderer.send('window-maximize'),
@@ -1710,10 +1722,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener(XBOX_GAMEPAD_STATE_CHANGED_CHANNEL, listener);
     },
     onPreviewInput: (callback: (input: XboxGamepadPreviewInput) => void): (() => void) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        input: XboxGamepadPreviewInput,
-      ): void => callback(input);
+      const listener = (_event: Electron.IpcRendererEvent, input: XboxGamepadPreviewInput): void =>
+        callback(input);
       ipcRenderer.on(XBOX_GAMEPAD_PREVIEW_INPUT_CHANNEL, listener);
       return () => ipcRenderer.removeListener(XBOX_GAMEPAD_PREVIEW_INPUT_CHANNEL, listener);
     },
@@ -1908,8 +1918,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('auth:accounts:list'),
   authSyncAccounts: (): Promise<DesktopAccountSwitcherSnapshot> =>
     ipcRenderer.invoke('auth:accounts:sync'),
-  authSwitchAccount: (accountKey: string): Promise<void> =>
-    ipcRenderer.invoke('auth:accounts:switch', accountKey),
+  authSwitchAccount: (request: string | DesktopAccountSwitchRequest): Promise<void> =>
+    ipcRenderer.invoke('auth:accounts:switch', request),
   authBeginAddAccount: (): Promise<DesktopLoginActionResult> =>
     ipcRenderer.invoke('auth:accounts:begin-add'),
   authCancelAddAccount: (): Promise<void> => ipcRenderer.invoke('auth:accounts:cancel-add'),
@@ -4908,9 +4918,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         input: import('../shared/localDbMaintenance').DbSlimmingScheduleInput,
       ): Promise<import('../shared/localDbMaintenance').DbSlimmingScheduleResult> =>
         ipcRenderer.invoke('local-db:maintenance:schedule', input),
-      getLastResult: (): Promise<
-        import('../shared/localDbMaintenance').DbSlimmingResult | null
-      > => ipcRenderer.invoke('local-db:maintenance:last-result'),
+      getLastResult: (): Promise<import('../shared/localDbMaintenance').DbSlimmingResult | null> =>
+        ipcRenderer.invoke('local-db:maintenance:last-result'),
       openLastBackupDirectory: (): Promise<{ opened: boolean }> =>
         ipcRenderer.invoke('local-db:maintenance:open-last-backup-directory'),
       getStartupProgress: (): Promise<
@@ -4942,6 +4951,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('local-db:sessions:restore-if-archived', id, expected),
       update: (id: string, patch: unknown): Promise<unknown> =>
         ipcRenderer.invoke('local-db:sessions:update', id, patch),
+      permanentDeleteArchived: (ids: string[]): Promise<{ deleted: number }> =>
+        ipcRenderer.invoke('local-db:sessions:permanent-delete-archived', ids),
       touchUserSend: (id: string, atMs?: number): Promise<void> =>
         ipcRenderer.invoke('local-db:sessions:touchUserSend', id, atMs),
       setPinnedCardSummaries: (enabled: boolean): Promise<void> =>
@@ -6341,9 +6352,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       owner: { dataOwnerId: string | null; ownerGeneration: number },
     ): Promise<{ pct: number; isCustomized: boolean; defaultPct: number }> =>
       ipcRenderer.invoke('maker:compaction:set-pct', pct, owner),
-    compactionResetPct: (
-      owner: { dataOwnerId: string | null; ownerGeneration: number },
-    ): Promise<{ pct: number; isCustomized: boolean; defaultPct: number }> =>
+    compactionResetPct: (owner: {
+      dataOwnerId: string | null;
+      ownerGeneration: number;
+    }): Promise<{ pct: number; isCustomized: boolean; defaultPct: number }> =>
       ipcRenderer.invoke('maker:compaction:reset-pct', owner),
 
     // Pi 原生自动上下文压缩阈值。下次启动或恢复 Pi 任务时生效。
@@ -6355,9 +6367,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       owner: { dataOwnerId: string | null; ownerGeneration: number },
     ): Promise<{ pct: number; isCustomized: boolean; defaultPct: number }> =>
       ipcRenderer.invoke('maker:pi-compaction:set-pct', pct, owner),
-    piCompactionResetPct: (
-      owner: { dataOwnerId: string | null; ownerGeneration: number },
-    ): Promise<{ pct: number; isCustomized: boolean; defaultPct: number }> =>
+    piCompactionResetPct: (owner: {
+      dataOwnerId: string | null;
+      ownerGeneration: number;
+    }): Promise<{ pct: number; isCustomized: boolean; defaultPct: number }> =>
       ipcRenderer.invoke('maker:pi-compaction:reset-pct', owner),
 
     // LSP Beta 开关 —— 控制 mcp providers 是否注入 lsp_* 工具 (Phase 1 Beta)。

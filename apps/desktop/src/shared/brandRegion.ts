@@ -17,10 +17,26 @@ import {
   type CindyRegion,
 } from '@cindy/maker-shared/brand-identity';
 
-/** 本构建的区域(构建期烘焙;dev 默认 global)。 */
-export const CURRENT_CINDY_REGION: CindyRegion = resolveCindyRegion(
-  import.meta.env?.VITE_CINDY_AUTH_REGION,
-);
+/**
+ * 读取单程序启动时选择的区域；没有选择时才回退到构建默认值。
+ * 主进程读取启动参数，renderer 读取 preload 暴露的同一份值。
+ */
+function resolveRuntimeRegion(): CindyRegion {
+  const argument =
+    typeof process !== 'undefined'
+      ? process.argv.find((value) => value.startsWith('--cindy-region='))
+      : undefined;
+  const argumentRegion = argument?.split('=', 2)[1];
+  if (argumentRegion === 'cn' || argumentRegion === 'global') return argumentRegion;
+  if (typeof window !== 'undefined') {
+    const rendererRegion = window.electronAPI?.currentCindyRegion;
+    if (rendererRegion === 'cn' || rendererRegion === 'global') return rendererRegion;
+  }
+  return resolveCindyRegion(import.meta.env?.VITE_CINDY_AUTH_REGION);
+}
+
+/** 当前运行实例的区域；单程序通过启动参数切换，构建值仅作兜底。 */
+export const CURRENT_CINDY_REGION: CindyRegion = resolveRuntimeRegion();
 
 /** 本构建的系统身份 id(Windows AUMID / macOS bundle id)。 */
 export const CURRENT_APP_ID: string = brandAppId(CURRENT_CINDY_REGION);

@@ -14,6 +14,7 @@ import {
   normalizeTurnUsageSegments,
   resolveClaudeTurnCostSinks,
   resolveTurnCost,
+  sumTurnUsageSegmentsByScope,
   type ResolvedModelCost,
   type TurnPricingContext,
 } from '../turnCostCalculator';
@@ -150,6 +151,32 @@ describe('model id and route helpers', () => {
     ).toEqual([
       { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens: 0, costUsd: 0.25 },
     ]);
+  });
+
+  it('normalizes and groups parent/subagent scopes while keeping legacy segments in parent', () => {
+    const segments = normalizeTurnUsageSegments([
+      { inputTokens: 10, outputTokens: 1 },
+      { scope: 'parent', inputTokens: 20, outputTokens: 2 },
+      { scope: 'subagent', inputTokens: 300, outputTokens: 30, cacheReadTokens: 4 },
+      { scope: 'ignored', inputTokens: 7, outputTokens: 8 },
+    ]);
+
+    expect(segments).toEqual([
+      { inputTokens: 10, outputTokens: 1, cacheReadTokens: 0, cacheCreateTokens: 0 },
+      { scope: 'parent', inputTokens: 20, outputTokens: 2, cacheReadTokens: 0, cacheCreateTokens: 0 },
+      {
+        scope: 'subagent',
+        inputTokens: 300,
+        outputTokens: 30,
+        cacheReadTokens: 4,
+        cacheCreateTokens: 0,
+      },
+      { inputTokens: 7, outputTokens: 8, cacheReadTokens: 0, cacheCreateTokens: 0 },
+    ]);
+    expect(sumTurnUsageSegmentsByScope(segments)).toEqual({
+      parent: { inputTokens: 37, outputTokens: 11, cacheReadTokens: 0, cacheCreateTokens: 0 },
+      subagent: { inputTokens: 300, outputTokens: 30, cacheReadTokens: 4, cacheCreateTokens: 0 },
+    });
   });
 });
 

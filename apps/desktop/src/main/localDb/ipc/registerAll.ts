@@ -77,6 +77,8 @@ export interface RegisterLocalDbIpcOpts {
   discardStaleOwner?: (userId: string) => void | Promise<void>;
   /** ensureReady 打开/创建目标库前执行；失败时阻断，避免跳过认领后创建空库。 */
   beforeEnsureReady?: (userId: string) => void | Promise<void>;
+  /** ensureReady 或 onReady 失败时释放等待中的账号切换同步闸门。 */
+  onEnsureReadyFailed?: (userId: string) => void | Promise<void>;
   /** Stop Host-owned session operations before an archived/deleted worktree is recycled. */
   cancelSessionOperations?: (sessionId: string) => Promise<void>;
   /** Release Host-owned runtime and ownership after task removal is revalidated. */
@@ -224,6 +226,16 @@ export function registerLocalDbIpc(opts: RegisterLocalDbIpcOpts = {}): void {
       } as const;
     }
     recordDesktopDevLocalDbStartupResult(result);
+    if (!result.ready) {
+      try {
+        await opts.onEnsureReadyFailed?.(userId);
+      } catch (error) {
+        log.warn('localDb ensure-ready failure hook failed', {
+          userId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
     log.info(
       JSON.stringify({
         event: 'localDb.ipc.ensure-ready.done',

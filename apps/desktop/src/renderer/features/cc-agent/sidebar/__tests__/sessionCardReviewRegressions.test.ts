@@ -156,9 +156,9 @@ describe('SessionCard review regressions', () => {
     expect(sessionCardSource).toContain(
       'const showAutomationTimer = !showScheduleBindingBadge && isAutomationGenerated',
     );
-    // schedule 绑定与普通自动化都复用 AutomationTimerIcon;绑定态优先承载更多状态。
+    // schedule 绑定与普通自动化都复用 AutomationTimerIcon;归档任务也沿用灰色视觉状态。
     expect(sessionCardSource).toMatch(
-      /const renderAutomationMeta = \(iconSize: number\) =>[\s\S]*?showScheduleBindingBadge \? \([\s\S]*?<ScheduleBindingBadge[\s\S]*?schedules=\{boundSchedules\}[\s\S]*?size=\{iconSize\}[\s\S]*?activeForeground=\{isActive\}[\s\S]*?\) : showAutomationTimer \? \([\s\S]*?<AutomationTimerIcon size=\{iconSize\}/,
+      /const renderAutomationMeta = \(iconSize: number\) =>[\s\S]*?showScheduleBindingBadge \? \([\s\S]*?<ScheduleBindingBadge[\s\S]*?schedules=\{boundSchedules\}[\s\S]*?size=\{iconSize\}[\s\S]*?activeForeground=\{isVisualActive\}[\s\S]*?\) : showAutomationTimer \? \([\s\S]*?<AutomationTimerIcon size=\{iconSize\}/,
     );
     expect(sessionCardSource).toContain('{renderAutomationMeta(10)}');
     expect(sessionCardSource).toContain('{renderAutomationMeta(11)}');
@@ -230,7 +230,36 @@ describe('SessionCard review regressions', () => {
     expect(sessionCardSource).toContain(
       '!isEditing && !archivePending && ordinalBadgeLabel != null',
     );
-    expect(sessionCardSource).toContain("archivePending && 'invisible opacity-0'");
+    expect(sessionCardSource).toContain(
+      "(menuOpen || yieldToOrdinalBadge || archivePending || deletePending) && 'hidden'",
+    );
+  });
+
+  it('keeps archived rows on hover-only undo and trash icons until trash is clicked', () => {
+    expect(sessionItemSource).toContain(
+      'import { Archive, ChevronRight, EllipsisVertical, Play, Trash2, Undo }',
+    );
+    expect(sessionItemSource).toContain('<Undo size={14} strokeWidth={2} />');
+    expect(sessionItemSource).toContain('<Trash2 size={14} strokeWidth={2} />');
+    expect(sessionItemSource).toContain('onClick={() => setDeletePending(true)}');
+    expect(sessionItemSource).toMatch(
+      /isArchived && !remoteWritesBlocked\s*\?\s*deletePending\s*\? 'flex w-\[4.5rem\] justify-end'/,
+    );
+    expect(sessionCardSource).toContain(
+      'import { Archive, ChevronRight, EllipsisVertical, Trash2, Undo }',
+    );
+    expect(sessionCardSource).toContain('<Undo size={13} strokeWidth={2} />');
+    expect(sessionCardSource).toContain('<Trash2 size={13} strokeWidth={2} />');
+    expect(sessionCardSource).toContain('onClick={() => setDeletePending(true)}');
+    expect(sessionCardSource).toContain('isArchived && canUnarchive');
+    expect(sessionItemSource).not.toContain("t('ccAgent.sidebar.confirmDelete.cancel')");
+    expect(sessionCardSource).not.toContain("t('ccAgent.sidebar.confirmDelete.cancel')");
+    expect(sessionItemSource).toContain('text-sm font-semibold');
+    expect(sessionCardSource).toContain('danger');
+    expect(sessionItemSource).toContain('w-[4.5rem]');
+    expect(sessionCardSource).toContain('w-[4.5rem]');
+    expect(sessionItemSource).toContain('flex w-full items-center justify-end gap-0.5');
+    expect(sessionCardSource).toContain('flex w-full items-center justify-end gap-0.5');
   });
 
   it('keeps running card previews stable instead of streaming compact activity text', () => {
@@ -250,17 +279,12 @@ describe('SessionCard review regressions', () => {
     );
   });
 
-  it('E1D 任务C: SessionCard active 反白链完整且运行态不降级文字颜色', () => {
-    const re = /isActive \? 'text-sidebar-item-active-foreground'/g;
-    const count = (sessionCardSource.match(re) || []).length;
-    // C 期起两个时间槽的 isActive 分支并入 SessionInfoMeta(经 isActive prop 传递,
-    // 组件内应用 active-foreground),SessionCard 本体剩 title×2 + RemoteProjectIcon 等。
-    expect(
-      count,
-      'isActive conditional active-foreground ≥5(title×2+RemoteProjectIcon 等;时间槽已并入 SessionInfoMeta)',
-    ).toBeGreaterThanOrEqual(5);
-    // 信息槽的反白链由 SessionInfoMeta 承担:isActive 必须透传。
-    expect(sessionCardSource).toMatch(/<SessionInfoMeta[\s\S]{0,200}isActive=\{isActive\}/);
+  it('E1D 任务C: archived SessionCard uses the muted selected state', () => {
+    expect(sessionCardSource).toContain('const isVisualActive = isActive && !isArchived');
+    expect(sessionCardSource).toMatch(
+      /isArchived && isActive\s*\? 'border-sidebar-border !bg-sidebar-item-hover text-foreground'/,
+    );
+    expect(sessionCardSource).toMatch(/<SessionInfoMeta[\s\S]{0,200}isActive=\{isVisualActive\}/);
 
     // Running is already expressed by the status indicator, so its text keeps
     // the same semantic colors as other non-active tasks.
@@ -268,7 +292,7 @@ describe('SessionCard review regressions', () => {
     expect(sessionCardSource).not.toContain("isMuted ? 'text-[var(--text-disabled)]'");
     expect(sessionCardSource).not.toContain('transition-[color] duration-500');
     expect(sessionCardSource).toContain(
-      "isActive ? 'text-sidebar-item-active-foreground' : 'text-[var(--text-tertiary)]'",
+      "isVisualActive ? 'text-sidebar-item-active-foreground' : 'text-[var(--text-tertiary)]'",
     );
   });
 
@@ -297,9 +321,9 @@ describe('SessionCard review regressions', () => {
   });
 
   it('keeps active sidebar rename controls inside the active foreground color system', () => {
-    expect(sessionItemSource).toContain('activeForeground={isActive}');
+    expect(sessionItemSource).toContain('activeForeground={isVisualActive}');
     expect(
-      (sessionCardSource.match(/activeForeground=\{isActive\}/g) || []).length,
+      (sessionCardSource.match(/activeForeground=\{isVisualActive\}/g) || []).length,
     ).toBeGreaterThanOrEqual(2);
     expect(sessionRenameInputSource).toContain(
       "activeForeground && 'text-sidebar-item-active-foreground'",
@@ -318,7 +342,7 @@ describe('SessionCard review regressions', () => {
       /isRunning\s*\? 'text-\[var\(--status-bar-accent\)\]'\s*:\s*isActive/,
     );
     expect(sessionItemSource).toContain(
-      "isActive ? 'text-sidebar-item-active-foreground' : 'text-sidebar-action-icon'",
+      "isVisualActive ? 'text-sidebar-item-active-foreground' : 'text-sidebar-action-icon'",
     );
   });
 
@@ -329,7 +353,7 @@ describe('SessionCard review regressions', () => {
   });
 
   it('keeps selected sidebar hover actions inside the active color system', () => {
-    expect(sessionItemSource).toContain('isActive={isActive}');
+    expect(sessionItemSource).toContain('isActive={isVisualActive}');
     expect(sessionItemSource).toContain(
       "'text-sidebar-item-active-foreground hover:text-sidebar-item-active-foreground hover:bg-[color-mix(in_srgb,var(--sidebar-item-active-foreground)_14%,transparent)]'",
     );
@@ -345,7 +369,7 @@ describe('SessionCard review regressions', () => {
     expect(sessionItemSource).toContain("'hidden group-hover:flex group-focus-within/slot:flex'");
     expect(sessionItemSource).toContain('absolute right-0 top-0 flex h-6 items-center gap-0.5');
     expect(sessionItemSource).toContain(
-      'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100',
+      "'hidden w-[2.625rem] group-hover:flex group-focus-within/slot:flex'",
     );
     expect(sessionItemSource).not.toContain('SESSION_ACTION_HOVER_SCRIM_CLASS');
     expect(sessionCardSource).toContain(
@@ -394,9 +418,9 @@ describe('SessionCard review regressions', () => {
   it('PR-123 greptile: card 路径的绑定徽章与 Timer 进反白体系', () => {
     // P1:renderAutomationMeta 卡片/列表两路都要把选中态透传给 ScheduleBindingBadge,
     // 否则红胶囊上 Timer 仍是 meta 灰;普通自动化分支也必须透传 activeForeground。
-    expect(sessionCardSource).toContain('activeForeground={isActive}');
+    expect(sessionCardSource).toContain('activeForeground={isVisualActive}');
     expect(sessionCardSource).toMatch(
-      /showAutomationTimer \? \([\s\S]*?<AutomationTimerIcon[\s\S]*?activeForeground=\{isActive\}/,
+      /showAutomationTimer \? \([\s\S]*?<AutomationTimerIcon[\s\S]*?activeForeground=\{isVisualActive\}/,
     );
   });
 

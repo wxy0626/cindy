@@ -290,7 +290,7 @@ function PresetDropdown({
           aria-label={label}
           className={cn(
             'flex h-[40px] w-full items-center justify-between rounded-[10px] border pl-[12px] pr-3 text-14 outline-none transition-colors',
-            'border-[var(--settings-input-border)] bg-[var(--settings-input-bg)] focus:border-[var(--settings-input-border-focus)]',
+            'settings-dropdown-trigger bg-[var(--settings-input-bg)]',
           )}
         >
           <span
@@ -401,9 +401,8 @@ export function PiModelProtocolDropdown({
           type="button"
           aria-label={label}
           className={cn(
-            'flex h-9 w-44 items-center justify-between rounded-full border px-3 text-12 outline-none transition-colors',
-            'border-[var(--settings-input-border)] bg-[var(--settings-input-bg)] text-[var(--settings-input-text)]',
-            'focus-visible:border-[var(--settings-input-border-focus)] focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+            'settings-dropdown-trigger flex h-9 w-44 items-center justify-between rounded-full px-3 text-12 outline-none transition-colors',
+            'bg-[var(--settings-input-bg)] text-[var(--settings-input-text)]',
           )}
         >
           <span className="truncate">{t(selected.labelKey)}</span>

@@ -918,6 +918,10 @@ function availableGhosts(): InstalledGhost[] {
 
 function projectGhostForRenderer(ghost: InstalledGhost): InstalledGhost {
   try {
+    // renderer 的来源分类必须以随包种子清单为准；市场公开/团队 scope
+    // 只描述发布范围，不能代表用户是否手动添加。
+    const builtin =
+      ghost.builtin === true || listBuiltinSeedIds(builtinSeedRootDirs()).includes(ghost.manifest.id);
     const runtimeManifest = withRuntimeFiloGoogleClient(ghost.manifest);
     const oauthManager = getGhostOauthAccountManager();
     const expiredAccountCount = (runtimeManifest.network?.secrets ?? []).reduce(
@@ -931,6 +935,7 @@ function projectGhostForRenderer(ghost: InstalledGhost): InstalledGhost {
     const suggest = getGhostOauthReauthSuggest(runtimeManifest);
     return {
       ...ghost,
+      ...(builtin ? { builtin: true } : {}),
       ...(expiredAccountCount > 0
         ? { oauthAuthorizationExpired: { expiredAccountCount } }
         : {}),

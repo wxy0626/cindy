@@ -1,22 +1,10 @@
 /**
- * MachineSwitcherMenu — 主列表段头标题即「机器范围」下拉(device-link 跨设备远程控制)。
+ * MachineSwitcherMenu — 主列表段头「项目 / 归档」分段滑块 + 机器范围小箭头下拉。
  * ---------------------------------------------------------------------------
- * 2026-08-13 用户定稿(新设计,显式推翻两条 2026-07 旧定稿):
- *   - 「全部任务」段头与设备下拉**合并**——标题文字反映当前范围(全部任务 /
- *     本机任务 / 设备名 / N 台机器),点击标题弹出「所有 / 本机 / 各远程设备」
- *     切换 + 「远程连接设置」/「侧边栏显示设置」入口。顶部导航不再有独立的远程
- *     机器行,省一行;
- *     标题不再撒谎(旧结构下范围收窄后段头仍写「全部任务」)。
- *     (推翻 2026-07 「切换器收进 SidebarTopNav 末行、不挂段头」——当年是段头
- *     挂配件,现在段头本身就是切换器,语境已不同。)
- *   - **点击展开**,不再 hover 自动展开(推翻 2026-07-12 hover 定稿):作为段头
- *     标题,hover 扫过就弹菜单太吵;段级收起同时取消,标题的点击语义让给范围切换。
- *
- * 无任何相关远程机器时标题仍是「全部任务 ▾」(2026-08-13 用户裁决:箭头保留),
- * 菜单不出现设备列表,只留「远程连接设置」与「侧边栏显示设置」——单机用户看不到
- * 设备概念,但仍能从段头进这两项。范围标题恒在后,断网逃生不再靠「假装还有
- * 远程设备」画出机器列表——目录空了就只留两项设置,用户从「远程连接设置」
- * 或范围标题本身回到本机。
+ * 2026-09-03 用户定稿:「全部任务」改名「项目」,「已归档任务」改名「归档」;
+ * 两个状态在段头用分段滑块并列切换(项目 = 活跃任务)。机器范围下拉缩成小箭头
+ * trigger,当前范围文字保留在 aria-label / title 中,不再占用段头主标题位置。
+ * 远程连接设置与侧边栏显示设置仍通过各自独立入口访问;菜单只提供机器选择。
  *
  * 机器选择:**默认单选、多选框另走多选**(2026-07 用户定稿):
  *   - 「所有」→ 重置回默认(本机 + 全部远程),菜单关闭;
@@ -38,10 +26,9 @@
  *   - 被拒(对方已撤销本机远程控制) → icon 叠「禁止」标识,点击弹提示(toast),不可选中。
  * 勾选后 → 侧边栏会话整体过滤到勾选机器集(逻辑在 CCAgentSidebarUpper 合并点)。
  *
- * 形态:段头标题样式(text-sm font-medium、sidebar-list-muted 淡灰,hover 加深,
- * 与原「全部任务」标题一致)+ 小下拉箭头;远程任务 bootstrap 读取中在标题右侧
- * 转 spinner(本行仍是远程读取状态的固定承载点,不往会话列表里插 loading 行)。
- * 范围文字本身已表达过滤状态,trigger 不叠常驻高亮底色(2026-07 用户定稿沿用)。
+ * 形态:分段滑块(项目 / 归档)+ 机器范围小箭头按钮;远程任务 bootstrap 读取中
+ * 在小箭头处转 spinner(本行仍是远程读取状态的固定承载点,不往会话列表里插
+ * loading 行)。
  *
  * 颜色全走主题 token(规则 16),文案全走 i18n(规则 18)。
  */
@@ -53,9 +40,7 @@ import {
   ChevronDown,
   Loader2,
   Monitor,
-  MonitorCog,
   MonitorSmartphone,
-  SlidersHorizontal,
 } from 'lucide-react';
 import { useMatch, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -67,7 +52,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -79,18 +63,18 @@ import {
   useMachineSwitcher,
   useRemoteSessionBootstrapLoading,
 } from '@/features/device-link/useMachineSwitcher';
-import { MENU_CONTENT_CLASS, MENU_ITEM_CLASS, MENU_SEPARATOR_CLASS } from './menuStyles';
-
-/** 段头标题共用样式:与原「全部任务」标题一致(淡灰、hover 加深)。 */
-const SCOPE_TITLE_CLASS =
-  'text-sm font-medium text-[var(--sidebar-list-muted)] transition-colors hover:text-[var(--sidebar-nav-text)]';
+import { MENU_CONTENT_CLASS, MENU_ITEM_CLASS } from './menuStyles';
+import type { FilterStatus } from '../hooks/useSidebarFilter';
 
 export function MachineSwitcherMenu({
-  onOpenDisplaySettings,
+  status,
+  onStatusChange,
 }: {
-  /** 打开段头同一份「侧边栏显示设置」菜单;不传则不渲染该入口。 */
-  onOpenDisplaySettings?: () => void;
-} = {}): ReactNode {
+  /** 当前任务状态筛选;'all' 视为「项目」(活跃任务)档。 */
+  status: FilterStatus;
+  /** 修改任务状态筛选；机器范围仍由本组件自己管理。 */
+  onStatusChange: (status: 'active' | 'archived') => void;
+}): ReactNode {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { devices, selectedDeviceId, select, toggle } = useMachineSwitcher();
@@ -128,34 +112,9 @@ export function MachineSwitcherMenu({
   };
 
   const triggerLabel = t('ccAgent.sidebar.machineSwitcher.menuTrigger');
-  const settingsItems = (
-    <>
-      <DropdownMenuItem
-        className={MENU_ITEM_CLASS}
-        onSelect={() => navigate('/settings?tab=remote-control')}
-      >
-        <MonitorCog size={14} strokeWidth={2} className="shrink-0 opacity-70" />
-        <span className="truncate">{t('ccAgent.sidebar.machineSwitcher.remoteSettings')}</span>
-      </DropdownMenuItem>
-      {onOpenDisplaySettings ? (
-        <DropdownMenuItem
-          className={MENU_ITEM_CLASS}
-          onSelect={() => {
-            // 等本菜单关完、当前指针事件走完再开显示设置,避免两个 Radix
-            // 菜单抢焦点、或同一次 click 被新菜单当成点外部而立刻关掉。
-            window.setTimeout(() => onOpenDisplaySettings(), 0);
-          }}
-        >
-          <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0 opacity-70" />
-          <span className="truncate">{t('ccAgent.sidebar.organizeSidebar')}</span>
-        </DropdownMenuItem>
-      ) : null}
-    </>
-  );
-
-  // 标题文字 = 当前范围(2026-08-13 定稿:标题回答"我正在看什么"):
-  // 「所有」/ 无远程 →「全部任务」;本机 →「本机任务」;单设备 → 设备名;多选 → 「N 台机器」。
-  let triggerText = t('ccAgent.sidebar.allSessions');
+  // 机器范围 aria 文案(小箭头 trigger):「所有」/ 无远程 →「所有机器」;
+  // 本机 →「本机任务」;单设备 → 设备名;多选 → 「N 台机器」。
+  let triggerText = t('ccAgent.sidebar.machineSwitcher.allMachines');
   if (showDeviceList && selectedDeviceId !== MACHINE_ALL) {
     if (selectedDeviceId.length === 1) {
       const only = selectedDeviceId[0];
@@ -170,44 +129,84 @@ export function MachineSwitcherMenu({
     }
   }
 
-  // 点击展开(2026-08-13 定稿,推翻 2026-07-12 的 hover 展开——作为段头标题,
-  // hover 扫过就弹菜单太吵)。modal={false}:侧栏是常驻面板,不锁列表滚动。
+  // 状态筛选改由段头常驻分段滑块直接切换:左「项目」(活跃任务)、右「归档」。
+  // 机器范围下拉缩成小箭头 trigger,当前范围文字保留在 aria-label / title 中,
+  // 不再占用段头主标题位置(2026-09-03 用户定稿)。
+  const isActiveScope = status !== 'archived';
+  const scopeSegmentButtonClass = (active: boolean) =>
+    cn(
+      'flex h-[18px] min-w-[3rem] items-center justify-center rounded-full px-2 text-xs font-medium',
+      'transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--focus-ring)]',
+      active
+        ? 'bg-[var(--chat-input-chip-bg)] text-[var(--msg-assistant-text)]'
+        : 'text-[var(--sidebar-list-muted)] hover:text-[var(--sidebar-nav-text)]',
+    );
+
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
+    <div className="flex min-w-0 items-center gap-1">
+      {/* 项目 / 归档分段滑块:与整理菜单的筛选状态同一份 filter.status 状态源。 */}
+      <div
+        role="radiogroup"
+        aria-label={triggerLabel}
+        className="flex h-5 shrink-0 items-center rounded-full border border-sidebar-border bg-sidebar-item-hover p-0.5"
+      >
         <button
           type="button"
-          aria-label={`${triggerLabel}: ${triggerText}`}
-          aria-busy={remoteSessionBootstrapLoading}
-          className={cn(
-            'flex min-w-0 items-center gap-1 focus:outline-none',
-            SCOPE_TITLE_CLASS,
-            // 菜单展开期间标题保持加深(data-state=open):鼠标移进菜单后 :hover
-            // 失效,标题不能瞬间变淡、菜单像悬空没了锚点。
-            'data-[state=open]:text-[var(--sidebar-nav-text)]',
-          )}
+          role="radio"
+          aria-checked={isActiveScope}
+          aria-label={t('ccAgent.sidebar.activeTasks')}
+          onClick={() => onStatusChange('active')}
+          className={scopeSegmentButtonClass(isActiveScope)}
         >
-          <span className="truncate leading-none">{triggerText}</span>
-          <ChevronDown size={13} strokeWidth={2} className="shrink-0" />
-          {remoteSessionBootstrapLoading && (
-            <span
-              aria-hidden="true"
-              className="inline-flex shrink-0 animate-spinner motion-reduce:animate-none"
-            >
-              <Loader2 size={12} strokeWidth={1.8} />
-            </span>
-          )}
+          {t('ccAgent.sidebar.allSessions')}
         </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        // 标题下方展开、左边贴齐标题左边;空间不足时 Radix 自动翻到上方。
-        side="bottom"
-        align="start"
-        sideOffset={4}
-        className={cn(MENU_CONTENT_CLASS, 'min-w-48')}
-      >
-        {showDeviceList ? (
-          <>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={!isActiveScope}
+          aria-label={t('ccAgent.sidebar.archivedTasks')}
+          onClick={() => onStatusChange('archived')}
+          className={scopeSegmentButtonClass(!isActiveScope)}
+        >
+          {t('ccAgent.sidebar.archivedTasks')}
+        </button>
+      </div>
+      {showDeviceList ? (
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`${triggerLabel}: ${triggerText}`}
+              aria-busy={remoteSessionBootstrapLoading}
+              title={`${triggerLabel}: ${triggerText}`}
+              className={cn(
+                'flex h-6 w-6 shrink-0 items-center justify-center rounded-md',
+                'text-[var(--sidebar-list-muted)] transition-colors hover:bg-sidebar-item-hover hover:text-[var(--sidebar-nav-text)]',
+                'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--focus-ring)]',
+                // 菜单展开期间按钮保持加深(data-state=open):鼠标移进菜单后
+                // :hover 失效,按钮不能瞬间变淡、菜单像悬空没了锚点。
+                'data-[state=open]:text-[var(--sidebar-nav-text)]',
+              )}
+            >
+              {remoteSessionBootstrapLoading ? (
+                <span
+                  aria-hidden="true"
+                  className="inline-flex animate-spinner motion-reduce:animate-none"
+                >
+                  <Loader2 size={13} strokeWidth={1.8} />
+                </span>
+              ) : (
+                <ChevronDown size={14} strokeWidth={2} />
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            // 小箭头下方展开、左边贴齐按钮左边;空间不足时 Radix 自动翻到上方。
+            side="bottom"
+            align="start"
+            sideOffset={4}
+            className={cn(MENU_CONTENT_CLASS, 'min-w-48')}
+          >
             <MachineMenuItem
               label={t('ccAgent.sidebar.machineSwitcher.allMachines')}
               selected={selectedDeviceId === MACHINE_ALL}
@@ -242,12 +241,10 @@ export function MachineSwitcherMenu({
                 />
               );
             })}
-            <DropdownMenuSeparator className={MENU_SEPARATOR_CLASS} />
-          </>
-        ) : null}
-        {settingsItems}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+    </div>
   );
 }
 

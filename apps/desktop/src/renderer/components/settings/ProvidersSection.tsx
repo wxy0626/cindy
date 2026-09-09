@@ -426,7 +426,7 @@ function DetailHeader({
                 <button
                   type="button"
                   aria-label={t('settings.providers.detail.moreActionsAria')}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--surface-hover)]"
+                  className="settings-dropdown-trigger flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--surface-hover)]"
                   style={{ color: 'var(--text-tertiary)' }}
                 >
                   <MoreHorizontal size={15} />
@@ -1670,7 +1670,7 @@ function CindySigninRow({ selected, onSelect }: { selected: boolean; onSelect: (
       className={cn(
         'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
         selected
-          ? 'bg-[var(--settings-menu-bg-selected)]'
+          ? 'border border-[var(--focus-ring)] bg-[var(--settings-menu-bg-selected)]'
           : 'hover:bg-[var(--settings-menu-bg-hover)]',
       )}
     >

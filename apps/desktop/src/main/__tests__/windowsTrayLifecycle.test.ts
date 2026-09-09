@@ -5,6 +5,7 @@ import {
   popUpWindowsTrayMenu,
   requestWindowsCloseBehavior,
   requestWindowsTrayQuit,
+  shouldCreateWindowsTrayAtStartup,
   type WindowsClosePromptWindow,
   type WindowsTrayMenuHost,
   type WindowsTrayPopupMenu,
@@ -150,6 +151,23 @@ describe('Windows tray lifecycle', () => {
     requestWindowsTrayQuit({ hasActiveTurn: () => true, confirmQuit: () => true, quit });
 
     expect(quit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Windows tray startup', () => {
+  it('creates the tray icon at startup when Windows uses tray or has not chosen yet', () => {
+    expect(shouldCreateWindowsTrayAtStartup('win32', 'tray')).toBe(true);
+    expect(shouldCreateWindowsTrayAtStartup('win32', null)).toBe(true);
+  });
+
+  it('仍会创建托盘图标,关闭策略只决定关闭后的动作', () => {
+    expect(shouldCreateWindowsTrayAtStartup('win32', 'quit')).toBe(true);
+    expect(shouldCreateWindowsTrayAtStartup('win32', null)).toBe(true);
+    expect(shouldCreateWindowsTrayAtStartup('win32', 'tray')).toBe(true);
+  });
+
+  it('非 Windows 不创建 Windows 托盘图标', () => {
+    expect(shouldCreateWindowsTrayAtStartup('darwin', 'tray')).toBe(false);
   });
 });
 

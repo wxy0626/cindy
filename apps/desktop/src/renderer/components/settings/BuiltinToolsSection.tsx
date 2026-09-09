@@ -377,10 +377,10 @@ function ScopePicker({
           className={cn(
             'flex items-center gap-1.5 shrink-0 max-w-[200px]',
             'h-7 px-2.5 rounded-full',
-            'bg-[var(--settings-input-bg)] text-[var(--settings-section-title)]',
+            'settings-dropdown-trigger bg-[var(--settings-input-bg)] text-[var(--settings-section-title)]',
             'text-12 font-medium',
             'hover:bg-[var(--surface-chip)]',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+            'focus:outline-none',
             'transition-colors',
           )}
         >

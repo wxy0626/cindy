@@ -62,6 +62,23 @@ interface PiUsage {
   service_tier?: string;
 }
 
+/** 本 turn 按主代理/子代理分别累计的 usage 分量。 */
+interface PiTurnUsageTotals {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+/** agent_settled 对外暴露的 scope 用量桶。 */
+interface PiTurnUsageBucket {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreateTokens: number;
+  totalTokens: number;
+}
+
 interface PiAssistantMessage {
   role: 'assistant';
   content?: Array<Record<string, unknown>>;
@@ -102,6 +119,8 @@ export interface PiTranslateContext {
   turnOutput: number;
   turnCacheRead: number;
   turnCacheWrite: number;
+  /** 主代理与子代理分桶，避免 done 只能看到混合总量。 */
+  turnUsageByScope: { parent: PiTurnUsageTotals; subagent: PiTurnUsageTotals };
   turnUsageSegments: UsageSegment[];
   turnUsageSegmentsComplete: boolean;
   turnUsageSegmentSeq: number;
@@ -159,7 +178,8 @@ export interface PiTranslateContext {
    * 用来算增量,避免同一批用量被反复加进 turn 记账。与其它 turn 计数器同点(agent_start)清空。
    */
   delegatedUsage: Map<string, PiSubagentUsage>;
-  delegatedUsageSegmentIds: Set<string>;
+  /** task/segment -> 上次累计快照，用差值消费后续进度帧。 */
+  delegatedUsageSegmentSnapshots: Map<string, PiSubagentUsage>;
   delegatedUsageIncompleteTaskIds: Set<string>;
   /**
    * Tool calls explicitly identified as Cindy's PI Subagent extension.
@@ -191,6 +211,10 @@ export function createPiTranslateContext(logger: Logger): PiTranslateContext {
     turnOutput: 0,
     turnCacheRead: 0,
     turnCacheWrite: 0,
+    turnUsageByScope: {
+      parent: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      subagent: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    },
     turnUsageSegments: [],
     turnUsageSegmentsComplete: true,
     turnUsageSegmentSeq: 0,
@@ -216,7 +240,7 @@ export function createPiTranslateContext(logger: Logger): PiTranslateContext {
     generationHeartbeatTimer: null,
     generationHeartbeatReliable: true,
     delegatedUsage: new Map(),
-    delegatedUsageSegmentIds: new Set(),
+    delegatedUsageSegmentSnapshots: new Map(),
     delegatedUsageIncompleteTaskIds: new Set(),
     subagentToolCalls: new Map(),
     toolNamesByCallId: new Map(),
@@ -400,11 +424,16 @@ function applyUsage(
   ctx.turnOutput += output;
   ctx.turnCacheRead += cacheRead;
   ctx.turnCacheWrite += cacheWrite;
+  ctx.turnUsageByScope.parent.input += input;
+  ctx.turnUsageByScope.parent.output += output;
+  ctx.turnUsageByScope.parent.cacheRead += cacheRead;
+  ctx.turnUsageByScope.parent.cacheWrite += cacheWrite;
   ctx.contextTokens = input + cacheRead + cacheWrite;
   const cost = usage.cost?.total;
   if (typeof cost === 'number' && Number.isFinite(cost)) ctx.costUsd += cost;
   ctx.turnUsageSegments.push({
     id: `pi:${++ctx.turnUsageSegmentSeq}`,
+    scope: 'parent',
     ...(model ? { model } : {}),
     inputTokens: input,
     outputTokens: output,
@@ -419,6 +448,59 @@ function priceVariantFromServiceTier(value: unknown): 'standard' | 'priority' | 
   if (value === 'priority') return 'priority';
   if (value === 'default' || value === 'standard') return 'standard';
   return undefined;
+}
+
+/** 按字段计算累计 usage 快照的非负增量，避免重复消费或异常回退产生负数。 */
+function usageDelta(
+  current: PiSubagentUsage,
+  previous: PiSubagentUsage | undefined,
+): PiSubagentUsage {
+  return {
+    input: Math.max(0, current.input - (previous?.input ?? 0)),
+    output: Math.max(0, current.output - (previous?.output ?? 0)),
+    cacheRead: Math.max(0, current.cacheRead - (previous?.cacheRead ?? 0)),
+    cacheWrite: Math.max(0, current.cacheWrite - (previous?.cacheWrite ?? 0)),
+    cost: Math.max(0, current.cost - (previous?.cost ?? 0)),
+  };
+}
+
+/** 保存单调不减的 segment 快照，防止上游回退后下一帧重复记账。 */
+function monotonicUsageSnapshot(
+  current: PiSubagentUsage,
+  previous: PiSubagentUsage | undefined,
+): PiSubagentUsage {
+  return {
+    input: Math.max(current.input, previous?.input ?? 0),
+    output: Math.max(current.output, previous?.output ?? 0),
+    cacheRead: Math.max(current.cacheRead, previous?.cacheRead ?? 0),
+    cacheWrite: Math.max(current.cacheWrite, previous?.cacheWrite ?? 0),
+    cost: Math.max(current.cost, previous?.cost ?? 0),
+  };
+}
+
+/** 把委派增量写入总量与子代理分桶；子代理不更新 contextTokens。 */
+function addDelegatedUsageDelta(ctx: PiTranslateContext, delta: PiSubagentUsage): void {
+  ctx.turnTokens += delta.input + delta.output;
+  ctx.turnInput += delta.input;
+  ctx.turnOutput += delta.output;
+  ctx.turnCacheRead += delta.cacheRead;
+  ctx.turnCacheWrite += delta.cacheWrite;
+  ctx.turnUsageByScope.subagent.input += delta.input;
+  ctx.turnUsageByScope.subagent.output += delta.output;
+  ctx.turnUsageByScope.subagent.cacheRead += delta.cacheRead;
+  ctx.turnUsageByScope.subagent.cacheWrite += delta.cacheWrite;
+  ctx.costUsd += delta.cost;
+}
+
+/** 将内部 scope 汇总转成 agent_settled 使用的 token 桶。 */
+function usageBucketOf(totals: PiTurnUsageTotals): PiTurnUsageBucket {
+  return {
+    inputTokens: totals.input,
+    outputTokens: totals.output,
+    cacheReadTokens: totals.cacheRead,
+    cacheCreateTokens: totals.cacheWrite,
+    totalTokens: totals.input + totals.output + totals.cacheRead + totals.cacheWrite,
+  };
 }
 
 /**
@@ -462,24 +544,27 @@ function applyDelegatedUsage(
   ) {
     for (const segment of segments) {
       const identity = `${taskId}:${segment.id}`;
-      if (ctx.delegatedUsageSegmentIds.has(identity)) continue;
-      ctx.delegatedUsageSegmentIds.add(identity);
-      ctx.turnTokens += segment.input + segment.output;
-      ctx.turnInput += segment.input;
-      ctx.turnOutput += segment.output;
-      ctx.turnCacheRead += segment.cacheRead;
-      ctx.turnCacheWrite += segment.cacheWrite;
-      ctx.costUsd += segment.cost;
+      const previousSnapshot = ctx.delegatedUsageSegmentSnapshots.get(identity);
+      const delta = usageDelta(segment, previousSnapshot);
+      ctx.delegatedUsageSegmentSnapshots.set(
+        identity,
+        monotonicUsageSnapshot(segment, previousSnapshot),
+      );
+      addDelegatedUsageDelta(ctx, delta);
+      if (!delta.input && !delta.output && !delta.cacheRead && !delta.cacheWrite && !delta.cost) {
+        continue;
+      }
       ctx.turnUsageSegments.push({
-        id: `pi-child:${identity}`,
+        id: `pi-child:${identity}:${++ctx.turnUsageSegmentSeq}`,
+        scope: 'subagent',
         ...(segment.model ? { model: segment.model } : {}),
-        inputTokens: segment.input,
-        outputTokens: segment.output,
-        cacheReadTokens: segment.cacheRead,
-        cacheCreateTokens: segment.cacheWrite,
-        ...(segment.cost > 0 ? { costUsd: segment.cost } : {}),
+        inputTokens: delta.input,
+        outputTokens: delta.output,
+        cacheReadTokens: delta.cacheRead,
+        cacheCreateTokens: delta.cacheWrite,
+        ...(delta.cost > 0 ? { costUsd: delta.cost } : {}),
       });
-      if (segment.output > 0) ctx.generationTimingReliable = false;
+      if (delta.output > 0) ctx.generationTimingReliable = false;
     }
     if (cumulative) ctx.delegatedUsage.set(taskId, cumulative);
     return;
@@ -493,20 +578,9 @@ function applyDelegatedUsage(
   }
   if (!cumulative) return;
   const previous = ctx.delegatedUsage.get(taskId);
-  const delta = {
-    input: Math.max(0, cumulative.input - (previous?.input ?? 0)),
-    output: Math.max(0, cumulative.output - (previous?.output ?? 0)),
-    cacheRead: Math.max(0, cumulative.cacheRead - (previous?.cacheRead ?? 0)),
-    cacheWrite: Math.max(0, cumulative.cacheWrite - (previous?.cacheWrite ?? 0)),
-    cost: Math.max(0, cumulative.cost - (previous?.cost ?? 0)),
-  };
+  const delta = usageDelta(cumulative, previous);
   ctx.delegatedUsage.set(taskId, cumulative);
-  ctx.turnTokens += delta.input + delta.output;
-  ctx.turnInput += delta.input;
-  ctx.turnOutput += delta.output;
-  ctx.turnCacheRead += delta.cacheRead;
-  ctx.turnCacheWrite += delta.cacheWrite;
-  ctx.costUsd += delta.cost;
+  addDelegatedUsageDelta(ctx, delta);
   if (delta.input || delta.output || delta.cacheRead || delta.cacheWrite || delta.cost) {
     // Older runner payloads expose only a cumulative task total. Preserve token
     // accounting, but do not pretend that this delta is one provider request.
@@ -641,6 +715,10 @@ export function translatePiEvent(
       ctx.turnOutput = 0;
       ctx.turnCacheRead = 0;
       ctx.turnCacheWrite = 0;
+      ctx.turnUsageByScope = {
+        parent: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        subagent: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      };
       ctx.turnUsageSegments = [];
       ctx.turnUsageSegmentsComplete = true;
       ctx.turnUsageSegmentSeq = 0;
@@ -656,7 +734,7 @@ export function translatePiEvent(
       // 与其它 turn 计数器同点清:新 turn 的委派用量不该跟上一 turn 的累计值作差,
       // 也避免长会话里 taskId 条目无界堆积。
       ctx.delegatedUsage.clear();
-      ctx.delegatedUsageSegmentIds.clear();
+      ctx.delegatedUsageSegmentSnapshots.clear();
       ctx.delegatedUsageIncompleteTaskIds.clear();
       ctx.subagentToolCalls.clear();
       ctx.toolNamesByCallId.clear();
@@ -940,6 +1018,8 @@ export function translatePiEvent(
             outputTokens: ctx.turnOutput,
             cacheReadTokens: ctx.turnCacheRead,
             cacheCreationTokens: ctx.turnCacheWrite,
+            parentUsage: usageBucketOf(ctx.turnUsageByScope.parent),
+            subagentUsage: usageBucketOf(ctx.turnUsageByScope.subagent),
             segments: ctx.turnUsageSegments.map((segment) => ({ ...segment })),
             segmentsComplete: ctx.turnUsageSegmentsComplete,
             // durationMs is deliberately generation-only. If Pi does not report a

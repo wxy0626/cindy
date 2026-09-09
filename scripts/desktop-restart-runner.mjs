@@ -25,6 +25,7 @@ export function buildDesktopRestartSteps(argv, root = rootDir) {
   }
 
   const local = argv.includes('--local');
+  const fastSwitch = argv.includes('--fast-switch');
   const preserveRunning = argv.includes('--preserve-running');
   const forwarded = argv.filter(
     (arg) => arg !== '--' && arg !== '--local' && arg !== '--wait-ready',
@@ -40,16 +41,16 @@ export function buildDesktopRestartSteps(argv, root = rootDir) {
       // 杀任何进程之前就按目标沙箱判定,不能等到最终启动阶段才发现冲突。
       args: [restartScript, ...modeArgs, ...forwarded, '--kill-only'],
     }]),
-    {
-      label: 'verify desktop dependencies',
-      command: process.execPath,
-      args: [path.join(root, 'scripts', 'ensure-deps.mjs')],
-    },
-    {
-      label: 'verify desktop runtime assets',
-      command: process.execPath,
-      args: [path.join(root, 'scripts', 'ensure-dev-runtime-assets.mjs')],
-    },
+    ...(fastSwitch ? [] : [{
+     label: 'verify desktop dependencies',
+     command: process.execPath,
+     args: [path.join(root, 'scripts', 'ensure-deps.mjs')],
+    }]),
+    ...(fastSwitch ? [] : [{
+     label: 'verify desktop runtime assets',
+     command: process.execPath,
+     args: [path.join(root, 'scripts', 'ensure-dev-runtime-assets.mjs')],
+    }]),
     {
       label: 'start desktop and wait for readiness',
       command: process.execPath,

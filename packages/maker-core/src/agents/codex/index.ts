@@ -3006,7 +3006,8 @@ export class CodexAgent extends BaseAgent {
     const usageTracker = new UsageTracker();
     const translatorRt: CodexRuntimeState = newCodexRuntimeState();
     const liveUsageSnapshot = () => attachLiveGeneration(usageTracker.snapshot(), {
-      outputTokens: usageTracker.getTurnUsage().output,
+      // 生成速度只统计主代理输出，子代理输出不能改变父代理的速率。
+      outputTokens: usageTracker.getTurnUsageByScope().parent.output,
       closedDurationMs: translatorRt.generationDurationMs,
       openStartedAt: translatorRt.generationStartedAt,
       reliable: translatorRt.generationTimingReliable,
@@ -3600,9 +3601,33 @@ export class CodexAgent extends BaseAgent {
       string,
       { generation: number; total: TokenUsageBreakdown }
     >();
+    /** 每个子线程独立保存累计游标，避免重复通知重复记账。 */
+    const acceptedDescendantUsageTotalByThread = new Map<
+      string,
+      { generation: number; total: TokenUsageBreakdown }
+    >();
+    /** 从后代通知中读取完整 token 快照；缺失字段按 0 兼容旧版通知。 */
+    const readTokenUsageBreakdown = (value: unknown): TokenUsageBreakdown | null => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+      const raw = value as Record<string, unknown>;
+      const token = (field: string): number => {
+        const value = raw[field];
+        return typeof value === 'number' && Number.isFinite(value) && value > 0
+          ? Math.floor(value)
+          : 0;
+      };
+      return {
+        totalTokens: token('totalTokens'),
+        inputTokens: token('inputTokens'),
+        cachedInputTokens: token('cachedInputTokens'),
+        outputTokens: token('outputTokens'),
+        reasoningOutputTokens: token('reasoningOutputTokens'),
+      };
+    };
     const resetAcceptedUsageCursors = (reason: string): void => {
       usageExecutionGeneration += 1;
       acceptedUsageTotalByThread.clear();
+      acceptedDescendantUsageTotalByThread.clear();
       log.info('resetting Codex usage cursors for a new app-server execution generation', {
         generation: usageExecutionGeneration,
         reason,
@@ -4922,6 +4947,104 @@ export class CodexAgent extends BaseAgent {
         method === 'item/started' || method === 'item/updated' || method === 'item/completed';
       const descendantTurnIsTerminal = turnId !== undefined
         && terminalDescendantTurnIds.has(turnId);
+
+      if (method === 'thread/tokenUsage/updated') {
+        const rootTurnId = rootTurnIdByDescendantThreadId.get(childThreadId);
+        const tokenUsage = record?.tokenUsage && typeof record.tokenUsage === 'object'
+          ? record.tokenUsage as Record<string, unknown>
+          : null;
+        const cumulativeTotal = readTokenUsageBreakdown(tokenUsage?.total);
+        const last = readTokenUsageBreakdown(tokenUsage?.last);
+        const canRecordUsage = Boolean(
+          rootTurnId
+          && currentTurnId === rootTurnId
+          && isTurnInFlight
+          && !completedTurnIds.has(rootTurnId)
+          && !terminalErroredTurnIds.has(rootTurnId)
+          && !descendantTurnIsTerminal
+          && cumulativeTotal
+        );
+        if (canRecordUsage) {
+          const previousCursor = acceptedDescendantUsageTotalByThread.get(childThreadId);
+          const previousTotal =
+            previousCursor?.generation === usageExecutionGeneration ? previousCursor.total : undefined;
+          const isNewUsageSegment =
+            cumulativeTotal!.totalTokens > 0
+            && (previousTotal === undefined
+              || cumulativeTotal!.totalTokens > previousTotal.totalTokens);
+          if (isNewUsageSegment) {
+            // 子线程只消费自己的累计游标；不更新 contextWindow、lastApi 或父生成时钟。
+            acceptedDescendantUsageTotalByThread.set(childThreadId, {
+              generation: usageExecutionGeneration,
+              total: { ...cumulativeTotal! },
+            });
+            // 以累计快照的字段差值计账，避免同一线程的 last 快照重复累加。
+            // 旧通知若只带 total，则把 totalTokens 的新增量作为输入兜底。
+            const previous = previousTotal;
+            const cumulativeFields = [
+              cumulativeTotal!.inputTokens,
+              cumulativeTotal!.cachedInputTokens,
+              cumulativeTotal!.outputTokens,
+              cumulativeTotal!.reasoningOutputTokens,
+            ];
+            const hasDetailedCumulativeUsage = cumulativeFields.some((value) => value > 0);
+            const lastFields = last
+              ? [last.inputTokens, last.cachedInputTokens, last.outputTokens, last.reasoningOutputTokens]
+              : [];
+            const hasDetailedLastUsage = lastFields.some((value) => value > 0);
+            const inputTokens = hasDetailedCumulativeUsage
+              ? Math.max(0, cumulativeTotal!.inputTokens - (previous?.inputTokens ?? 0))
+              : hasDetailedLastUsage
+                ? last!.inputTokens
+                : Math.max(0, cumulativeTotal!.totalTokens - (previous?.totalTokens ?? 0));
+            const cached = hasDetailedCumulativeUsage
+              ? Math.max(0, cumulativeTotal!.cachedInputTokens - (previous?.cachedInputTokens ?? 0))
+              : last?.cachedInputTokens ?? 0;
+            const outputTokens = hasDetailedCumulativeUsage
+              ? Math.max(0, cumulativeTotal!.outputTokens - (previous?.outputTokens ?? 0))
+              : last?.outputTokens ?? 0;
+            const reasoningTokens = hasDetailedCumulativeUsage
+              ? Math.max(
+                0,
+                cumulativeTotal!.reasoningOutputTokens - (previous?.reasoningOutputTokens ?? 0),
+              )
+              : last?.reasoningOutputTokens ?? 0;
+            const turnServiceTier = turnOriginByTurnId.get(rootTurnId!)?.serviceTier;
+            usageTracker.ingestApiCallUsage({
+              scope: 'subagent',
+              inputTokens: Math.max(0, inputTokens - cached),
+              // outputTokens 已包含 reasoning 子集，不能再次相加。
+              outputTokens,
+              cacheReadTokens: cached,
+              cacheCreateTokens: 0,
+              reasoningTokens,
+              model: turnOriginByTurnId.get(rootTurnId!)?.model ?? activeTurnModel ?? mutableModel,
+              priceVariant: isFastServiceTier(
+                turnServiceTier !== undefined ? turnServiceTier : mutableServiceTier,
+              )
+                ? 'priority'
+                : 'standard',
+            });
+            maybePushUsageRefresh();
+          } else {
+            log.debug('ignoring duplicate or out-of-order descendant Codex usage snapshot', {
+              childThreadId,
+              rootTurnId,
+              turnId,
+              previousTotal: previousTotal?.totalTokens ?? null,
+              cumulativeTotal: cumulativeTotal!.totalTokens,
+            });
+          }
+        } else {
+          log.debug('ignoring descendant Codex usage outside its active root turn', {
+            childThreadId,
+            rootTurnId: rootTurnId ?? null,
+            currentTurnId,
+            turnId: turnId ?? null,
+            descendantTurnIsTerminal,
+          });
+        }
+      }
 
       if (method === 'turn/started') {
         bindCapabilitySelectionToDescendantTurn(childThreadId, turnId);
@@ -9095,9 +9218,18 @@ export class CodexAgent extends BaseAgent {
       // usage 用它, 不用 contextTokens 降级值 (那是整个上下文快照, 不是本 turn 增量)。
       // 必须在 endTurn 之前取: endTurn 会用降级 aggregate 覆盖后 reset。
       const realTurnUsage = usageTracker.getTurnUsage();
+      const turnUsageByScope = usageTracker.getTurnUsageByScope();
       const realTurnUsageSegments = usageTracker.getTurnUsageSegments();
       finalizeCodexGenerationTurn(translatorRt, turn.id);
       const generationDurationMs = codexGenerationDurationMs(translatorRt);
+      // done payload 同时保留总量和按代理角色拆分的 token 桶，供上层展示与记账。
+      const formatTurnUsageBucket = (usage: typeof turnUsageByScope.parent) => ({
+        inputTokens: usage.input,
+        outputTokens: usage.output,
+        cacheReadTokens: usage.cacheRead,
+        cacheCreateTokens: usage.cacheCreate,
+        totalTokens: usage.input + usage.output + usage.cacheRead + usage.cacheCreate,
+      });
       const codexDoneUsage = {
         promptTokens: realTurnUsage.input,
         completionTokens: realTurnUsage.output,
@@ -9106,6 +9238,8 @@ export class CodexAgent extends BaseAgent {
           0,
         ),
         cachedTokens: realTurnUsage.cacheRead,
+        parentUsage: formatTurnUsageBucket(turnUsageByScope.parent),
+        subagentUsage: formatTurnUsageBucket(turnUsageByScope.subagent),
         segments: realTurnUsageSegments,
         ...(generationDurationMs !== undefined ? { durationMs: generationDurationMs } : {}),
         ...(typeof turn.durationMs === 'number' && Number.isFinite(turn.durationMs)
@@ -9306,7 +9440,8 @@ export class CodexAgent extends BaseAgent {
           data: {
             status: 'Done',
             ...attachLiveGeneration(endSnap, {
-              outputTokens: realTurnUsage.output,
+              // 子代理输出不属于父代理生成速度。
+              outputTokens: turnUsageByScope.parent.output,
               closedDurationMs: translatorRt.generationDurationMs,
               openStartedAt: null,
               reliable: translatorRt.generationTimingReliable,
@@ -10383,6 +10518,7 @@ export class CodexAgent extends BaseAgent {
             total: { ...cumulativeTotal },
           });
           usageTracker.ingestApiCallUsage({
+            scope: 'parent',
             inputTokens: uncachedInput,
             // outputTokens already includes the reasoning subset. Adding
             // reasoningOutputTokens again double-counts completion usage.

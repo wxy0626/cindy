@@ -1021,9 +1021,9 @@ function SelectControl({
       <Select.Trigger
         aria-label={ariaLabel}
         className={cn(
-          'flex h-9 min-w-[150px] items-center justify-between gap-2 rounded-full border px-3 text-12',
+          'settings-dropdown-trigger flex h-9 min-w-[150px] items-center justify-between gap-2 rounded-full px-3 text-12',
           'border-[var(--settings-input-border)] bg-[var(--settings-input-bg)] text-[var(--settings-input-text)]',
-          'outline-none focus:ring-2 focus:ring-[var(--focus-ring-soft)]',
+          'outline-none',
           'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
           className,
         )}

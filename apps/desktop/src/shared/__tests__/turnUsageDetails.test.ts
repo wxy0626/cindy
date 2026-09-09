@@ -8,6 +8,64 @@ import {
 import { DEFAULT_USAGE_CURRENCY, gatewayMoney, usdMoney } from '../regionalMoney';
 
 describe('aggregateTurnUsageDetails', () => {
+  it('keeps parent and subagent buckets separate while exposing their sum at the top level', () => {
+    const details = buildTurnUsageDetails({
+      parentUsage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        cacheReadTokens: 900,
+        cacheCreateTokens: 5,
+      },
+      subagentUsage: {
+        inputTokens: 40,
+        outputTokens: 8,
+        cacheReadTokens: 300,
+        cacheCreateTokens: 2,
+      },
+      durationMs: 1_000,
+    });
+
+    expect(details).toMatchObject({
+      inputTokens: 140,
+      outputTokens: 28,
+      cacheReadTokens: 1_200,
+      cacheCreateTokens: 7,
+      totalTokens: 1_375,
+      parentUsage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        cacheReadTokens: 900,
+        cacheCreateTokens: 5,
+        totalTokens: 1_025,
+      },
+      subagentUsage: {
+        inputTokens: 40,
+        outputTokens: 8,
+        cacheReadTokens: 300,
+        cacheCreateTokens: 2,
+        totalTokens: 350,
+      },
+    });
+  });
+
+  it('treats legacy top-level usage as parent usage', () => {
+    const details = buildTurnUsageDetails({
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 300,
+      cacheCreateTokens: 2,
+    });
+
+    expect(details?.parentUsage).toMatchObject({
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 300,
+      cacheCreateTokens: 2,
+      totalTokens: 422,
+    });
+    expect(details?.subagentUsage).toBeUndefined();
+  });
+
   it('sums token/cache fields and merges per-model costs across segments', () => {
     const first = buildTurnUsageDetails({
       inputTokens: 10,
@@ -78,6 +136,28 @@ describe('aggregateTurnUsageDetails', () => {
       outputTokens: 20,
       durationMs: 1_000,
       turnDurationMs: 6_500,
+    });
+  });
+
+  it('aggregates both agent buckets and keeps generation speed parent-only', () => {
+    const aggregated = aggregateTurnUsageDetails([
+      buildTurnUsageDetails({
+        parentUsage: { outputTokens: 100 },
+        durationMs: 2_000,
+      }),
+      buildTurnUsageDetails({
+        subagentUsage: { outputTokens: 900 },
+        turnDurationMs: 5_000,
+      }),
+    ]);
+
+    expect(aggregated).toMatchObject({
+      outputTokens: 1_000,
+      totalTokens: 1_000,
+      parentUsage: expect.objectContaining({ outputTokens: 100, totalTokens: 100 }),
+      subagentUsage: expect.objectContaining({ outputTokens: 900, totalTokens: 900 }),
+      durationMs: 2_000,
+      turnDurationMs: 5_000,
     });
   });
 

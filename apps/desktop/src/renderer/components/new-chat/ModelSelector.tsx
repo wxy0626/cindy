@@ -1130,8 +1130,6 @@ function ModelSelectorContentView({
   const agentKind = agentSwitch
     ? vendorKeyToAgentKind(browseVendor)
     : vendorKeyToAgentKind(vendorKey);
-  const browseTargetLabel =
-    browseVendor === 'codex' ? 'Codex' : browseVendor === 'pi' ? 'Pi' : 'Claude Code';
   const enqueueAgentSwitch = (
     targetAgentKind: 'claude-code' | 'codex' | 'pi',
     targetModelId: string,
@@ -2708,7 +2706,7 @@ function ModelSelectorContentView({
   const searchField = (
     <div
       className={cn(
-        'flex items-center gap-2 rounded-full border border-[var(--model-dropdown-border)] px-3 py-[7px] transition-colors',
+        'search-capsule-control flex items-center gap-2 rounded-full px-3 py-[7px] transition-colors',
         interactionDisabled
           ? 'cursor-not-allowed bg-[var(--surface-elevated-soft)]'
           : 'bg-[var(--surface)]',
@@ -2982,11 +2980,6 @@ function ModelSelectorContentView({
             // 表面上分不清"当前选的是哪家",2026-07-20 产品实测反馈)。
             visualVariant="dropdown"
           />
-          {browsing && (
-            <div className="px-2 pb-0.5 text-12 text-[var(--text-tertiary)]">
-              {t('newChat.modelSelector.agentSwitch.hint', { agent: browseTargetLabel })}
-            </div>
-          )}
           <div className="mx-1 h-px bg-[var(--model-dropdown-border)]" />
         </>
       )}
@@ -3212,7 +3205,8 @@ export function ModelSelector({
   agentSwitch,
 }: ModelSelectorProps) {
   const { t, i18n } = useTranslation();
-  // 列表样式开关也决定 pill 首位图标形态(badge = 引擎 mark 打头,见 engineLeadsTrigger)。
+  // 列表样式开关(历史:badge 曾决定 pill 首位图标形态;2026-09-06 起 mark 打头不再
+  // 分形态,见 engineLeadsTrigger)。
   const pickerLayout = useModelPickerLayout();
   const [open, setOpen] = useState(false);
   const openRef = useRef(false);
@@ -3561,22 +3555,28 @@ export function ModelSelector({
   // 正常会话在侧栏 + 浏览器 split-pane 下也必须让长模型名承担收缩。
   const isCompactToolbar = compactToolbar && !isFieldTrigger;
   const isUltraCompactToolbar = ultraCompactToolbar && isCompactToolbar;
-  // ── composer pill 的引擎小标(model-selector-unified §1.1)─────────────────────
-  // 传了 engineMarkVendor 就走新形态:harness 名字文本让位给尾部的一枚 mark,和深度档字
-  // 紧挨着收尾(与面板行右侧三元组同构)。没传的入口一个像素都不变。
-  const engineMarkOption = engineMarkVendor ? agentOptionOf(engineMarkVendor) : null;
-  // badge 样式的 pill(Chris 2026-08-17 裁决):首位图标 = 用户在用的 harness mark,
-  // 渠道图标与尾部 harness 小标一并去掉 —— 行内已按「引擎徽标行」建立了引擎优先的
-  // 心智,pill 跟着同一套;渠道归属由面板里的分栏题头回答。classic 一个像素不动。
-  const engineLeadsTrigger = pickerLayout === 'badge' && engineMarkOption !== null;
+  // ── composer pill 的引擎小标(model-selector-unified §1.1;2026-09-06 用户裁决)──
+  // Agent 身份可用时一律用引擎 mark 表达,且 mark **打头**:pill = agent 图标 +
+  // 模型名 + 深度档,渠道图标与 harness 名字文本都退位。engineMarkVendor(统一面板
+  // 时代入参)之外,从 agentIdentity 同口径派生 —— original 形态的 pill 也吃同一套。
+  // 身份未加载(agentIdentity undefined 且没传 engineMarkVendor)时不画,绝不拿
+  // vendorKey 的 Claude Code 回退冒充(见 ChatInput composerEngineMarkVendor 注释)。
+  const engineMarkVendorEffective = engineMarkVendor ?? agentIdentity?.vendorKey ?? null;
+  const engineMarkOption = engineMarkVendorEffective
+    ? agentOptionOf(engineMarkVendorEffective)
+    : null;
   // 引擎小标 + 深度是 pill 的**定宽身份位**:窄工具条下也要留着,先让模型名截断
   // (Chris 2026-08-12 裁决)。只有 ultra-compact(整段文字都收起、只剩图标)才一并隐藏。
   const showTriggerTail = engineMarkOption ? !isUltraCompactToolbar : !isCompactToolbar;
+  // 2026-09-06 用户裁决:首位图标 = 用户在用的 harness mark(不再限 badge 形态),
+  // 渠道图标与 harness 名字文本一并去掉;渠道归属由面板里的分栏题头回答。
+  // 设置类字段触发器(field)维持原样:来源图标 + 模型名的 select 语义不受影响。
+  const engineLeadsTrigger = engineMarkOption !== null && !isFieldTrigger;
   const engineMarkNode = engineMarkOption ? (
     // aria-hidden:引擎名已经在 button 的 aria-label / title 里(displayIdentityLabel 仍带
     // agentIdentityLabel),这里再念一遍是重复。data 属性供接线测试定位。
     <span
-      data-composer-engine-mark={engineMarkVendor}
+      data-composer-engine-mark={engineMarkVendorEffective}
       className="flex shrink-0 items-center"
       aria-hidden="true"
     >
@@ -3641,7 +3641,7 @@ export function ModelSelector({
         isFieldTrigger
           ? cn(
               // pill 而非 8px:DESIGN.md §4 Select & Dropdown 规定单行 select trigger 同单行输入,胶囊形。
-              'w-full rounded-full border border-[var(--border-default)] bg-[var(--settings-input-bg)] px-3',
+              'settings-dropdown-trigger w-full rounded-full bg-[var(--settings-input-bg)] px-3',
               dense ? 'h-9' : 'h-10',
               'hover:bg-[var(--surface-hover-soft)]',
             )
@@ -3756,12 +3756,12 @@ export function ModelSelector({
           {!currentModel && remoteModelLoadFailed && (
             <CircleAlert size={dense ? 12 : 13} className="shrink-0 text-[var(--error-fg)]" />
           )}
-          {/* 图标统一规则:badge 样式首位放**引擎 mark**(engineLeadsTrigger,渠道图标
-              让位);classic 保持模型条目 icon(AI Gateway / 目录设定)优先、缺省回落
+          {/* 图标统一规则(2026-09-06 用户裁决):composer 工具条首位放**引擎 mark**
+              (engineLeadsTrigger,渠道图标让位);没有引擎身份时回落模型条目 icon /
               当前真正路由的来源标(activeSourceId)——客户端不按 model id 猜厂牌。 */}
           {engineLeadsTrigger && engineMarkOption ? (
             <span
-              data-composer-engine-lead={engineMarkVendor}
+              data-composer-engine-lead={engineMarkVendorEffective}
               className="mr-1.5 flex shrink-0 items-center"
               aria-hidden="true"
             >
@@ -3810,10 +3810,9 @@ export function ModelSelector({
           >
             {displayLabel}
           </span>
-          {/* 引擎小标 + 深度 = pill 的收尾身份组(新形态,见 engineMarkVendor)。
-              旧形态没有 mark,深度前保留「·」分隔;有 mark 时图标本身就是分隔,再加点
-              会读成「模型 · 引擎 · 深度」三段,又变回被撤掉的那种堆砌。
-              badge 样式引擎已在首位(engineLeadsTrigger),尾部不再重复一枚。 */}
+          {/* 引擎小标 + 深度 = pill 的收尾身份组(2026-08-12 旧形态,现仅 field 触发器
+              理论可达)。工具条形态 mark 已在首位(engineLeadsTrigger),尾部不再重复;
+              深度前保留「·」分隔 —— mark 打头时「名字 深度」贴着读会粘成一个词。 */}
           {showTriggerTail && !engineLeadsTrigger && engineMarkNode}
           {effortLabel && showTriggerTail && (
             <>

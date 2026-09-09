@@ -483,7 +483,7 @@ export function ContactDetailPane({ profile, groups, onChanged, onDelete }: Prop
               value={idValue}
               onChange={(e) => setIdValue(e.target.value)}
               placeholder={t('settings.contacts.detail.identityValuePlaceholder')}
-              className={cn(inputCls, 'h-7 min-w-0 flex-1 text-12')}
+              className={cn(inputCls, 'settings-dropdown-trigger h-7 min-w-0 flex-1 text-12')}
             />
             <button
               type="button"

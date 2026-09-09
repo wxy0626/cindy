@@ -1,15 +1,13 @@
 /**
  * machineSwitcherMenu.test.ts
  * ---------------------------------------------------------------------------
- * 2026-08-13 用户定稿(新设计,显式推翻 2026-07 的两条旧定稿):机器范围切换
- * 与「全部任务」段头**合并**——MachineSwitcherMenu 即主列表段头标题,文字反映
- * 当前范围(全部任务 / 本机任务 / 设备名 / N 台机器),点击展开范围菜单;
- * SidebarTopNav 不再有独立的远程机器行。为避免回退:
- *   - 范围标题由 MainListScopeHeader 渲染,ProjectsSection 与空态/占位分支共用;
+ * 2026-09-03 用户定稿:「项目 / 归档」分段滑块并列切换任务状态(项目 = 活跃任务),
+ * 机器范围切换缩成小箭头 trigger,菜单只保留设备选择。为避免回退:
+ *   - 段头由 MainListScopeHeader 渲染,ProjectsSection 与空态/占位分支共用;
  *     SidebarTopNav 不再 import / 渲染它;
- *   - 无远程设备时标题仍带箭头,菜单只留远程连接设置 / 侧边栏显示设置;
- *   - 点击展开(不再 hover 自动展开);段级收起同时取消;
- *   - 组件保留设备选择(单选 + 多选)+ 侧边栏显示设置 / 远程连接设置入口。
+ *   - 状态切换不再藏在菜单里,分段滑块直接调用 onStatusChange;
+ *   - 机器小箭头点击展开(不再 hover 自动展开);段级收起同时取消;
+ *   - 组件保留设备选择(单选 + 多选),远程连接与显示设置继续由独立入口提供。
  *
  * 静态扫描风格(renderer 测试环境无 jsdom),与 sidebarUpperSingleButton.test.ts 一致。
  */
@@ -392,7 +390,7 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
 
   it('空态 / 远程 loading-error / 连接中占位都挂范围标题(2026-08-13 第 4 轮 P1)', () => {
     const headerSource = read('features', 'cc-agent', 'sidebar', 'MainListScopeHeader.tsx');
-    expect(headerSource).toContain('<MachineSwitcherMenu onOpenDisplaySettings=');
+    expect(headerSource).toContain('<MachineSwitcherMenu status={filter.status}');
     expect(headerSource).not.toContain('filterActiveBadge');
     expect(headerSource).toContain('<SidebarFilterPopover');
     expect(projectsSectionSource).toContain('<MainListScopeHeader');
@@ -425,7 +423,7 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
   it('项目段头标题即范围下拉(2026-08-13 定稿,推翻 2026-07「不挂段头」)', () => {
     expect(projectsSectionSource).toContain("from '../MainListScopeHeader'");
     expect(projectsSectionSource).toContain('<MainListScopeHeader');
-    // 段头不再渲染硬编码的「全部任务」标题(标题文字由菜单 trigger 按范围决定)。
+    // 段头不再渲染硬编码标题:状态由 MachineSwitcherMenu 的分段滑块承载。
     expect(projectsSectionSource).not.toContain("t('ccAgent.sidebar.allSessions')");
     // 段级收起随合并取消:标题的点击语义让给范围切换。
     expect(projectsSectionSource).not.toContain('isSectionCollapsed');
@@ -464,19 +462,27 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
     expect(menuSource).not.toContain('group-hover/sidebar-header');
   });
 
-  it('trigger 是段头标题形态(范围文字 + 小箭头),不再是导航 pill 行(2026-08-13 定稿)', () => {
-    // 标题文字 = 当前范围:全部任务 / 本机任务 / 设备名 / N 台机器。
-    expect(menuSource).toContain('triggerText');
+  it('段头是「项目 / 归档」分段滑块,机器范围缩成小箭头 trigger(2026-09-03 定稿)', () => {
+    // 状态切换改为常驻分段滑块:项目 / 归档两个 radio 按钮并列切换。
+    expect(menuSource).toContain('role="radiogroup"');
+    expect(menuSource).toContain('role="radio"');
+    expect(menuSource).toContain('aria-checked={isActiveScope}');
+    expect(menuSource).toContain("onStatusChange('active')");
+    expect(menuSource).toContain("onStatusChange('archived')");
     expect(menuSource).toContain("t('ccAgent.sidebar.allSessions')");
+    expect(menuSource).toContain("t('ccAgent.sidebar.archivedTasks')");
+    expect(menuSource).toContain("t('ccAgent.sidebar.activeTasks')");
+    // 机器范围 trigger 不再占据主标题:小箭头按钮保留当前范围文字作 aria / title。
+    expect(menuSource).toContain('triggerText');
     expect(menuSource).toContain("t('ccAgent.sidebar.scopeLocalSessions')");
-    expect(menuSource).toMatch(/<span className="truncate[^"]*">\{triggerText\}<\/span>/);
-    expect(menuSource).toContain('<ChevronDown size={13}');
-    // 段头标题样式(与原「全部任务」一致:淡灰 + hover 加深),不再是 pill 导航行。
-    expect(menuSource).toContain('SCOPE_TITLE_CLASS');
+    expect(menuSource).toContain('aria-label={`${triggerLabel}: ${triggerText}`}');
+    expect(menuSource).toContain('<ChevronDown size={14}');
+    // 分段滑块选中态用 chip 底色,未选中走侧栏淡灰;不是全宽导航 pill。
+    expect(menuSource).toContain('scopeSegmentButtonClass');
+    expect(menuSource).toContain('bg-[var(--chat-input-chip-bg)]');
+    expect(menuSource).toContain('text-[var(--sidebar-list-muted)]');
     expect(menuSource).not.toContain('h-8 w-full');
-    expect(menuSource).not.toContain('hover:bg-sidebar-item-hover');
     expect(menuSource).not.toContain('filterActive');
-    expect(menuSource).not.toContain('--chat-input-chip-bg');
   });
 
   it('allMachinesLabel 孤儿 key 已从全部语言包删除(规则 18)', () => {
@@ -565,15 +571,13 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
   it('段头标题固定承载远程任务读取 loading(spinner 附在箭头后,不进会话列表)', () => {
     expect(menuSource).toContain('useRemoteSessionBootstrapLoading(selectedDeviceId)');
     expect(menuSource).toContain('aria-busy={remoteSessionBootstrapLoading}');
-    expect(menuSource).toMatch(
-      /<span className="truncate leading-none">\{triggerText\}<\/span>\s*<ChevronDown[\s\S]*?animate-spinner motion-reduce:animate-none/,
-    );
-    expect(menuSource).toContain('<Loader2 size={12} strokeWidth={1.8} />');
+    expect(menuSource).toMatch(/remoteSessionBootstrapLoading \? \([\s\S]*?animate-spinner motion-reduce:animate-none/);
+    expect(menuSource).toContain('<Loader2 size={13} strokeWidth={1.8} />');
   });
 
-  it('MachineSwitcherMenu 保留设备选择 / 显示设置 / 远程设置入口;无远程时仍带箭头只留设置项', () => {
+  it('MachineSwitcherMenu 保留设备选择;状态切换由分段滑块提供,设置功能不从这里暴露', () => {
     // 段头恒在:无远程设备时不再退化成不可点的静态标题(旧 return <span>),
-    // 箭头保留,菜单只渲染两个设置入口、不出现设备列表。
+    // 机器小箭头只在有设备列表时出现,菜单只渲染设备选择、不出现任务状态入口。
     expect(menuSource).not.toContain('if (!hasRemote) return null');
     expect(menuSource).not.toMatch(
       /if \(!hasRemote\) \{\s*\n\s*return <span className=\{SCOPE_TITLE_CLASS\}>/,
@@ -581,29 +585,36 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
     // 设备列表只看当前 devices.length,不把「目录已空、raw 仍记远端」当成还有远程。
     expect(menuSource).toContain('const showDeviceList = devices.length > 0');
     expect(menuSource).toContain('{showDeviceList ? (');
-    expect(menuSource).toContain('{settingsItems}');
     expect(menuSource).toContain('MACHINE_ALL');
     expect(menuSource).toContain('MACHINE_LOCAL');
-    expect(menuSource).toContain("navigate('/settings?tab=remote-control')");
     expect(menuSource).toContain('useMachineSwitcher');
-    // 范围菜单底部:远程连接设置在上、侧边栏显示设置在下;点后者后等本菜单关完
-    // 再开段头那份菜单,避免两个 Radix 菜单抢焦点把新开的立刻关掉。
-    expect(menuSource).toContain('onOpenDisplaySettings');
-    expect(menuSource).toContain("t('ccAgent.sidebar.organizeSidebar')");
-    expect(menuSource).toContain('window.setTimeout(() => onOpenDisplaySettings(), 0)');
-    expect(menuSource).toContain('<MonitorCog size={14} strokeWidth={2}');
-    expect(menuSource).toContain('<SlidersHorizontal size={14} strokeWidth={2}');
+    expect(menuSource).toContain('status: FilterStatus');
+    expect(menuSource).toContain("onStatusChange: (status: 'active' | 'archived') => void");
+    expect(menuSource).toContain("onStatusChange('active')");
+    expect(menuSource).toContain("onStatusChange('archived')");
+    expect(menuSource).toContain("t('ccAgent.sidebar.archivedTasks')");
+    expect(menuSource).toContain("t('ccAgent.sidebar.activeTasks')");
+    // 状态切换不再藏在菜单底部。
+    expect(menuSource).not.toContain('onStatusChange(nextTaskStatus)');
+    expect(menuSource).not.toContain('nextTaskStatus');
+    // 远程连接设置、侧边栏显示设置的功能仍由各自独立入口提供，这里只移除菜单按钮。
+    expect(menuSource).not.toContain("navigate('/settings?tab=remote-control')");
+    expect(menuSource).not.toContain('onOpenDisplaySettings');
+    expect(menuSource).not.toContain('settingsItems');
+    expect(menuSource).not.toContain('MonitorCog');
+    expect(menuSource).not.toContain('SlidersHorizontal');
     expect(menuSource).not.toContain('EllipsisVertical');
-    // 设置项抽到 settingsItems:有远程时先画设备列表再 separator,再插入该片段;
-    // 无远程时菜单只有这一段。片段内部远程连接设置在上、显示设置在下。
-    const settingsItemsIndex = menuSource.indexOf('{settingsItems}');
-    const separatorIndex = menuSource.indexOf('<DropdownMenuSeparator');
-    expect(settingsItemsIndex).toBeGreaterThan(separatorIndex);
-    const remoteSettingsIndex = menuSource.indexOf(
-      "t('ccAgent.sidebar.machineSwitcher.remoteSettings')",
-    );
-    const displaySettingsIndex = menuSource.indexOf("t('ccAgent.sidebar.organizeSidebar')");
-    expect(displaySettingsIndex).toBeGreaterThan(remoteSettingsIndex);
+    expect(menuSource).not.toContain('<Archive size={14}');
+  });
+
+  it('分段滑块直接提供「项目 / 归档」两个状态入口', () => {
+    const menuSource = read('features', 'cc-agent', 'sidebar', 'MachineSwitcherMenu.tsx');
+    expect(menuSource).toContain("onStatusChange('active')");
+    expect(menuSource).toContain("onStatusChange('archived')");
+    expect(menuSource).toContain("t('ccAgent.sidebar.allSessions')");
+    expect(menuSource).toContain("t('ccAgent.sidebar.archivedTasks')");
+    expect(menuSource).toContain("t('ccAgent.sidebar.activeTasks')");
+    expect(menuSource).not.toContain('nextTaskStatus');
   });
 
   it('非会话视图选机器时切回会话视图(与新建 / 搜索行同惯例,Codex P2)', () => {

@@ -419,7 +419,7 @@ export function WorkLouderCodexKeycapPicker({
             </div>
           </div>
           <div className="px-6 pb-4">
-            <label className="flex h-10 items-center gap-2 rounded-lg border border-[var(--settings-input-border)] bg-[var(--settings-input-bg)] px-3 focus-within:ring-2 focus-within:ring-[var(--focus-ring-soft)]">
+            <label className="search-capsule-control flex h-10 items-center gap-2 rounded-full px-3">
               <Search size={16} className="text-[var(--text-tertiary)]" aria-hidden="true" />
               <input
                 value={query}

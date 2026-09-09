@@ -1,9 +1,10 @@
 /**
  * projectsSidebarSection — 主列表段头控件不变量。
  *
- * 2026-08-13 用户定稿:段头标题即机器范围下拉(MachineSwitcherMenu,「全部任务」
- * 与设备下拉合并),段级收起取消;右侧保留折叠按钮(单层 = 收起所有分组 ↔ 展开;
- * 设备+项目双层 = 循环 收项目层 → 收设备层 → 全部展开,foldState 状态机)与
+ * 2026-09-03 用户定稿:段头为「项目 / 归档」分段滑块 + 机器范围小箭头
+ * (MachineSwitcherMenu),段级收起取消;右侧保留折叠按钮(单层 = 收起所有项目
+ * 文件夹 ↔ 展开;设备+项目双层 = 循环 收项目层 → 收设备层 → 全部展开,foldState
+ * 状态机)与
  * 侧边栏显示设置入口。
  */
 
@@ -14,6 +15,14 @@ import { describe, expect, it } from 'vitest';
 
 const projectsSectionSource = readFileSync(
   resolve(__dirname, '..', 'features', 'cc-agent', 'sidebar', 'sections', 'ProjectsSection.tsx'),
+  'utf8',
+);
+const projectNodeSource = readFileSync(
+  resolve(__dirname, '..', 'features', 'cc-agent', 'sidebar', 'sections', 'ProjectNode.tsx'),
+  'utf8',
+);
+const sidebarUpperSource = readFileSync(
+  resolve(__dirname, '..', 'features', 'cc-agent', 'CCAgentSidebarUpper.tsx'),
   'utf8',
 );
 
@@ -49,7 +58,7 @@ describe('Projects sidebar section', () => {
     expect(projectsSectionSource).toContain(
       "const hasVisibleProjectGroups = mixedEntries.some((entry) => entry.kind === 'project')",
     );
-    expect(projectsSectionSource).toContain('(!hasVisibleProjectGroups || isAllCollapsed)');
+    expect(projectsSectionSource).toContain('!hasVisibleProjectGroups || isAllCollapsed');
     // 平铺时来源标签要覆盖从项目摊出来的会话,不能只喂 dialogues。
     expect(projectsSectionSource).toContain('flattenedSessionsForSourceLabels');
     expect(projectsSectionSource).toContain(
@@ -92,6 +101,17 @@ describe('Projects sidebar section', () => {
       'group-focus-within/sidebar-header:pointer-events-auto',
     );
     expect(headerSource).toContain('className={HEADER_ACTIONS_CLASS}');
+  });
+
+  it('uses delete-project only for archived project menus', () => {
+    expect(projectNodeSource).toContain("{statusFilter === 'archived' ? (");
+    expect(projectNodeSource).toContain("statusFilter !== 'archived'");
+    expect(projectNodeSource).toContain("t('ccAgent.sidebar.projectAction.deleteProject')");
+    expect(projectNodeSource).toContain("'text-[hsl(var(--destructive))]'");
+    expect(sidebarUpperSource).toContain('statusFilter={filter.status}');
+    expect(sidebarUpperSource).toContain("const isArchivedView = statusFilter === 'archived'");
+    expect(sidebarUpperSource).toContain('!isArchivedView');
+    expect(sidebarUpperSource).toContain('onDeleteProject={handleDeleteArchivedProject}');
   });
 
   it('the project tree renders unconditionally (section collapse removed)', () => {
@@ -160,19 +180,23 @@ describe('Projects sidebar section', () => {
     expect(projectsSectionSource).not.toContain('sessions={[entry.session]}');
   });
 
-  it('includes automation groups in the header batch fold state machine', () => {
+  it('batch fold targets project folders only, not automation / dialogue groups', () => {
     expect(projectsSectionSource).toContain(
-      "const hasGroupLayer = mixedEntries.some((entry) => entry.kind !== 'session')",
+      "const hasGroupLayer = mixedEntries.some((entry) => entry.kind === 'project')",
     );
     expect(projectsSectionSource).toContain('useAutomationGroupsCollapsed(');
-    expect(projectsSectionSource).toContain('setAllAutomationGroupsCollapsed(true)');
-    expect(projectsSectionSource).toContain('setAllAutomationGroupsCollapsed(false)');
-    expect(projectsSectionSource).toContain('allAutomationGroupsCollapsed');
+    // 自动任务组 / 对话组不再参与「收起所有分组」批量操作,由各自头行独立折叠。
+    expect(projectsSectionSource).not.toContain('setAllAutomationGroupsCollapsed');
+    expect(projectsSectionSource).not.toContain('allDialogueGroupsCollapsed');
     expect(projectsSectionSource).toContain(
       'automationGroupCollapsed={isAutomationGroupCollapsed}',
     );
     expect(projectsSectionSource).toContain(
       'onAutomationGroupCollapsedChange={setAutomationGroupCollapsed}',
     );
+    // 项目 / 对话组内的「显示全部」快照在批量折叠后仍保留用户选择。
+    expect(projectsSectionSource).toContain('sessionShowAllKeys');
+    expect(projectsSectionSource).toContain('setSessionShowAll(`project:');
+    expect(projectsSectionSource).toContain('setSessionShowAll(`dialogue-group:');
   });
 });

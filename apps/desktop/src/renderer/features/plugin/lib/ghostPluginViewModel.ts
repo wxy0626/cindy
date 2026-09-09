@@ -9,6 +9,7 @@
 import {
   ghostContentKeys,
   ghostPermissionItems,
+  isOfficialGhostId,
   type GhostInstallApproval,
   type GhostPermissionItem,
   type GhostTrustInfo,
@@ -277,7 +278,8 @@ export function toGhostPluginListItem(
     enabled: ghost.enabled,
     canUse: Boolean(manifest.command),
     approvalState: ghost.approval.state,
-    builtin: ghost.builtin === true,
+    // 开发环境可能没有 checkout 随包 seed 目录；官方保留 ID 仍是项目自带插件的稳定身份判据。
+    builtin: ghost.builtin === true || isOfficialGhostId(manifest.id),
     tabPanel: manifest.panel?.position === 'tab',
     hasMainView: manifest.mainView !== undefined,
     mainViewTitle: manifest.mainView ? (manifest.mainView.title ?? manifest.name) : null,

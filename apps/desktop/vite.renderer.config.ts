@@ -340,7 +340,9 @@ const rendererConfig = {
       ...CODEMIRROR_OPTIMIZE_EXCLUDES,
       ...INTERNAL_PURE_PACKAGE_EXCLUDES,
     ],
-    include: ['@tiptap/react'],
+    // 首屏 App.tsx 会间接加载 highlight.js;提前预优化,避免页面启动后才发现新依赖并
+    // 切换 browserHash,旧动态 chunk 被清理后会触发 "Failed to fetch dynamically imported module" 黑屏。
+    include: ['@tiptap/react', 'highlight.js', 'highlight.js/lib/core', 'highlight.js/lib/languages/typescript'],
   },
   server: {
     watch: {

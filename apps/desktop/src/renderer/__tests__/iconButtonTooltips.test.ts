@@ -341,14 +341,12 @@ describe('icon-only button tooltip coverage', () => {
     const pinned = rendererSource('features/cc-agent/sidebar/sections/PinnedSection.tsx');
     const search = rendererSource('features/cc-agent/sidebar/ConversationSearchBox.tsx');
     const rail = rendererSource('features/cc-agent/sidebar/RailNav.tsx');
-    const sessionHeader = rendererSource('features/cc-agent/SessionContentHeader.tsx');
     const tabBar = rendererSource('features/right-sidebar/TabBar.tsx');
 
     expect(automation).toContain("text={t('ccAgent.sidebar.automationGroup.menu.more')}");
     expect(pinned).toContain("text={t('ccAgent.sidebar.viewStyle')}");
     expect(search).toContain("text={t('ccAgent.search.open')}");
     expect(rail).toContain('text={t(`ccAgent.sidebar.railNav.${key}`)}');
-    expect(sessionHeader).toContain("text={t('ccAgent.sessionHeader.moreActions')}");
     expect(tabBar).toContain("text={t('rightSidebar.tabs.addAria')}");
     expect(tabBar).toContain('<Tip text={closeAriaLabel}>');
   });

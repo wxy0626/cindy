@@ -39,8 +39,8 @@
     },
     {
       "id": "surface-hover",
-      "light": "#e5e5e5",
-      "dark": "#3c3c3a"
+      "light": "#e5e5e0",
+      "dark": "#2a2a2a"
     },
     {
       "id": "surface-hover-soft",
@@ -524,8 +524,8 @@
     },
     {
       "id": "sidebar-item-active-border",
-      "light": "var(--sidebar-item-active)",
-      "dark": "var(--sidebar-item-active)"
+      "light": "var(--border-default-hsl)",
+      "dark": "var(--border-default-hsl)"
     },
     {
       "id": "sidebar-search-bg",
@@ -1239,8 +1239,8 @@
     },
     {
       "id": "perm-item-selected-bg",
-      "light": "#f8f8f6",
-      "dark": "#3c3c3a"
+      "light": "var(--model-item-hover)",
+      "dark": "var(--model-item-hover)"
     },
     {
       "id": "perm-auto-selected-text",
@@ -1609,8 +1609,8 @@
     },
     {
       "id": "settings-menu-bg-selected",
-      "light": "#e8e8e6",
-      "dark": "#2c2c2a"
+      "light": "#E2E2DE",
+      "dark": "#333333"
     },
     {
       "id": "settings-menu-border-selected",
@@ -1674,8 +1674,8 @@
     },
     {
       "id": "settings-input-border-focus",
-      "light": "var(--text-tertiary-stone)",
-      "dark": "var(--text-tertiary-stone)"
+      "light": "var(--focus-ring)",
+      "dark": "var(--focus-ring)"
     },
     {
       "id": "settings-input-text",

@@ -8,7 +8,12 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('electron', () => ({
-  app: { isPackaged: true, getPath: () => { throw new Error('not used in tests'); } },
+  app: {
+    isPackaged: true,
+    getPath: () => {
+      throw new Error('not used in tests');
+    },
+  },
   shell: {},
 }));
 vi.mock('../../shared/brandRegion', () => ({
@@ -31,7 +36,14 @@ const EXE = 'C:\\Program Files\\xdt-maker\\xdt-maker.exe';
 const DESKTOP = 'C:\\Users\\u\\Desktop';
 const APPDATA = 'C:\\Users\\u\\AppData\\Roaming';
 const START_MENU = path.join(APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs');
-const TASKBAR = path.join(APPDATA, 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar');
+const TASKBAR = path.join(
+  APPDATA,
+  'Microsoft',
+  'Internet Explorer',
+  'Quick Launch',
+  'User Pinned',
+  'TaskBar',
+);
 const at = (dir: string, name: string) => path.join(dir, `${name}.lnk`);
 
 /** 内存 .lnk 文件系统:path → ShortcutDetails。 */
@@ -45,6 +57,7 @@ function makeHarness(initial: Record<string, Electron.ShortcutDetails>) {
     desktopDir: () => DESKTOP,
     appDataDir: () => APPDATA,
     exists: async (p) => files.has(p),
+    targetExists: async (p) => p === EXE || files.has(p),
     unlink: async (p) => {
       if (!files.delete(p)) throw new Error(`ENOENT ${p}`);
     },
@@ -62,7 +75,10 @@ function makeHarness(initial: Record<string, Electron.ShortcutDetails>) {
   return { files, writes, deps };
 }
 
-const lnk = (target: string, extra?: Partial<Electron.ShortcutDetails>): Electron.ShortcutDetails => ({
+const lnk = (
+  target: string,
+  extra?: Partial<Electron.ShortcutDetails>,
+): Electron.ShortcutDetails => ({
   target,
   ...extra,
 });
@@ -106,7 +122,64 @@ describe('healWindowsShortcuts', () => {
     expect(writes).toHaveLength(0);
   });
 
-  it('新名 .lnk 已存在时只删旧重复项,不覆盖用户现有快捷方式', async () => {
+  it('当前名称 Cindy.lnk 目标已失效时原地修复', async () => {
+    const current = at(DESKTOP, NEW_SHORTCUT_NAME);
+    const staleTarget = 'E:\\AI\\cindy-harness\\packaged-switch\\global\\Cindy.exe';
+    const { files, writes, deps } = makeHarness({
+      [current]: lnk(staleTarget, { icon: staleTarget, iconIndex: 1, appUserModelId: 'old.app' }),
+    });
+
+    await healWindowsShortcuts(deps);
+
+    expect(files.get(current)).toMatchObject({
+      target: EXE,
+      icon: EXE,
+      iconIndex: 0,
+      appUserModelId: EXPECTED_APP_ID,
+    });
+    expect(writes).toContainEqual(expect.objectContaining({ path: current, op: 'update' }));
+  });
+
+  it('当前名称快捷方式目标正确但仍引用外部 ICO 时改用 EXE 内嵌图标', async () => {
+    const current = at(DESKTOP, NEW_SHORTCUT_NAME);
+    const { files, writes, deps } = makeHarness({
+      [current]: lnk(EXE, {
+        icon: 'E:\\AI\\cindy-harness\\cindy\\build\\Cindy-win32-x64\\resources\\icon.ico',
+        iconIndex: 1,
+        appUserModelId: 'old.app',
+      }),
+    });
+
+    await healWindowsShortcuts(deps);
+
+    expect(files.get(current)).toMatchObject({
+      target: EXE,
+      icon: EXE,
+      iconIndex: 0,
+      appUserModelId: EXPECTED_APP_ID,
+    });
+    expect(writes).toContainEqual(expect.objectContaining({ path: current, op: 'update' }));
+  });
+
+  it('当前名称快捷方式目标仍存在但属于其它安装版本时不修改', async () => {
+    const current = at(DESKTOP, NEW_SHORTCUT_NAME);
+    const otherExe = 'D:\\Cindy\\Cindy.exe';
+    const { files, writes, deps } = makeHarness({
+      [current]: lnk(otherExe, { icon: otherExe, appUserModelId: 'other.app' }),
+    });
+    // 另一个安装目录的 exe 仍存在,模拟多版本共存而不是失效快捷方式。
+    deps.targetExists = async (target) =>
+      target === EXE || target === otherExe || files.has(target);
+
+    await healWindowsShortcuts(deps);
+
+    expect(files.get(current)).toEqual(
+      lnk(otherExe, { icon: otherExe, appUserModelId: 'other.app' }),
+    );
+    expect(writes).toHaveLength(0);
+  });
+
+  it('新名 .lnk 已存在时只删旧重复项,保留参数并刷新图标身份', async () => {
     const userOwned = lnk(EXE, { args: '--my-flag' });
     const { files, writes, deps } = makeHarness({
       [at(DESKTOP, NEW_SHORTCUT_NAME)]: userOwned,
@@ -114,8 +187,17 @@ describe('healWindowsShortcuts', () => {
     });
     await healWindowsShortcuts(deps);
     expect(files.has(at(DESKTOP, 'XDMaker'))).toBe(false);
-    expect(files.get(at(DESKTOP, NEW_SHORTCUT_NAME))).toEqual(userOwned);
-    expect(writes).toHaveLength(0);
+    expect(files.get(at(DESKTOP, NEW_SHORTCUT_NAME))).toMatchObject({
+      target: EXE,
+      args: '--my-flag',
+      icon: EXE,
+      iconIndex: 0,
+      appUserModelId: EXPECTED_APP_ID,
+    });
+    expect(writes).toContainEqual(expect.objectContaining({
+      path: at(DESKTOP, NEW_SHORTCUT_NAME),
+      op: 'update',
+    }));
   });
 
   it('任务栏固定项原地 update:文件名不变,icon/AUMID 刷新;已正确则幂等跳过', async () => {

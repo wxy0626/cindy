@@ -302,7 +302,7 @@ export function OneshotModelPinPicker({
                 <span className="truncate">{selectedAgentLabel}</span>
               </button>
 
-              <div className="flex items-center gap-2 rounded-full border border-[var(--model-dropdown-border)] bg-[var(--surface)] px-3 py-[7px]">
+              <div className="search-capsule-control flex items-center gap-2 rounded-full px-3 py-[7px]">
                 <Search size={16} className="shrink-0 text-[var(--text-tertiary)]" />
                 <input
                   ref={searchRef}

@@ -46,6 +46,16 @@ interface PluginManagementPageProps {
   className?: string;
 }
 
+export type CatalogSource = 'external' | 'internal';
+
+interface CatalogSourceSwitcherProps {
+  activeSource: CatalogSource;
+  externalLabel: string;
+  internalLabel: string;
+  ariaLabel: string;
+  onChange: (source: CatalogSource) => void;
+}
+
 /**
  * Plugin / Skill 是同一个管理页面的两个一级 Tab。宽度和水平留白只能在
  * 这个 Frame 中定义,避免两个页面各自调整后再次漂移。
@@ -181,11 +191,10 @@ export function PluginManagementHeader({
       >
         {searchable ? (
           <div
-            className="plugin-management-search-control flex h-9 min-w-[148px] max-w-[260px] flex-1 items-center gap-2 rounded-full border px-3 backdrop-blur-md transition-[width,background-color,border-color,box-shadow] focus-within:border-[var(--focus-ring)] focus-within:ring-2 focus-within:ring-[var(--focus-ring-soft)] motion-reduce:transition-none"
+            className="plugin-management-search-control search-capsule-control flex h-9 min-w-[148px] max-w-[260px] flex-1 items-center gap-2 rounded-full px-3 backdrop-blur-md transition-[width,background-color,border-color,box-shadow] motion-reduce:transition-none"
             style={{
               ...WINDOW_NO_DRAG_STYLE,
               background: 'color-mix(in srgb, var(--surface-elevated-soft) 70%, transparent)',
-              borderColor: 'color-mix(in srgb, var(--border-default) 52%, transparent)',
               boxShadow:
                 'inset 0 1px 0 color-mix(in srgb, var(--surface-elevated) 24%, transparent)',
             }}
@@ -268,6 +277,40 @@ export function PluginManagementPage({ children, className }: PluginManagementPa
   );
 }
 
+/** 外部 / 内部目录共用的二级滑块,保证插件与技能的交互和视觉一致。 */
+export function CatalogSourceSwitcher({
+  activeSource,
+  externalLabel,
+  internalLabel,
+  ariaLabel,
+  onChange,
+}: CatalogSourceSwitcherProps) {
+  return (
+    <div
+      className="plugin-motion-tabs inline-flex shrink-0 rounded-full border p-0.5 backdrop-blur-md"
+      role="tablist"
+      aria-label={ariaLabel}
+      style={{
+        ...WINDOW_NO_DRAG_STYLE,
+        background: 'color-mix(in srgb, var(--surface-chip) 62%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--border-default) 52%, transparent)',
+        boxShadow: 'inset 0 1px 0 color-mix(in srgb, var(--surface-elevated) 24%, transparent)',
+      }}
+    >
+      <TabButton
+        active={activeSource === 'external'}
+        label={externalLabel}
+        onClick={() => onChange('external')}
+      />
+      <TabButton
+        active={activeSource === 'internal'}
+        label={internalLabel}
+        onClick={() => onChange('internal')}
+      />
+    </div>
+  );
+}
+
 function TabButton({
   active,
   label,
@@ -284,7 +327,7 @@ function TabButton({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        'plugin-management-tab h-8 min-w-[88px] select-none rounded-full border border-transparent px-4 text-13 font-medium transition-colors',
+        'plugin-management-tab h-8 min-w-[88px] select-none whitespace-nowrap rounded-full border border-transparent px-4 text-13 font-medium transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
         active
           ? 'plugin-motion-selected text-[var(--text-primary)]'

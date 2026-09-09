@@ -57,36 +57,9 @@ const resources = {
     },
     aiRename: zhCNAiRename,
   },
-  'zh-TW': {
-    common: {
-      ...zhTWCommon,
-      chatgptAuthRecovery: {
-        ...zhTWCommon.chatgptAuthRecovery,
-        devWriteBlocked: '開發環境預設以唯讀方式共用本機 ChatGPT 登入，不能發起登入或改寫憑證。測試 OAuth 只能執行：pnpm restart:desktop:remote -- --isolated-auth --isolated。指令碼驗證獨立沙箱後會自動開放寫入，無需手動設定環境變數。',
-      },
-    },
-    aiRename: zhTWAIName,
-  },
-  ja: {
-    common: {
-      ...jaCommon,
-      chatgptAuthRecovery: {
-        ...jaCommon.chatgptAuthRecovery,
-        devWriteBlocked: '開発環境では、このコンピューターの ChatGPT ログインを既定で読み取り専用として共有するため、OAuth の開始や認証情報の変更はできません。OAuth をテストする場合は、pnpm restart:desktop:remote -- --isolated-auth --isolated を実行してください。スクリプトはサンドボックスを検証した後にのみ書き込みを許可します。環境変数を手動で設定する必要はありません。',
-      },
-    },
-    aiRename: jaAiRename,
-  },
-  ko: {
-    common: {
-      ...koCommon,
-      chatgptAuthRecovery: {
-        ...koCommon.chatgptAuthRecovery,
-        devWriteBlocked: '개발 환경은 기본적으로 이 컴퓨터의 ChatGPT 로그인을 읽기 전용으로 공유하므로 OAuth를 시작하거나 자격 증명을 변경할 수 없습니다. OAuth를 테스트하려면 pnpm restart:desktop:remote -- --isolated-auth --isolated을 실행하세요. 스크립트가 샌드박스를 검증한 뒤에만 쓰기를 허용하므로 환경 변수를 직접 설정할 필요가 없습니다.',
-      },
-    },
-    aiRename: koAiRename,
-  },
+  'zh-TW': { common: zhTWCommon, aiRename: zhTWAIName },
+  ja: { common: jaCommon, aiRename: jaAiRename },
+  ko: { common: koCommon, aiRename: koAiRename },
 } as const;
 
 // 同步 init —— 没有 backend / detector / suspense，i18n.init 立即返回。

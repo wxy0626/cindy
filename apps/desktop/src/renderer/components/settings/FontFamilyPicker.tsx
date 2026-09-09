@@ -122,7 +122,7 @@ export function FontFamilyPicker({
             disabled={!value.trim()}
             className={cn(
               'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl',
-              'border border-[var(--settings-input-border)]',
+              'settings-dropdown-trigger',
               'bg-[var(--settings-input-bg)] text-[var(--settings-input-text)]',
               'transition-colors hover:bg-[var(--settings-menu-bg-hover)]',
               'disabled:cursor-default disabled:opacity-40 disabled:hover:bg-[var(--settings-input-bg)]',
@@ -205,7 +205,7 @@ export function FontFamilyPicker({
                       className={cn(
                         'flex h-[34px] w-full items-center justify-between rounded-[8px] px-3',
                         'transition-colors hover:bg-[var(--settings-menu-bg-hover)]',
-                        isSelected && 'bg-[var(--settings-menu-bg-hover)]',
+                        isSelected && 'border border-[var(--focus-ring)] bg-[var(--settings-menu-bg-selected)]',
                       )}
                     >
                       <span

@@ -634,6 +634,80 @@ describe('SessionCard visual cases', () => {
     expect(screen.getByText('已归档的历史分析任务')).toBeTruthy();
   });
 
+  it.each(['list', 'card'] as const)(
+    'archived %s mode keeps undo and trash icons until trash is clicked',
+    (variant) => {
+      const onAction = vi.fn();
+      renderCase('archived', { variant: variant === 'list' ? 'list' : undefined, onAction });
+
+      expect(screen.getByRole('button', { name: '取消归档' })).toBeTruthy();
+      const trashButton = screen.getByRole('button', { name: '删除' });
+      expect(trashButton.querySelector('svg')).not.toBeNull();
+      // 默认状态下两个图标不会常驻；通过 hover/focus CSS 显示。
+      expect(trashButton.parentElement?.className).toContain('hidden');
+      expect(trashButton.parentElement?.className).not.toContain('opacity-0');
+      expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
+
+      fireEvent.click(trashButton);
+
+      const confirmDelete = screen.getByRole('button', { name: '删除' });
+      expect(confirmDelete).toBeTruthy();
+      expect(confirmDelete.querySelector('svg')).toBeNull();
+      expect(screen.queryByRole('button', { name: '取消归档' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
+      expect(confirmDelete.className).toContain('text-sm');
+      expect(confirmDelete.className).toContain('font-semibold');
+      expect(confirmDelete.className).toContain('text-[hsl(var(--destructive))]');
+      expect(onAction).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['list', 'card'] as const)(
+    'archived %s mode hides the delete confirmation when clicking outside',
+    (variant) => {
+      renderCase('archived', { variant: variant === 'list' ? 'list' : undefined });
+
+      fireEvent.click(screen.getByRole('button', { name: '删除' }));
+      expect(screen.getByRole('button', { name: '删除' }).querySelector('svg')).toBeNull();
+
+      fireEvent.mouseDown(document.body);
+
+      expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
+      expect(screen.getByRole('button', { name: '删除' }).querySelector('svg')).not.toBeNull();
+    },
+  );
+
+  it.each(['list', 'card'] as const)(
+    'archived %s mode sends delete-now only after confirmation',
+    (variant) => {
+      const onAction = vi.fn();
+      renderCase('archived', { variant: variant === 'list' ? 'list' : undefined, onAction });
+
+      fireEvent.click(screen.getByRole('button', { name: '删除' }));
+      const confirmDelete = screen
+        .getAllByRole('button', { name: '删除' })
+        .find((button) => button.querySelector('svg') === null);
+      expect(confirmDelete).toBeTruthy();
+      fireEvent.click(confirmDelete!);
+
+      expect(onAction).toHaveBeenCalledWith('archived', 'delete-now');
+    },
+  );
+
+  it.each(['list', 'card'] as const)(
+    'archived %s mode uses muted selected highlighting',
+    (variant) => {
+      renderCase('archived', {
+        variant: variant === 'list' ? 'list' : undefined,
+        isActive: true,
+      });
+
+      const row = sessionRowEl();
+      expect(row.className).toContain('bg-sidebar-item-hover');
+      expect(row.className).not.toContain('bg-sidebar-item-active');
+    },
+  );
+
   it('matches text-mode action chrome in list mode while preserving card buttons', () => {
     const visualCase = sessionCardVisualCases.find((item) => item.id === 'short-idle-cc');
     if (!visualCase) throw new Error('Missing idle visual case');
@@ -673,7 +747,7 @@ describe('SessionCard visual cases', () => {
     // C 期起 time 包在 SessionInfoMeta 的 span 里;最近的 div 祖先才是让位容器。
     // 信息层与操作占位叠在同一格,槽根仍是 group/slot,中间多一层 max-content grid。
     const listTimeFade = listContainer.querySelector('time')?.closest('div');
-    expect(listTimeFade?.className).toContain('group-focus-within/slot:opacity-0');
+    expect(listTimeFade?.className).toContain('group-focus-within/slot:hidden');
     expect(listTimeFade?.closest('[class*="group/slot"]')?.className).toContain('group/slot');
     cleanup();
 
@@ -733,7 +807,8 @@ describe('SessionCard visual cases', () => {
       expect(confirmPill.className).not.toContain('transparent');
       if (variant === 'list') {
         // 让位容器是 time 最近的 div 祖先(time 嵌在 SessionInfoMeta span 内)。
-        expect(container.querySelector('time')?.closest('div')?.className).toContain('invisible');
+        // 归档确认时直接隐藏时间，而不是让时间与确认按钮透明叠放。
+        expect(container.querySelector('time')?.closest('div')?.className).toContain('hidden');
         const confirmReserve = Array.from(container.querySelectorAll<HTMLElement>('span')).find(
           (node) =>
             node.getAttribute('aria-hidden') === 'true' &&

@@ -226,6 +226,7 @@ import {
   listMessagesForAgentHandoff,
   findLatestUserMessageForRebuild,
   patchMessageAgentMeta,
+  patchMessageAgentMetaWithResult,
   supersedeRetriedUserTurn,
   updateMessageContent,
 } from '../localDb/ipc/messages.js';
@@ -2763,6 +2764,75 @@ async function readSessionModelForUsage(sessionId: string): Promise<string> {
   }
 }
 
+/** 回合结束后把上下文详情写回同一条 assistant 消息，供历史重载直接读取。 */
+interface ContextUsageSnapshotBoundary {
+  sessionId: string;
+  session: WiredSession;
+  instanceId: string;
+  generation: number;
+  assistantClientId: string;
+}
+
+/** 判断上下文快照写入是否仍属于原来的会话实例和回合。 */
+function isContextUsageSnapshotBoundaryCurrent(
+  boundary: ContextUsageSnapshotBoundary,
+): boolean {
+  return (
+    wiredSessionsById.get(boundary.sessionId)?.session === boundary.session &&
+    boundary.session.instanceId === boundary.instanceId &&
+    currentSessionTurnBoundaryGeneration(boundary.sessionId) === boundary.generation
+  );
+}
+
+/**
+ * 在消息落库后读取一次上下文详情并缓存；读取动作不进入 durable FIFO，避免阻塞其它消息写入。
+ * 失败只影响悬浮卡的来源明细，不影响回合结果、用量统计或费用记账。
+ */
+async function persistContextUsageSnapshotAfterTurn(
+  boundary: ContextUsageSnapshotBoundary,
+): Promise<void> {
+  await drainPersistQueue();
+  if (!isContextUsageSnapshotBoundaryCurrent(boundary)) return;
+
+  let contextUsage: ContextUsageData;
+  try {
+    contextUsage = await boundary.session.getContextUsage();
+  } catch (error) {
+    log.debug('context usage snapshot after turn failed', {
+      sessionId: boundary.sessionId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
+  if (!isContextUsageSnapshotBoundaryCurrent(boundary)) return;
+
+  try {
+    await enqueueDurableWrite(
+      `context-usage:${boundary.sessionId}:${boundary.assistantClientId}`,
+      async (ownerScope) => {
+        if (!isContextUsageSnapshotBoundaryCurrent(boundary)) return false;
+        const patched = await patchMessageAgentMetaWithResult(
+          boundary.sessionId,
+          boundary.assistantClientId,
+          { contextUsage },
+        );
+        if (!patched || !isContextUsageSnapshotBoundaryCurrent(boundary)) return false;
+        return broadcastMessageAgentMetaUpdate(
+          boundary.sessionId,
+          boundary.assistantClientId,
+          ownerScope,
+        );
+      },
+    );
+  } catch (error) {
+    log.debug('context usage snapshot persistence skipped', {
+      sessionId: boundary.sessionId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 /**
  * 本轮实际模型快照。key=sessionId, value=turn start 时启动的 model 读取 promise。
  * 只在第一次 isRunning:true 时写入,避免后续 progress status 在用户切模型后覆盖本轮归因。
@@ -4881,6 +4951,24 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
           // 钉住,review P1-1)。
           clearCodexPlanRowsForSession(session.id);
         }
+        // 普通 Claude/Pi done 后缓存完整上下文详情；悬浮卡只读这份历史快照，不在进入时实时请求。
+        if (
+          event.type === 'done' &&
+          (event.source === 'claude-code' || event.source === 'pi') &&
+          !isContinuationBoundary &&
+          (event.data as { silentStop?: unknown } | null | undefined)?.silentStop !== true &&
+          !isPairedFailedTurnDone &&
+          event.turnScope !== 'background' &&
+          turnBoundaryAssistantPersistId
+        ) {
+          void persistContextUsageSnapshotAfterTurn({
+            sessionId: session.id,
+            session,
+            instanceId: session.instanceId,
+            generation: currentSessionTurnBoundaryGeneration(session.id),
+            assistantClientId: turnBoundaryAssistantPersistId,
+          });
+        }
         preserveTurnPersistStateForBackground(session.id);
         resetTurnPersistState(session.id);
         // sidebar-card-mode: 摘要触发挪到本轮 assistant 块 flush 入队之后(原先在
@@ -5019,6 +5107,19 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
                 cache_read_input_tokens?: number;
                 cache_creation_input_tokens?: number;
               };
+              /** Claude turn 按主代理/子代理拆分的 token 桶。 */
+              parentUsage?: {
+                inputTokens?: number;
+                outputTokens?: number;
+                cacheReadTokens?: number;
+                cacheCreateTokens?: number;
+              };
+              subagentUsage?: {
+                inputTokens?: number;
+                outputTokens?: number;
+                cacheReadTokens?: number;
+                cacheCreateTokens?: number;
+              };
               modelUsage?: Record<string, unknown>;
               usageSegments?: unknown;
               usageSegmentsComplete?: unknown;
@@ -5071,6 +5172,47 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
           );
           lastReportedModelUsageBySession.set(session.id, next);
           modelUsageDeltas = deltas;
+        }
+        // Claude 的原始 usage 可能是进程级累计值；会话 token 只能使用本轮分桶，
+        // 没有分桶时再退回已经做过 delta 化的 modelUsage/完整 request segment。
+        /** 读取本轮分桶中的有限非负 token，避免把累计快照重复记账。 */
+        const safeClaudeToken = (value: unknown): number =>
+          typeof value === 'number' && Number.isFinite(value) && value > 0
+            ? Math.floor(value)
+            : 0;
+        const claudeScopedUsage = [doneData?.parentUsage, doneData?.subagentUsage];
+        const hasClaudeScopedUsage = claudeScopedUsage.some((bucket) => bucket != null);
+        const claudeTurnTokenTotal = hasClaudeScopedUsage
+          ? claudeScopedUsage.reduce(
+              (sum, bucket) =>
+                sum +
+                safeClaudeToken(bucket?.inputTokens) +
+                safeClaudeToken(bucket?.outputTokens) +
+                safeClaudeToken(bucket?.cacheReadTokens) +
+                safeClaudeToken(bucket?.cacheCreateTokens),
+              0,
+            )
+          : claudeUsageSegmentsComplete
+            ? (() => {
+                const totals = sumTurnUsageSegments(claudeUsageSegments ?? []);
+                return (
+                  totals.inputTokens +
+                  totals.outputTokens +
+                  totals.cacheReadTokens +
+                  totals.cacheCreateTokens
+                );
+              })()
+            : (modelUsageDeltas ?? []).reduce(
+                (sum, delta) =>
+                  sum +
+                  safeClaudeToken(delta.inputTokensDelta) +
+                  safeClaudeToken(delta.outputTokensDelta) +
+                  safeClaudeToken(delta.cacheReadTokensDelta) +
+                  safeClaudeToken(delta.cacheCreateTokensDelta),
+                0,
+              );
+        if (claudeTurnTokenTotal > 0) {
+          void recordSessionTurnTokens(session.id, claudeTurnTokenTotal);
         }
         const outputLagTiming = claudeOutputLagTimingGuard.evaluate(
           session.id,
@@ -5249,6 +5391,8 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
                 perModel,
                 claudeGenerationDurationMs,
                 claudeTurnDurationMs,
+                doneData?.parentUsage,
+                doneData?.subagentUsage,
               );
               recordTurnSpend(turnMoney);
               recordSessionTurnSpend(session.id, turnMoney);
@@ -5285,6 +5429,8 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
                 perModel,
                 claudeGenerationDurationMs,
                 claudeTurnDurationMs,
+                doneData?.parentUsage,
+                doneData?.subagentUsage,
               );
               if (turnEstimatedValue && turnEstimatedValue.amount > 0) {
                 const changedScheduleId = await recordSchedulerTurnCost({
@@ -5332,6 +5478,8 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
               undefined,
               claudeGenerationDurationMs,
               claudeTurnDurationMs,
+              doneData?.parentUsage,
+              doneData?.subagentUsage,
             );
             // 本分支有三个"记不了钱"的出口(本轮 cost 未增长 / 订阅直连 / 非明确
             // provider-api 路由)。只保留可证明的模型与时长；进程累计 usage 不能冒充本轮 token。
@@ -5438,6 +5586,19 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
             completionTokens?: number;
             reasoningTokens?: number;
             cachedTokens?: number;
+            /** Codex turn 按主代理/子代理拆分的 token 桶。 */
+            parentUsage?: {
+              inputTokens?: number;
+              outputTokens?: number;
+              cacheReadTokens?: number;
+              cacheCreateTokens?: number;
+            };
+            subagentUsage?: {
+              inputTokens?: number;
+              outputTokens?: number;
+              cacheReadTokens?: number;
+              cacheCreateTokens?: number;
+            };
             segments?: unknown;
             durationMs?: number;
             turnDurationMs?: number;
@@ -5537,6 +5698,8 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
               model: turnModel,
               durationMs: u.durationMs,
               turnDurationMs: u.turnDurationMs,
+              parentUsage: u.parentUsage,
+              subagentUsage: u.subagentUsage,
             });
             const recordCodexUsageOnly = async () => {
               if (!turnAssistantPersistId) return;
@@ -5665,6 +5828,21 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
         turnModelPromiseBySession.delete(session.id);
         const rawUsage = (event.data as { usage?: unknown } | undefined)?.usage;
         if (rawUsage && typeof rawUsage === 'object') {
+          /** Pi done 事件携带的标准主代理/子代理 token 分桶。 */
+          const piScopedUsage = rawUsage as {
+            parentUsage?: {
+              inputTokens?: number;
+              outputTokens?: number;
+              cacheReadTokens?: number;
+              cacheCreateTokens?: number;
+            };
+            subagentUsage?: {
+              inputTokens?: number;
+              outputTokens?: number;
+              cacheReadTokens?: number;
+              cacheCreateTokens?: number;
+            };
+          };
           const tokens = piUsageToTokens(
             rawUsage as {
               inputTokens?: number;
@@ -5769,8 +5947,13 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
               models: [...groupedSegments.keys()],
               durationMs,
               turnDurationMs,
+              parentUsage: piScopedUsage.parentUsage,
+              subagentUsage: piScopedUsage.subagentUsage,
             });
 
+            // daily_model_usage 的 token 行先写入；后续价格、消息或 scheduler 失败时，
+            // catch 只能补写尚未尝试过的 token 行，避免同一轮重复累计。
+            let piDailyTokenRowsWritten = false;
             try {
               const pricing =
                 billingRoute === 'xd-gateway'
@@ -5842,6 +6025,7 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
                 );
               }
               await Promise.allSettled(modelWrites);
+              piDailyTokenRowsWritten = true;
               void rebroadcastTodaySpend();
               const actualMoney = actualMonies.length > 0 ? addRegionalMoney(actualMonies) : null;
               const estimatedMoney =
@@ -5854,6 +6038,8 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
                 perModelCost,
                 durationMs,
                 turnDurationMs,
+                parentUsage: piScopedUsage.parentUsage,
+                subagentUsage: piScopedUsage.subagentUsage,
               });
               if (actualMoney) {
                 void recordTurnSpend(actualMoney);
@@ -5877,19 +6063,21 @@ export function wireSessionToIpc(session: ReturnType<Maker['getSession']>): void
               }
             } catch {
               // Price/catalog failure must not lose token/cache facts.
-              const writes = [...groupedSegments].map(([model, group]) =>
-                recordModelTurnUsage({
-                  agentKind: 'pi',
-                  model: isSubscriptionValue ? piSubscriptionUsageModelKey(model) : model,
-                  money: isSubscriptionValue ? unpricedSubscriptionValueMarker() : undefined,
-                  inputTokensDelta: group.tokens.inputTokens,
-                  outputTokensDelta: group.tokens.outputTokens,
-                  cacheReadTokensDelta: group.tokens.cacheReadTokens,
-                  cacheCreateTokensDelta: group.tokens.cacheCreateTokens,
-                }),
-              );
-              await Promise.allSettled(writes);
-              void rebroadcastTodaySpend();
+              if (!piDailyTokenRowsWritten) {
+                const writes = [...groupedSegments].map(([model, group]) =>
+                  recordModelTurnUsage({
+                    agentKind: 'pi',
+                    model: isSubscriptionValue ? piSubscriptionUsageModelKey(model) : model,
+                    money: isSubscriptionValue ? unpricedSubscriptionValueMarker() : undefined,
+                    inputTokensDelta: group.tokens.inputTokens,
+                    outputTokensDelta: group.tokens.outputTokens,
+                    cacheReadTokensDelta: group.tokens.cacheReadTokens,
+                    cacheCreateTokensDelta: group.tokens.cacheCreateTokens,
+                  }),
+                );
+                await Promise.allSettled(writes);
+                void rebroadcastTodaySpend();
+              }
               if (turnAssistantPersistId && usageOnlyDetails) {
                 await recordTurnUsageOnMessage({
                   sessionId: session.id,

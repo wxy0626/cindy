@@ -445,6 +445,8 @@ interface AuthUser {
   name: string;
   avatar: string | null;
   email: string | null;
+  /** 账号按钮安全展示值；中国手机号已脱敏。 */
+  accountLabel?: string;
   defaultModel: string;
   defaultEffort: string;
   membershipKind: 'personal' | 'org';
@@ -1130,7 +1132,17 @@ interface ElectronAPI {
   /** 运行期端点清单(main 启动时远程 → 缓存 → 烘焙解析;重启生效)。 */
   clientEndpoints: { websiteUrl: string };
   appDisplayVersion: string;
+  appSemanticVersion: string;
   appDisplayVersionDetail: string;
+  appIsPackaged: boolean;
+  /** 开发版切换到 Global 构建并重启整套 Desktop。 */
+  switchDevRegion: (targetRegion: 'cn' | 'global') => Promise<{ ok: true }>;
+  /** 当前启动选择的登录区域。 */
+  currentCindyRegion: 'cn' | 'global';
+  /** 首次启动没有区域参数时显示版本选择器。 */
+  hasExplicitCindyRegion: boolean;
+   /** 选择登录区域并加载对应登录状态。 */
+   selectCindyRegion: (targetRegion: 'cn' | 'global') => Promise<DesktopLoginActionResult>;
   preferredSystemLocale: ApplicationMenuLocale;
   onLocaleChanged?: (cb: (locale: import('../shared/locale').SupportedLocale) => void) => () => void;
   getDeviceId: () => Promise<string>;
@@ -2078,7 +2090,9 @@ interface ElectronAPI {
   authLogout: () => Promise<void>;
   authListAccounts: () => Promise<DesktopAccountSwitcherSnapshot>;
   authSyncAccounts: () => Promise<DesktopAccountSwitcherSnapshot>;
-  authSwitchAccount: (accountKey: string) => Promise<void>;
+  authSwitchAccount: (
+    request: string | import('../shared/authIpc').DesktopAccountSwitchRequest,
+  ) => Promise<void>;
   authBeginAddAccount: () => Promise<DesktopLoginActionResult>;
   authCancelAddAccount: () => Promise<void>;
   authEnterLocal: () => Promise<AuthStateChangePayload>;
@@ -4323,6 +4337,7 @@ interface ElectronAPI {
         writableDirs?: string[];
       }) => Promise<import('@/lib/ccAgent.types').Session>;
       get: (id: string) => Promise<import('@/lib/ccAgent.types').Session>;
+      permanentDeleteArchived: (ids: string[]) => Promise<{ deleted: number }>;
       resolveReferences: (
         sessionIds: string[],
       ) => Promise<import('../shared/sessionReference').SessionReference[]>;
@@ -5813,6 +5828,7 @@ interface ElectronAPI {
       get: (id: string) => Promise<unknown>;
       create: (input: unknown) => Promise<unknown>;
       update: (id: string, patch: unknown) => Promise<unknown>;
+      permanentDeleteArchived: (ids: string[]) => Promise<{ deleted: number }>;
       delete: (id: string) => Promise<{ deleted: boolean }>;
       merge: (targetId: string, sourceId: string) => Promise<unknown>;
       resolve: (value: string, opts?: unknown) => Promise<unknown[]>;

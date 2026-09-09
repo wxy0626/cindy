@@ -8,6 +8,8 @@ import type {
 } from 'react';
 
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
+import type { LocalProjectSyncOptions } from '../../../shared/localProjectSync';
 
 import { PANEL_FIXED_SCALE } from './loginScale';
 import {
@@ -988,6 +990,202 @@ export function LoginConsentRow({
  * 同口径)。未复用 confirm-dialog.tsx:登录皮肤需要设计 px 绝对坐标 + 恒定缩放
  * + login-* token 全套,与通用确认弹窗结构不兼容,故按 §14.2 语义自绘等价实现。
  */
+/** 本地项目同步设置面板；调用方持有草稿，取消不会提交任何开关。 */
+export function LoginLocalProjectSyncDialog({
+  options,
+  fields,
+  onOptionChange,
+  enableAllLabel,
+  disableAllLabel,
+  title,
+  description,
+  confirmLabel,
+  cancelLabel,
+  onConfirm,
+  onCancel,
+}: {
+  options: LocalProjectSyncOptions;
+  fields: ReadonlyArray<{
+    key: keyof LocalProjectSyncOptions;
+    label: string;
+    description: string;
+  }>;
+  onOptionChange: (key: keyof LocalProjectSyncOptions, checked: boolean) => void;
+  /** 一键设置全部本地共享选项，避免用户逐项点击。 */
+  enableAllLabel: string;
+  disableAllLabel: string;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const firstSwitchRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    // 模态打开时锁住背景并把焦点放到第一项，关闭后归还到入口按钮。
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    firstSwitchRef.current?.focus();
+    const root = containerRef.current;
+    const inerted: HTMLElement[] = [];
+    if (root?.parentElement) {
+      for (const child of Array.from(root.parentElement.children)) {
+        if (child !== root && child instanceof HTMLElement && !child.inert) {
+          child.inert = true;
+          inerted.push(child);
+        }
+      }
+    }
+    return () => {
+      for (const element of inerted) element.inert = false;
+      openerRef.current?.focus();
+    };
+  }, []);
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const root = containerRef.current;
+    if (!root) return;
+    const focusables = Array.from(
+      root.querySelectorAll<HTMLElement>('button:not([disabled]), [role="switch"]:not([disabled])'),
+    );
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || !root.contains(active))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (active === last || !root.contains(active))) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      data-testid="login-local-project-sync-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="login-local-project-sync-title"
+      aria-describedby="login-local-project-sync-description"
+      tabIndex={-1}
+      // 侧栏账号列表的 Radix 弹层使用 z-[10000]；复用该面板时必须覆盖在
+      // 账号列表之上，登录页本身仍保持同一套模态层语义。
+      className="fixed inset-0 z-[10001] grid place-items-center outline-none"
+      style={{ background: LOGIN_COLORS.consentOverlay }}
+      onKeyDown={handleKeyDown}
+      onMouseDown={(event) => {
+        // 点击遮罩只关闭弹窗并丢弃草稿，面板内部点击不会触发关闭。
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <div
+        className="relative box-border flex w-[820px] flex-col rounded-[36px] p-[44px]"
+        style={{
+          minHeight: 760,
+          // 弹窗按登录皮肤固定比例缩放；按反比例限制布局宽度，保证窄窗口不横向溢出。
+          maxWidth: `calc(${100 / PANEL_FIXED_SCALE}vw - ${32 / PANEL_FIXED_SCALE}px)`,
+          background: LOGIN_COLORS.panelBg,
+          boxShadow: 'inset 0 0 0 1px ' + LOGIN_COLORS.panelBorder,
+          transform: `scale(${PANEL_FIXED_SCALE})`,
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <h2 id="login-local-project-sync-title" className="text-center font-bold" style={{ fontSize: 32, lineHeight: '38px', color: LOGIN_COLORS.titleText }}>
+          {title}
+        </h2>
+        <p id="login-local-project-sync-description" className="mt-4 text-center" style={{ fontSize: 20, lineHeight: '30px', color: LOGIN_COLORS.secondaryText }}>
+          {description}
+        </p>
+        <div className="mt-5 flex justify-end gap-3" role="group" aria-label={title}>
+          <button
+            type="button"
+            data-testid="login-local-project-sync-enable-all"
+            onClick={() => {
+              for (const field of fields) onOptionChange(field.key, true);
+            }}
+            className="h-10 rounded-full border px-5 font-bold transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-soft)]"
+            style={{ borderColor: LOGIN_COLORS.primaryButtonBorder, background: LOGIN_COLORS.panelBg, color: LOGIN_COLORS.controlText, fontSize: 16 }}
+          >
+            {enableAllLabel}
+          </button>
+          <button
+            type="button"
+            data-testid="login-local-project-sync-disable-all"
+            onClick={() => {
+              for (const field of fields) onOptionChange(field.key, false);
+            }}
+            className="h-10 rounded-full border px-5 font-bold transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-soft)]"
+            style={{ borderColor: LOGIN_COLORS.primaryButtonBorder, background: LOGIN_COLORS.panelBg, color: LOGIN_COLORS.controlText, fontSize: 16 }}
+          >
+            {disableAllLabel}
+          </button>
+        </div>
+        <div className="mt-5 flex flex-col" role="group" aria-label={title}>
+          {fields.map((field, index) => (
+            <div
+              key={field.key}
+              className="flex min-h-[82px] items-center gap-5 border-b border-[var(--border-subtle)] py-3"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="font-bold" style={{ fontSize: 21, lineHeight: '28px', color: LOGIN_COLORS.controlText }}>
+                  {field.label}
+                </div>
+                <div className="break-words" style={{ fontSize: 17, lineHeight: '24px', color: LOGIN_COLORS.secondaryText }}>
+                  {field.description}
+                </div>
+              </div>
+              <Switch
+                ref={
+                  index === 0
+                    ? (node) => {
+                        firstSwitchRef.current = node;
+                      }
+                    : undefined
+                }
+                data-testid={`login-local-project-sync-${field.key}`}
+                checked={options[field.key]}
+                onCheckedChange={(checked) => onOptionChange(field.key, checked)}
+                aria-label={field.label}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="mt-7 flex justify-end gap-4">
+          <button
+            type="button"
+            data-testid="login-local-project-sync-cancel"
+            onClick={onCancel}
+            className="h-12 rounded-full border px-8 font-bold transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-soft)]"
+            style={{ borderColor: LOGIN_COLORS.primaryButtonBorder, background: LOGIN_COLORS.panelBg, color: LOGIN_COLORS.controlText, fontSize: 18 }}
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            data-testid="login-local-project-sync-confirm"
+            onClick={onConfirm}
+            className="h-12 rounded-full border px-8 font-bold transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-soft)]"
+            style={{ borderColor: LOGIN_COLORS.primaryButtonBorder, background: LOGIN_COLORS.primaryButtonBg, color: LOGIN_COLORS.primaryButtonText, fontSize: 18 }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LoginConsentDialog({
   title,
   body,

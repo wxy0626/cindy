@@ -16,6 +16,7 @@ import {
   isValidDirDist,
   listSiblingWorktreeRoots,
   readInstalledVersion,
+  requiredBinFiles,
   SUPPORTED_BINARY_KINDS,
   supportsCdnFallback,
   tryReuseFromSiblingWorktree,
@@ -56,6 +57,18 @@ test('binFileFor: win32 gets .exe, other platforms get bare name', () => {
   assert.equal(binFileFor('rg', 'win32-x64'), 'rg.exe');
   assert.equal(binFileFor('claude', 'darwin-arm64'), 'claude');
   assert.equal(binFileFor('codex', 'linux-x64'), 'codex');
+});
+
+test('requiredBinFiles: Codex includes the code-mode host companion', () => {
+  assert.deepEqual(requiredBinFiles('codex', 'win32-x64'), [
+    'codex.exe',
+    'codex-code-mode-host.exe',
+  ]);
+  assert.deepEqual(requiredBinFiles('codex', 'linux-x64'), [
+    'codex',
+    'codex-code-mode-host',
+  ]);
+  assert.deepEqual(requiredBinFiles('claude', 'win32-x64'), ['claude.exe']);
 });
 
 test('readInstalledVersion: trims content, null on missing/empty', () => {

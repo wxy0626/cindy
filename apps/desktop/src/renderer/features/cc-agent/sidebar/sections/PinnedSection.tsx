@@ -48,7 +48,7 @@ import { MENU_CONTENT_CLASS, MENU_ITEM_CLASS } from '../menuStyles';
 import { SectionCollapse } from '../SectionCollapse';
 import { CardMasonry } from '../CardMasonry';
 import { SessionItem } from '../SessionItem';
-import type { SessionClickHandler } from '../SessionItem';
+import type { SessionAction, SessionClickHandler } from '../SessionItem';
 import { SessionCard } from '../SessionCard';
 import type { ProjectNode as ProjectNodeData } from '../../lib/projectGrouping';
 import { buildSessionSourceLabelMap } from '../../lib/sessionSourceLabel';
@@ -163,7 +163,7 @@ export interface PinnedSectionProps {
   notifications: ReadonlySet<string>;
   selectedSessionIds?: ReadonlySet<string>;
   onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
+  onAction: (id: string, action: SessionAction) => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   onMoveSession?: (id: string, target: SessionMoveTarget) => void;

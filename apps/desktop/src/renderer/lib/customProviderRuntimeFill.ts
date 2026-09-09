@@ -1,5 +1,7 @@
+import { PI_REASONING_EFFORTS } from '@cindy/model-providers';
 import type {
   AgentKind,
+  PiReasoningEffort,
   ProviderRuntimeModelConfig,
   ProviderWireProtocol,
 } from '@cindy/model-providers';
@@ -141,10 +143,38 @@ function canonicalHeaders(headers: RuntimeFillHeaderRow[]) {
   return [...byName].map(([name, value]) => ({ name, value }));
 }
 
+/** 填充到 Pi 时的默认推理档位：PI_REASONING_EFFORTS 按从低到高排列，末位即为最高档。 */
+const PI_FILL_REASONING_DEFAULT: PiReasoningEffort =
+  PI_REASONING_EFFORTS[PI_REASONING_EFFORTS.length - 1];
+
+/**
+ * 为填充进 Pi 的模型套上默认能力：默认开启图片输入与推理，
+ * 推理档位全部勾选、默认档位取最高档。
+ * 目标里同 id 模型已配置的 piApi 属于 Pi 专属元数据，继续沿用以避免丢失。
+ */
+function piFillModel(
+  sourceModel: ProviderRuntimeModelConfig,
+  existing: ProviderRuntimeModelConfig | undefined,
+): ProviderRuntimeModelConfig {
+  return savedCustomProviderModelShape(
+    {
+      ...sourceModel,
+      ...(existing?.piApi ? { piApi: existing.piApi } : {}),
+      supportsImageInput: true,
+      reasoning: true,
+      reasoningEfforts: [...PI_REASONING_EFFORTS],
+      reasoningDefaultEffort: PI_FILL_REASONING_DEFAULT,
+    },
+    true,
+  );
+}
+
 /**
  * Project source models into the exact shape that the target runtime will save.
  * Pi-only capability metadata belongs to the Pi runtime, so portable fills preserve
  * it for matching target model ids instead of silently deleting it.
+ * Filling into Pi also turns on the model capabilities that Pi can express but the
+ * portable source shape cannot carry, so the copied models arrive usable by default.
  */
 function modelsForTarget(
   sourceModels: ProviderRuntimeModelConfig[],
@@ -158,20 +188,7 @@ function modelsForTarget(
     if (sourceAgent === 'pi') return savedCustomProviderModelShape(sourceModel, true);
 
     const portable = savedCustomProviderModelShape(sourceModel, false);
-    const existing = targetById.get(portable.id);
-    return {
-      ...portable,
-      ...(existing?.supportsImageInput === true ? { supportsImageInput: true } : {}),
-      ...(existing?.reasoning === true && existing.reasoningEfforts?.length
-        ? {
-            reasoning: true,
-            reasoningEfforts: [...existing.reasoningEfforts],
-            ...(existing.reasoningDefaultEffort
-              ? { reasoningDefaultEffort: existing.reasoningDefaultEffort }
-              : {}),
-          }
-        : {}),
-    };
+    return piFillModel(portable, targetById.get(portable.id));
   });
 }
 

@@ -31,7 +31,7 @@ import { sessionActivityMs } from '../../lib/dateSessionGrouping';
 import { SectionCollapse } from '../SectionCollapse';
 import { getDialogueCollapseLimit } from '../../lib/sidebarCollapseConfig';
 import { SessionEntryList } from '../SessionEntryList';
-import type { SessionClickHandler } from '../SessionItem';
+import type { SessionAction, SessionClickHandler } from '../SessionItem';
 import type {
   AutomationScheduleAction,
   AutomationScheduleSessionInfo,
@@ -79,7 +79,7 @@ export interface DialogueSectionProps {
   scheduleSessionIndex: ReadonlyMap<string, AutomationScheduleSessionInfo>;
   selectedSessionIds?: ReadonlySet<string>;
   onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
+  onAction: (id: string, action: SessionAction) => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   onMoveSession?: (id: string, target: SessionMoveTarget) => void;

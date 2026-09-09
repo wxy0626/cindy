@@ -27,7 +27,7 @@ import { useAutomationGroupCollapsed } from '../hooks/useAutomationGroupCollapse
 import { formatSidebarFutureTime, formatSidebarTime } from '../lib/formatSidebarTime';
 import { scheduleFocusPath } from '@/features/scheduler/lib/scheduleSessionBinding';
 import { hasSessionSelectionModifier, SessionItem } from './SessionItem';
-import type { SessionClickHandler } from './SessionItem';
+import type { SessionAction, SessionClickHandler } from './SessionItem';
 import { MENU_CONTENT_CLASS, MENU_ITEM_CLASS, MENU_SEPARATOR_CLASS } from './menuStyles';
 import {
   useSessionAttentionUrgency,
@@ -59,7 +59,7 @@ export interface AutomationSessionGroupItemProps {
   notifications: ReadonlySet<string>;
   selectedSessionIds?: ReadonlySet<string>;
   onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
+  onAction: (id: string, action: SessionAction) => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   onMoveSession?: (id: string, target: SessionMoveTarget) => void;

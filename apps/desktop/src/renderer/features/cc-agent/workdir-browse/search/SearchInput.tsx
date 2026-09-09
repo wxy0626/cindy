@@ -40,9 +40,9 @@ export function SearchInput({
     <div
       className={cn(
         'flex h-[30px] w-full items-center gap-1',
-        'rounded-md border border-sidebar-border bg-background',
+        'search-capsule-control rounded-full bg-background',
         'pl-2.5 pr-1',
-        'focus-within:border-foreground/40',
+        '',
       )}
     >
       <input

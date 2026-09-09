@@ -2897,52 +2897,49 @@ export function ChatInput({
   );
   // 统一建议面板的插件条目(旧 `+` 菜单口径的并集):可用项可选,无指令或
   // Host 入口或未生效项保留展示但置灰(entry 级 disabled + 原因)。
-  const pluginSuggestions = useMemo<ComposerPluginSuggestion[]>(
-    () => {
-      // device-link 会话的插件运行在被控端；控制端清单既不代表远端已安装
-      // 状态，选择后也无法用本地 InstalledGhost 解析并插入命令。fail-closed：
-      // 仅 deviceLinkDeviceId === null（已确认本机）才展示；undefined（所有权
-      // 尚未解析）与 string（远程）一律隐藏，避免 bootstrap/重连窗口期把控制端
-      // 本地插件项泄漏进可能落为远程的会话。
-      if (deviceLinkDeviceId !== null) return [];
-      return pluginsForMenu.map((ghost) => {
-        const hasCommand = !!ghost.manifest.command;
-        const hostCapability = remoteHostId ? null : hostCapabilityForGhost(ghost);
-        const hasComposerEntry = hasCommand || hostCapability !== null;
-        const selectable = pluginAvailableIds.has(ghost.manifest.id) && hasComposerEntry;
-        const entryKey = ghost.manifest.command ?? hostCapability ?? '';
-        return {
-          item: {
-            type: 'plugin-command' as const,
-            name: ghost.manifest.name,
-            relPath:
-              ghost.manifest.command ??
-              (hostCapability
-                ? `cindy://host-capability/${hostCapability}`
-                : `cindy://plugin/${ghost.manifest.id}`),
-            pluginId: ghost.manifest.id,
-            ...(ghost.iconDataUrl ? { iconDataUrl: ghost.iconDataUrl } : {}),
-            sourceLabel: entryKey,
-            _nameLower: `${ghost.manifest.name} ${entryKey}`.toLowerCase(),
-            _relPathLower: `${entryKey} ${ghost.manifest.id}`.toLowerCase(),
-          },
-          ...(selectable
-            ? {}
-            : {
-                disabled: true,
-                disabledReason: t(
-                  !pluginAvailableIds.has(ghost.manifest.id)
-                    ? 'extraDirs.pluginDisabled'
-                    : ghost.manifest.skill
-                      ? 'extraDirs.pluginAgentInvoked'
-                      : 'extraDirs.pluginNoCommand',
-                ),
-              }),
-        };
-      });
-    },
-    [deviceLinkDeviceId, pluginsForMenu, pluginAvailableIds, remoteHostId, t],
-  );
+  const pluginSuggestions = useMemo<ComposerPluginSuggestion[]>(() => {
+    // device-link 会话的插件运行在被控端；控制端清单既不代表远端已安装
+    // 状态，选择后也无法用本地 InstalledGhost 解析并插入命令。fail-closed：
+    // 仅 deviceLinkDeviceId === null（已确认本机）才展示；undefined（所有权
+    // 尚未解析）与 string（远程）一律隐藏，避免 bootstrap/重连窗口期把控制端
+    // 本地插件项泄漏进可能落为远程的会话。
+    if (deviceLinkDeviceId !== null) return [];
+    return pluginsForMenu.map((ghost) => {
+      const hasCommand = !!ghost.manifest.command;
+      const hostCapability = remoteHostId ? null : hostCapabilityForGhost(ghost);
+      const hasComposerEntry = hasCommand || hostCapability !== null;
+      const selectable = pluginAvailableIds.has(ghost.manifest.id) && hasComposerEntry;
+      const entryKey = ghost.manifest.command ?? hostCapability ?? '';
+      return {
+        item: {
+          type: 'plugin-command' as const,
+          name: ghost.manifest.name,
+          relPath:
+            ghost.manifest.command ??
+            (hostCapability
+              ? `cindy://host-capability/${hostCapability}`
+              : `cindy://plugin/${ghost.manifest.id}`),
+          pluginId: ghost.manifest.id,
+          ...(ghost.iconDataUrl ? { iconDataUrl: ghost.iconDataUrl } : {}),
+          sourceLabel: entryKey,
+          _nameLower: `${ghost.manifest.name} ${entryKey}`.toLowerCase(),
+          _relPathLower: `${entryKey} ${ghost.manifest.id}`.toLowerCase(),
+        },
+        ...(selectable
+          ? {}
+          : {
+              disabled: true,
+              disabledReason: t(
+                !pluginAvailableIds.has(ghost.manifest.id)
+                  ? 'extraDirs.pluginDisabled'
+                  : ghost.manifest.skill
+                    ? 'extraDirs.pluginAgentInvoked'
+                    : 'extraDirs.pluginNoCommand',
+              ),
+            }),
+      };
+    });
+  }, [deviceLinkDeviceId, pluginsForMenu, pluginAvailableIds, remoteHostId, t]);
   useEffect(() => {
     setGhostCommandRoster(editor, ghostsForCommand);
   }, [editor, ghostsForCommand]);
@@ -3086,10 +3083,7 @@ export function ChatInput({
     voiceInput.draftText,
   ]);
 
-  const captureSendFocusForRestore = useComposerSendFocusRestore(
-    editor,
-    composerTypingLocked,
-  );
+  const captureSendFocusForRestore = useComposerSendFocusRestore(editor, composerTypingLocked);
   const { settings: voiceInputSettings } = useVoiceInputSettings();
   const voiceInputShortcutLabel = useMemo(
     () => formatVoiceInputShortcut(voiceInputSettings.shortcut),
@@ -4391,10 +4385,10 @@ export function ChatInput({
     // 原生目录选择器，只能在已确认本机会话中提供，不能把本机绝对路径发给 SSH/
     // device-link 被控端。undefined 表示归属尚未解析，同样 fail closed。
     if (
-      onWritableDirsChange
-      && writableGrantScope
-      && !remoteHostId
-      && deviceLinkDeviceId === null
+      onWritableDirsChange &&
+      writableGrantScope &&
+      !remoteHostId &&
+      deviceLinkDeviceId === null
     ) {
       const currentExtraDirs = extraDirs ?? [];
       const currentWritableDirs = writableDirs ?? [];
@@ -6184,10 +6178,7 @@ export function ChatInput({
       }
       // SSH 不做远端 handoff。缩窗判据的任一事实未知时继续关闭。
       if (remoteHostId && (!hasVerifiedWindows || !hasVerifiedUsage)) return false;
-      if (
-        !requireDestructiveConfirmation &&
-        (!trustedContextTokens || trustedContextTokens <= 0)
-      ) {
+      if (!requireDestructiveConfirmation && (!trustedContextTokens || trustedContextTokens <= 0)) {
         return true;
       }
       const contextTokensForAssessment = trustedContextTokens ?? 0;
@@ -6252,8 +6243,9 @@ export function ChatInput({
     async (
       modelId: string,
       providerId: string | null | undefined,
-      invoke: (confirmedContextWindow?: number) =>
-        Promise<{ deferred: boolean; superseded?: boolean } | undefined>,
+      invoke: (
+        confirmedContextWindow?: number,
+      ) => Promise<{ deferred: boolean; superseded?: boolean } | undefined>,
     ): Promise<{
       accepted: boolean;
       result?: { deferred: boolean; superseded?: boolean };
@@ -6282,7 +6274,8 @@ export function ChatInput({
       if (
         typeof (result as { contextWindowConfirmationRequired?: unknown } | null)
           ?.contextWindowConfirmationRequired === 'number'
-      ) return { accepted: false };
+      )
+        return { accepted: false };
       return { accepted: true, result };
     },
     [confirmModelSwitchContextGuard],
@@ -7000,26 +6993,24 @@ export function ChatInput({
             const rollbackSeq = (switchSeqBySession.get(sessionId) ?? 0) + 1;
             switchSeqBySession.set(sessionId, rollbackSeq);
             rollbackModelAfterPersistFailure = { model: activeModel, seq: rollbackSeq };
-            const { accepted, result: setModelResult } =
-              await setModelWithFinalWindowConfirmation(
-                newModelId,
-                effectiveSourceId,
-                (confirmedFinalWindow) => {
-                  const confirmedContextWindow =
-                    confirmedFinalWindow ?? confirmedGuardContextWindow;
-                  return window.electronAPI.maker.setModel(
-                    sessionId,
-                    newModelId,
-                    undefined,
-                    expectedAgentSwitchRevision,
-                    {
-                      effort: newEffort,
-                      fastMode: restoredFast,
-                      ...(confirmedContextWindow ? { confirmedContextWindow } : {}),
-                    } as { effort: string; fastMode: boolean },
-                  );
-                },
-              );
+            const { accepted, result: setModelResult } = await setModelWithFinalWindowConfirmation(
+              newModelId,
+              effectiveSourceId,
+              (confirmedFinalWindow) => {
+                const confirmedContextWindow = confirmedFinalWindow ?? confirmedGuardContextWindow;
+                return window.electronAPI.maker.setModel(
+                  sessionId,
+                  newModelId,
+                  undefined,
+                  expectedAgentSwitchRevision,
+                  {
+                    effort: newEffort,
+                    fastMode: restoredFast,
+                    ...(confirmedContextWindow ? { confirmedContextWindow } : {}),
+                  } as { effort: string; fastMode: boolean },
+                );
+              },
+            );
             if (!accepted) {
               rollbackModelAfterPersistFailure = null;
               return false;
@@ -7573,26 +7564,24 @@ export function ChatInput({
           // deferred = 会话自己在跑,main 已登记 pending、turn 结束自动生效(选择不丢);
           // DB 照常落盘(重启也生效),但跳过 runtime setEffort/setFastMode —— 会话
           // turn 结束会被关闭重建,别去动还在跑的旧 turn。
-          const { accepted, result: setModelResult } =
-            await setModelWithFinalWindowConfirmation(
-              modelId,
-              newProviderId,
-              (confirmedFinalWindow) => {
-                const confirmedContextWindow =
-                  confirmedFinalWindow ?? confirmedGuardContextWindow;
-                return window.electronAPI.maker.setModel(
-                  sessionId,
-                  modelId,
-                  newProviderId,
-                  expectedAgentSwitchRevision,
-                  {
-                    effort: eff,
-                    fastMode: restoredFast,
-                    ...(confirmedContextWindow ? { confirmedContextWindow } : {}),
-                  } as { effort: string; fastMode: boolean },
-                );
-              },
-            );
+          const { accepted, result: setModelResult } = await setModelWithFinalWindowConfirmation(
+            modelId,
+            newProviderId,
+            (confirmedFinalWindow) => {
+              const confirmedContextWindow = confirmedFinalWindow ?? confirmedGuardContextWindow;
+              return window.electronAPI.maker.setModel(
+                sessionId,
+                modelId,
+                newProviderId,
+                expectedAgentSwitchRevision,
+                {
+                  effort: eff,
+                  fastMode: restoredFast,
+                  ...(confirmedContextWindow ? { confirmedContextWindow } : {}),
+                } as { effort: string; fastMode: boolean },
+              );
+            },
+          );
           if (!accepted) {
             rollbackProviderAfterPersistFailure = null;
             return false;
@@ -8424,7 +8413,10 @@ export function ChatInput({
                 {/* 「+」只负责合成打开统一建议面板；内容与输入 @ 完全共用。 */}
                 <ExtraDirsButton
                   extraDirsCount={(extraDirs ?? []).length + (writableDirs ?? []).length}
-                  hasReferenceDirs={!settingsLocked && (onExtraDirsChange !== undefined || onWritableDirsChange !== undefined)}
+                  hasReferenceDirs={
+                    !settingsLocked &&
+                    (onExtraDirsChange !== undefined || onWritableDirsChange !== undefined)
+                  }
                   open={syntheticAtOpen}
                   onOpenChange={handleComposerSuggestionOpenChange}
                   autoFocusTarget={composerSuggestionFocusTarget}

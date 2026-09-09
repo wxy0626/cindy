@@ -135,9 +135,9 @@ export function TerminalShellSection() {
           <Select.Trigger
             aria-label={t('settings.terminalShell.card.selectAria')}
             className={cn(
-              'flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-full border px-3 text-12 outline-none',
+              'settings-dropdown-trigger flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-full px-3 text-12 outline-none',
               'bg-[var(--settings-input-bg)] text-[var(--settings-input-text)]',
-              'border-[var(--settings-input-border)] focus:ring-2 focus:ring-[var(--focus-ring-soft)]',
+              '',
               'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-60',
             )}
           >

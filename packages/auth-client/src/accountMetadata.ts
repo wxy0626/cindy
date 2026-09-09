@@ -5,6 +5,8 @@ export interface StoredAccountMetadata {
   passportId: string;
   displayName: string;
   email: string | null;
+  /** 账号按钮展示值；手机号只允许保存脱敏结果。 */
+  accountLabel?: string;
   avatarUrl: string | null;
   kind: "personal" | "org";
   role: "owner" | "admin" | "member";
@@ -37,6 +39,7 @@ export function isStoredAccountMetadata(value: unknown): value is StoredAccountM
     typeof item.passportId === "string" &&
     typeof item.displayName === "string" &&
     (item.email === null || typeof item.email === "string") &&
+    (item.accountLabel === undefined || typeof item.accountLabel === "string") &&
     (item.avatarUrl === null || typeof item.avatarUrl === "string") &&
     (item.kind === "personal" || item.kind === "org") &&
     (item.role === "owner" || item.role === "admin" || item.role === "member") &&

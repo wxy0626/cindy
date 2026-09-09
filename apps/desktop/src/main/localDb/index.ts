@@ -50,7 +50,6 @@ import * as schema from './schema';
 import { loadSqliteVec, resetSqliteVecState } from './sqliteVecLoader';
 import { resolveOwnerDataRootDir, resolveSessionDbRootDir } from '../localProfileSharedRoot';
 import { seedSessionDbSharedRoot } from '../localProfileSharedRootSeeder';
-import { scheduleCrossOwnerSessionSync } from './crossOwnerSessionSync';
 import {
   checkMigrationCompatibility,
   prepareMigrationRuntimeManifest,
@@ -69,6 +68,7 @@ import {
 import { shouldShowNativeFatalDialog, type EnsureReadyErrorCode } from './fatalDialogPolicy';
 import { runPendingDbSlimmingAtStartup } from './dbSlimmingStartup';
 import { deferReleaseUntilDbSlimmingWorkerTermination } from './dbSlimmingWorkerClient';
+import { migrateToSharedConversationDb } from './sharedConversationDbMigration';
 
 import { createLogger } from '../logger';
 import { recordDesktopDevLocalDbStartupResult } from '../devStartupStatus';
@@ -121,7 +121,7 @@ function dbDir(userId: string): string {
 }
 
 function dbPath(userId: string): string {
-  return path.join(dbDir(userId), `${BRAND_IDENTITY.dbFilePrefix}-${userId}.db`);
+  return path.join(dbDir(userId), BRAND_IDENTITY.dbFilePrefix + '-shared-conversations.db');
 }
 
 export function getDbPathForUser(userId: string): string {
@@ -175,6 +175,7 @@ export async function ensureReady(userId: string): Promise<EnsureReadyResult> {
   // 幂等 + best-effort，失败只记日志不阻断启动。
   try {
     seedSessionDbSharedRoot(app.getPath('userData'), BRAND_IDENTITY.dbFilePrefix);
+    migrateToSharedConversationDb(dbDir(userId), filePath, BRAND_IDENTITY.dbFilePrefix);
   } catch (error) {
     log.warn('session db shared root seeding failed (non-fatal)', {
       error: error instanceof Error ? error.message : String(error),
@@ -480,17 +481,6 @@ export async function ensureReady(userId: string): Promise<EnsureReadyResult> {
   // 之后挂 24h 周期任务按需更新统计。详见 runOptimize 注释。
   runOptimize(0x10002);
   startOptimizeSchedule();
-
-  // 跨账号 / 跨版本会话镜像同步(2026-09-06 用户裁决「两版本和多账号互通对话」):
-  // 启动 / 切账号后延迟几秒,把共享根(沙箱额外只读回看正式区域目录)里其它 owner
-  // 库的会话 + 消息按 updated_at 收敛进当前库。fire-and-forget,失败只记日志。
-  // getter 取值而非捕获句柄:调度到执行之间可能发生账号切换(switchUser closeDb)。
-  scheduleCrossOwnerSessionSync({
-    getDb: () => _db,
-    getUserId: () => _currentUserId,
-    getCurrentDbPath: () => _currentDbPath,
-    userDataDir: app.getPath('userData'),
-  });
 
   log.info(JSON.stringify({ event: 'localDb.ensureReady.ok', userId, dbPath: filePath }));
   return { ready: true };

@@ -22,16 +22,22 @@ describe('sidebar collapse reset wiring', () => {
     expect(sessionEntryListSource).toContain('useCollapsibleShowAll(sectionCollapsed)');
   });
 
-  it('resets project session showAll on project collapse and on Projects section collapse', () => {
+  it('resets project session showAll only when the parent section collapses', () => {
     expect(projectNodeSource).toContain('parentSectionCollapsed: boolean');
-    expect(projectNodeSource).toContain('sectionCollapsed={isCollapsed || parentSectionCollapsed}');
-    // 2026-08-13 定稿:主列表段级收起随「标题 = 范围下拉」取消,parent 恒为 false
-    //(prop 保留:置顶段等其它宿主仍在用)。
+    expect(projectNodeSource).toContain('sectionCollapsed={parentSectionCollapsed}');
+    // 2026-09-03 定稿:项目自身折叠不再复位「显示全部」;只有父级区域折叠才复位,
+    // 批量收进项目文件夹后展开仍保持用户之前的展开状态。
     expect(projectsSectionSource).toContain('parentSectionCollapsed={false}');
+    // 项目 / 对话组内的「显示全部」由 ProjectsSection 按 key 保存,跨卸载恢复。
+    expect(projectsSectionSource).toContain('sessionShowAllKeys');
+    expect(projectsSectionSource).toContain('showAll={sessionShowAllKeys.has(');
+    expect(projectsSectionSource).toContain('onShowAllChange={(next) => setSessionShowAll(');
   });
 
   it('passes the Dialogue section collapsed state into its collapsible session list', () => {
     expect(dialogueSectionSource).toContain('sectionCollapsed={collapsed}');
+    // 对话组头自身折叠不再复位组内「显示全部」(与项目文件夹同一语义)。
+    expect(projectsSectionSource).toContain('sectionCollapsed={parentSectionCollapsed}');
   });
 
   it('Projects section project-list showAll no longer tracks a section collapse (removed)', () => {

@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import type {
   AccountDeletionStatus,
@@ -75,7 +76,6 @@ import {
 import { PANEL_FIXED_SCALE } from './loginScale';
 import { canResumePendingConsent, makeConsentStamp, type ConsentStamp } from './consentGate';
 import { getSsoOrgHistory } from '@/state/ssoOrgHistory';
-
 /**
  * 标题旁区域徽标的 i18n key(2026-07-27 拍板)。
  *
@@ -110,7 +110,6 @@ const AccountSwitcherDialog = lazy(() =>
     default: module.AccountSwitcherDialog,
   })),
 );
-
 /**
  * LoginPage — 桌面登录(wave4 白底体系 + figma §4 组件库)。
  *
@@ -138,15 +137,24 @@ export function LoginPage({
     listAccounts,
     dispatch,
     dispatchWithResult,
+    selectLoginRegion,
     clearError,
     enterLocalMode,
+    beginAddAccount,
   } = useLogin();
+  // 验证码挑战尚未进入 main 状态机时使用的本地错误状态，避免按钮静默无响应。
+  const [captchaErrorCode, setCaptchaErrorCode] = useState<string | null>(null);
   const { t } = useTranslation();
   const handoff = useLoginHandoff();
+  const navigate = useNavigate();
   const isAddAccount = intent === 'add-account';
   const accountSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
   const [accountSwitcherOpen, setAccountSwitcherOpen] = useState(false);
   const [hasSavedAccounts, setHasSavedAccounts] = useState(false);
+  const [regionSelecting, setRegionSelecting] = useState(false);
+  // 当前登录页已选择的区域；退出登录后 LoginPage 重挂载并重置为 null。
+  const [selectedLoginRegion, setSelectedLoginRegion] = useState<'cn' | 'global' | null>(null);
+  const regionSelected = selectedLoginRegion !== null;
 
   useEffect(() => {
     if (isAddAccount || !listAccounts) {
@@ -239,7 +247,7 @@ export function LoginPage({
   const [consentDialogOpen, setConsentDialogOpen] = useState(false);
   // pending 带开门时刻快照,同意时复验防陈旧续接(codex 审查 P1;consentGate 单测)
   const pendingConsentAction = useRef<{
-    action: () => void;
+    action: () => void | Promise<void>;
     stamp: ConsentStamp;
     // true = 同意时不在弹窗回调里落同意记录,由 action 自己落(见 requireConsent)
     deferConsentPersist: boolean;
@@ -271,7 +279,10 @@ export function LoginPage({
    *   于是「未登录态不上报」这条承诺在正式包上会被破一个窗口。让 openLocalMode
    *   先切会话、再落同意即可关掉这个窗口(此时 allowed 恒为 false)。
    */
-  const requireConsent = (action: () => void, options?: { deferConsentPersist?: boolean }) => {
+  const requireConsent = (
+    action: () => void | Promise<void>,
+    options?: { deferConsentPersist?: boolean },
+  ) => {
     /* 会话切换进行中一律不接新的过门动作(codex 审查 P1 第二条,#907)。
        `auth:enter-local` 的 handler 要 await waitForSessionInvalidation() 与
        teardownAuthAccountBoundary(),这是一个真实可观测的窗口;窗口里 isLoading
@@ -285,7 +296,15 @@ export function LoginPage({
     const deferConsentPersist = options?.deferConsentPersist === true;
     if (consentAccepted) {
       if (!deferConsentPersist) persistPrivacyConsent();
-      action();
+      try {
+        void Promise.resolve(action()).catch((error) => {
+          log.error('login consent action failed', error);
+          setCaptchaErrorCode('AUTH_REQUEST_FAILED');
+        });
+      } catch (error) {
+        log.error('login consent action failed before dispatch', error);
+        setCaptchaErrorCode('AUTH_REQUEST_FAILED');
+      }
       return;
     }
     pendingConsentAction.current = {
@@ -309,7 +328,20 @@ export function LoginPage({
     if (!pending) return;
     // 复验:弹窗期间 auth 状态被异步推进(登录完成/步骤切换/in-flight)则丢弃动作
     const current = makeConsentStamp(loginState?.step, isLoading, loginState?.step === 'completed');
-    if (canResumePendingConsent(pending.stamp, current)) pending.action();
+    if (canResumePendingConsent(pending.stamp, current)) {
+      try {
+        void Promise.resolve(pending.action()).catch((error) => {
+          log.error('login consent continuation failed', error);
+          setCaptchaErrorCode('AUTH_REQUEST_FAILED');
+        });
+      } catch (error) {
+        log.error('login consent continuation failed before dispatch', error);
+        setCaptchaErrorCode('AUTH_REQUEST_FAILED');
+      }
+    } else {
+      log.warn('login consent continuation dropped because login state changed');
+      setCaptchaErrorCode('AUTH_REQUEST_FAILED');
+    }
   };
   const dismissConsent = () => {
     // 不同意 = 退回登录页,radio 保持未勾选
@@ -359,24 +391,23 @@ export function LoginPage({
   useLayoutEffect(() => {
     return () => reportPanelBottomReserve(null);
   }, [reportPanelBottomReserve]);
-  const isGlobalBuild = import.meta.env.VITE_CINDY_AUTH_REGION === 'global';
-  // 徽标读 CURRENT_CINDY_REGION 而非上面的 env 字面比较:未注入区域的本地 dev
-  // 构建经 resolveCindyRegion 落到默认 global,正确地不挂徽标(而非误挂 Dev)。
-  // 「标不标」过 shouldLabelRegion(shared 单点,与侧栏 / issue 链路同源),本组件的
-  // REGION_PILL_KEY 只回答「用哪个 key」——两层分开,shared 映射改了这里不会静默漂移。
-  const regionPillKey = shouldLabelRegion(CURRENT_CINDY_REGION)
-    ? REGION_PILL_KEY[CURRENT_CINDY_REGION]
+  const selectedRegion = selectedLoginRegion ?? window.electronAPI.currentCindyRegion;
+  const isGlobalBuild = selectedRegion === 'global';
+  // 徽标必须跟随登录页当前选择，而不是跟随启动时的构建区域；否则从中国版
+  // 切到国际版后仍会错误显示 CN。国际版按 shared 规则不显示区域徽标。
+  const regionPillKey = shouldLabelRegion(selectedRegion)
+    ? REGION_PILL_KEY[selectedRegion]
     : undefined;
   // identifier 形态 = 构建区域确定性推导(用户拍板 2026-07-21:手机/邮箱分区互斥,
   // 双 tab 切换移除);providers 仅兜底区域首选方式未下发的场景。
   const identifierKind: VerificationKind = useMemo(
     () =>
       loginState?.step === 'identifier'
-        ? resolveIdentifierMethod(CURRENT_CINDY_REGION, loginState.providers)
+        ? resolveIdentifierMethod(selectedRegion, loginState.providers)
         : isGlobalBuild
           ? 'email'
           : 'phone',
-    [loginState, isGlobalBuild],
+    [loginState, isGlobalBuild, selectedRegion],
   );
   const [identifier, setIdentifier] = useState('');
   // identifier 本地格式校验错误(设计稿 347:1727:非法邮箱/手机号 → 输入框红边 +
@@ -489,11 +520,13 @@ export function LoginPage({
   }, [loginState?.step, armResendCountdown]);
 
   const errorMessage = useMemo(() => {
-    if (!errorCode) return null;
-    return t(`login.errors.${errorCode}`, {
+    // 前置挑战错误发生在 HTTP 请求之前，应优先显示这次失败。
+    const displayedErrorCode = captchaErrorCode ?? errorCode;
+    if (!displayedErrorCode) return null;
+    return t(`login.errors.${displayedErrorCode}`, {
       defaultValue: t('login.errors.fallback'),
     });
-  }, [errorCode, t]);
+  }, [captchaErrorCode, errorCode, t]);
 
   const reset = () => {
     // error 步的「重试」与 back 都走这里,而 error 步同时挂着跳过登录逃生入口:
@@ -501,6 +534,15 @@ export function LoginPage({
     if (localModePendingRef.current) return;
     clearError();
     setIdentifierFormatError(null);
+    void dispatch({ type: 'reset' });
+  };
+
+  /** 返回版本选择页并清理当前登录流程，允许用户重新选择中国版或国际版。 */
+  const returnToRegionSelector = () => {
+    if (localModePendingRef.current || isLoading) return;
+    clearError();
+    setIdentifierFormatError(null);
+    setSelectedLoginRegion(null);
     void dispatch({ type: 'reset' });
   };
 
@@ -524,7 +566,12 @@ export function LoginPage({
   const captchaChallengePendingRef = useRef(false);
   /** 打开挑战 overlay 并等结果:token = 通过;null = 用户取消或挑战页地址不可得。 */
   const obtainCaptchaToken = async (kind: VerificationKind): Promise<string | null> => {
-    if (captchaChallengePendingRef.current) return null;
+    if (captchaChallengePendingRef.current) {
+      // 防止重复挑战时静默返回，用户应看到可重试的错误。
+      log.warn('login captcha request skipped because another challenge is pending', { kind });
+      return null;
+    }
+    setCaptchaErrorCode(null);
     captchaChallengePendingRef.current = true;
     try {
       let baseUrl: string;
@@ -534,11 +581,12 @@ export function LoginPage({
         target.searchParams.set('action', captchaRequiredActionForVerificationKind(kind));
         baseUrl = target.toString();
       } catch (error) {
-        // IPC 面缺失/异常:视同取消(不发码,用户可重试);错误细节只进日志。
+        // IPC 面缺失/异常不能静默吞掉，否则用户会看到按钮无反应。
         log.error('resolve captcha challenge url failed', error);
+        setCaptchaErrorCode('CAPTCHA_UNAVAILABLE');
         return null;
       }
-      return await new Promise((resolve) => {
+      const token = await new Promise<string | null>((resolve) => {
         setCaptchaChallenge({
           baseUrl,
           resolve: (token) => {
@@ -547,6 +595,7 @@ export function LoginPage({
           },
         });
       });
+      return token;
     } finally {
       captchaChallengePendingRef.current = false;
     }
@@ -576,7 +625,10 @@ export function LoginPage({
    * (成功即进输码页,倒计时由 step 沿 effect 起算)。
    */
   const submitEmailDiscover = async (email: string) => {
-    const result = await dispatchWithResult({ type: 'discover', email });
+    const result = await dispatchWithResult({
+      type: 'discover',
+      email,
+    });
     if (
       result.success ||
       (result.code !== 'CAPTCHA_REQUIRED' && result.code !== 'CAPTCHA_INVALID')
@@ -596,6 +648,7 @@ export function LoginPage({
   // request-code 类动作统一走这里:成功返回时刻 = 倒计时起算点(Step 3a);
   // 失败(含重发失败)不 arm → 保持当前 deadline。
   const dispatchRequestCode = async (kind: VerificationKind, value: string) => {
+    setCaptchaErrorCode(null);
     let captchaToken: string | undefined;
     if (captchaRequiredFor(kind)) {
       const token = await obtainCaptchaToken(kind);
@@ -623,13 +676,19 @@ export function LoginPage({
         captchaToken: retryToken,
       });
     }
-    if (result.success) armResendCountdown();
+    if (result.success) {
+      log.info('login verification code request accepted', { kind });
+      armResendCountdown();
+    } else {
+      log.warn('login verification code request rejected', { kind, code: result.code });
+    }
   };
 
   const submitIdentifier = (event: FormEvent) => {
     event.preventDefault();
     const value = identifier.trim();
     if (!value) return;
+    log.info('login identifier submitted', { kind: identifierKind });
     if (identifierKind === 'email') {
       // 非法邮箱格式本地拦截 → 红边 + 红字「请输入正确邮箱」(设计稿 347:1727),
       // 不发 discover(避免明显非法值走一次 server 往返)。
@@ -646,7 +705,10 @@ export function LoginPage({
       // 手机号:桌面不做客户端 +86/号段校验(#223 仅移动端做 cnPhone 本地拦截),
       // 输入原样透传服务端 request-code,由服务端校验号段合法性。
       setIdentifierFormatError(null);
-      requireConsent(() => void dispatchRequestCode('phone', value));
+      requireConsent(async () => {
+        log.info('login phone verification dispatch started');
+        await dispatchRequestCode('phone', value);
+      });
     }
   };
 
@@ -715,6 +777,11 @@ export function LoginPage({
           {/* noValidate:关掉浏览器对 type="email" 的原生约束校验气泡(英文系统提示,
               不受主题控制),改由下方本地校验渲染设计稿定义的红边+红字错误态。 */}
           <form onSubmit={submitIdentifier} noValidate>
+            <LoginBackButton
+              disabled={isLoading}
+              label={t('login.back')}
+              onClick={returnToRegionSelector}
+            />
             <LoginTitleBlock
               title={t('login.title')}
               subtitle={t('login.subtitle')}
@@ -1075,7 +1142,12 @@ export function LoginPage({
                 : t('login.personalAccount')
             }
             logoUrl={account.kind === 'org' ? (account.orgLogoUrl ?? null) : null}
-            onClick={() => void dispatch({ type: 'select-account', accountId: account.id })}
+            onClick={() =>
+              void dispatch({
+                type: 'select-account',
+                accountId: account.id,
+              })
+            }
           />
         ))}
       </LoginPanel>
@@ -1296,6 +1368,40 @@ export function LoginPage({
   const { node, ssoOrgGroupY } = renderContent();
   if (loginState?.step === 'completed') return null;
 
+  // 每次进入登录流程先选择服务区域；选择后在当前进程加载对应登录内容。
+  if (!isAddAccount && !regionSelected) {
+  const chooseRegion = async (region: 'cn' | 'global') => {
+      if (regionSelecting) return;
+      setRegionSelecting(true);
+      try {
+        const result = await selectLoginRegion(region);
+        if (!result.success) throw new Error(result.code ?? 'AUTH_REQUEST_FAILED');
+        // 不刷新页面：直接切换当前登录页的区域和登录形态。
+        setSelectedLoginRegion(region);
+        setRegionSelecting(false);
+      } catch (error) {
+        log.error('选择登录版本失败', error);
+        setRegionSelecting(false);
+      }
+    };
+    return (
+      <div className="fixed inset-0 z-[9990] overflow-hidden">
+        <div
+          className="absolute left-1/2 top-1/2 w-[520px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 rounded-[28px] p-10 text-center"
+          style={{ background: LOGIN_COLORS.panelBg, boxShadow: 'inset 0 0 0 1px ' + LOGIN_COLORS.panelBorder }}
+          data-testid="login-region-selector"
+        >
+          <h1 className="text-[28px] font-bold" style={{ color: LOGIN_COLORS.titleText }}>选择版本</h1>
+          <p className="mt-3 text-[15px]" style={{ color: LOGIN_COLORS.secondaryText }}>请选择要使用的服务区域</p>
+          <div className="mt-8 grid grid-cols-2 gap-4">
+            <button type="button" data-testid="login-region-cn" disabled={regionSelecting} onClick={() => void chooseRegion('cn')} className="h-12 rounded-xl border border-white/20 bg-[#171717] px-4 text-[15px] font-semibold text-white transition-colors hover:bg-white hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:cursor-wait disabled:opacity-60">中国版</button>
+            <button type="button" data-testid="login-region-global" disabled={regionSelecting} onClick={() => void chooseRegion('global')} className="h-12 rounded-xl border border-white/20 bg-[#171717] px-4 text-[15px] font-semibold text-white transition-colors hover:bg-white hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:cursor-wait disabled:opacity-60">国际版</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // handoff 面板入场(demo 步骤 4:opacity 0→1 + 自下而上 20px,420ms
   // cubic-bezier(.35,.1,.25,1));panelRevealed 前完全隐藏且不吃点击,
   // 播放期外(回访 /login、无 Provider 单测)直落终态无过渡。
@@ -1323,6 +1429,7 @@ export function LoginPage({
         {t('sidebar.accountSwitcher.title')}
       </button>
     ) : null;
+
   const loginFooter =
     showLocalModeFooter || accountSwitcherEntry ? (
       <>
@@ -1376,8 +1483,15 @@ export function LoginPage({
             open
             onOpenChange={setAccountSwitcherOpen}
             onAddAccount={() => {
-              setAccountSwitcherOpen(false);
-              reset();
+              // 先初始化主进程添加账号流程，再进入独立路由，避免只重置渲染器状态
+              // 而没有真正创建新的登录票据。
+              void beginAddAccount()
+                .then((result) => {
+                  if (!result.success) return;
+                  setAccountSwitcherOpen(false);
+                  navigate('/add-account', { state: { returnTo: '/login' } });
+                })
+                .catch(() => undefined);
             }}
             triggerRef={accountSwitcherTriggerRef}
           />

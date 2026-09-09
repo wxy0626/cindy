@@ -17,7 +17,7 @@ const overrides = {
   'surface-card-ivory': '#1F1F1F', // 卡片/输入框
   'surface-chip': '#1D1D1D', // hover/chip
   'surface-chip-alt': '#1D1D1D', // hover/chip
-  'surface-hover': '#1D1D1D', // hover/chip
+  'surface-hover': '#2A2A2A', // hover/chip: 与页面底色拉开层级
   'surface-hover-soft': '#191919', // 柔和 hover/代码块底
   'surface-hover-hsl': '0 0% 11.4%', // hover -> HSL
   'surface-on-card': '#181818', // 直映: 页底(纯中性)
@@ -77,7 +77,7 @@ const overrides = {
   // 下拉行 hover/选中底:必须比弹层面板(surface-elevated #312F2F)更亮才可见。
   // surface-hover(#2F2D2D)是为"压在页面底 #2A2828 上"调的,比抬起的面板还暗→行高亮隐形。
   // 故菜单行专用 token 单独抬亮一档(+12/通道),模型/权限/+ 三个菜单共用它,hover 统一可见。
-  'model-item-hover': '#2B2B2B', // 下拉行 hover: 抬亮到面板之上(沿革见 2026-07 注)
+  'model-item-hover': '#3A3A3A', // 下拉行 hover: 与面板拉开清晰层级
   'msg-link': '#93C5FD', // 链接蓝
   'msg-scrollbar-hover': '#3E3E3E', // 弱档
   'msg-user-bg': '#1F1F1F', // 卡片/输入框
@@ -89,7 +89,7 @@ const overrides = {
   'perm-allow-kbd-bg': 'rgba(0, 0, 0, 0.08)', // kbd bg:随反相浅钮的深翻译层(修复 2026-07-19:原页面级深灰在浅钮上吞掉近黑字)
   'perm-allow-kbd-border': 'rgba(0, 0, 0, 0.20)', // 边框:同上
   'perm-code-bg': '#191919', // 柔和 hover/代码块底
-  'perm-item-selected-bg': '#1D1D1D', // hover/chip
+  'perm-item-selected-bg': 'var(--model-item-hover)', // 弹层选中态背景
   'plan-outline-active-bg': '#1D1D1D', // hover/chip
   'plan-toolbar-btn-hover-bg': '#323232', // 禁用底/option hover 档
   popover: '0 0% 12.2%', // 卡片 -> HSL
@@ -102,14 +102,14 @@ const overrides = {
   'settings-integration-avatar-bg': '#1D1D1D', // hover/chip
   'settings-logout-bg': '#1F1F1F', // 卡片/输入框
   'settings-menu-bg-hover': '#282828', // 菜单 hover/提问卡纸片档
-  'settings-menu-bg-selected': '#282828', // 卡片锚定: 比卡片 #1F1F1F 亮一档(压在设置卡上的选中态)
+  'settings-menu-bg-selected': '#333333', // 卡片内选中态背景
   'settings-source-link': '#93C5FD', // 可访问链接蓝
   'settings-theme-auto-dark': '#181818', // Auto 预览: 新暗色底
   'sidebar-action-icon': '0 0% 43.5%', // E1D 侧栏层级:二级暗灰 #6F6F6F(时间戳/RemoteProjectIcon)
   'cmd-palette-item-meta': '#6F6F6F', // E1D 侧栏层级:二级暗灰(分组标签/meta)
   'sidebar-item-active-foreground': '#151515', // 反相深字(浅钮上)
-  'sidebar-item-active-border': 'transparent', // 用户三次改稿 2026-07-20:选中胶囊彻底去描边
-  'sidebar-item-active': '0.0 0.0% 93.3%', // 用户二次改稿 2026-07-20:反相胶囊 #EEEEEE 浅底(同 accent-cta-bg)
+  'sidebar-item-active-border': '#6B6B6B', // 选中态细描边:在深色背景上建立清晰边界
+  'sidebar-item-active': '0.0 0.0% 88.0%', // 选中态浅灰底:比纯白更柔和,但与深色背景拉开层级
   'splash-bg': '0 0% 9.4%', // 页底 -> HSL
   'splash-text': '0.0 0.0% 75.7%', // 三级 -> HSL
   'splash-text-destructive': '0.0 0.0% 100.0%', // destructive splash text

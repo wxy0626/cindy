@@ -51,8 +51,12 @@ export function createGhostPanelWindow(ghostId: string, title: string): BrowserW
     minHeight: 400,
     title,
     icon: app.isPackaged
-      ? path.join(process.resourcesPath, 'icon.png')
-      : path.join(__dirname, '../../resources/icon.png'),
+      ? path.join(process.resourcesPath, process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+      : path.join(
+          __dirname,
+          '../../resources',
+          process.platform === 'win32' ? 'icon.ico' : 'icon.png',
+        ),
     autoHideMenuBar: true,
     show: false,
     backgroundColor: bgColor,

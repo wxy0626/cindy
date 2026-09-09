@@ -570,6 +570,66 @@ describe('maker:event hot path ordering', () => {
     );
   });
 
+  it('caches context usage after the durable assistant boundary without loading from the hover card', () => {
+    const wireSessionSource = extractWireSessionSource();
+    const snapshotHelperStart = source.indexOf(
+      'async function persistContextUsageSnapshotAfterTurn(',
+    );
+    const snapshotHelperEnd = source.indexOf(
+      '\n}\n\n/**\n * 本轮实际模型快照',
+      snapshotHelperStart,
+    );
+    const snapshotHelper = source.slice(snapshotHelperStart, snapshotHelperEnd);
+    const snapshotCallIndex = wireSessionSource.indexOf(
+      'void persistContextUsageSnapshotAfterTurn({',
+    );
+    const eventBroadcastIndex = wireSessionSource.indexOf(
+      'broadcastToAllWindows(MAKER_PUSH.EVENT',
+    );
+
+    expect(snapshotHelperStart).toBeGreaterThanOrEqual(0);
+    expect(snapshotHelperEnd).toBeGreaterThan(snapshotHelperStart);
+    expect(snapshotCallIndex).toBeGreaterThan(eventBroadcastIndex);
+    expect(snapshotHelper).toContain('await drainPersistQueue();');
+    expect(snapshotHelper).toContain(
+      'contextUsage = await boundary.session.getContextUsage();',
+    );
+    expect(snapshotHelper).toContain('await enqueueDurableWrite(');
+    expectOrder(
+      snapshotHelper,
+      'await drainPersistQueue();',
+      'contextUsage = await boundary.session.getContextUsage();',
+    );
+    expectOrder(
+      snapshotHelper,
+      'contextUsage = await boundary.session.getContextUsage();',
+      'await enqueueDurableWrite(',
+    );
+    expectOrder(
+      snapshotHelper,
+      'patchMessageAgentMetaWithResult(',
+      'broadcastMessageAgentMetaUpdate(',
+    );
+
+    const doneSnapshotBlock = wireSessionSource.slice(
+      wireSessionSource.lastIndexOf(
+        '// 普通 Claude/Pi done 后缓存完整上下文详情；悬浮卡只读这份历史快照，不在进入时实时请求。',
+      ),
+    );
+    expect(doneSnapshotBlock).toContain('!isContinuationBoundary');
+    expect(doneSnapshotBlock).toContain(
+      '(event.data as { silentStop?: unknown } | null | undefined)?.silentStop !== true',
+    );
+    expect(doneSnapshotBlock).toContain('!isPairedFailedTurnDone');
+    expect(doneSnapshotBlock).toContain("event.turnScope !== 'background'");
+    expect(doneSnapshotBlock).toContain('assistantClientId: turnBoundaryAssistantPersistId');
+    expectOrder(
+      wireSessionSource,
+      'flushAssistantBlock(session.id, eventAgentMeta);',
+      'void persistContextUsageSnapshotAfterTurn({',
+    );
+  });
+
   it('reserves terminal error persistId before EVENT broadcast and writes after', () => {
     const wireSessionSource = extractWireSessionSource();
     expectOrder(

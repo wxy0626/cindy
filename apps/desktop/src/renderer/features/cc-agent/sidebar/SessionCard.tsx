@@ -10,8 +10,8 @@
  *   - 单击导航 / 双击重命名（标题原位变 input）
  *   - 右键 coordinate-anchored DropdownMenu（Pin/Rename/移动到项目/复制任务链接/新窗口/导出/Archive/Delete，
  *     archived / draft 变体同款分支）
- *   - hover 右上角仅 More（⋮）快捷钮；存档收进 ⋮ / 右键展开菜单的 Archive 项
- *     （卡片不再出现独立的存档快捷钮）。已归档卡片保留"取消归档"快捷钮。
+ *   - hover 右上角显示 More（⋮）与 Archive 快捷钮；归档任务 hover 时显示 Undo 与 Trash2，
+ *     点击 Trash2 后才在原位显示醒目的"删除"确认按钮。
  *   - list 变体保留标题左侧 SessionStatusIcon / 自动化前缀；card 变体标题不带前缀，
  *     状态 / Agent / 自动化图标留在底部 meta 行
  *   - remote 会话标识复用 RemoteProjectIcon,继续区分 device-link / ssh
@@ -28,7 +28,7 @@ import type {
   ReactNode,
   RefObject,
 } from 'react';
-import { Archive, ChevronRight, EllipsisVertical, Undo } from 'lucide-react';
+import { Archive, ChevronRight, EllipsisVertical, Trash2, Undo } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
@@ -76,7 +76,7 @@ import {
 import { SessionProjectMoveSubmenu } from './SessionProjectMoveSubmenu';
 import { SessionShareExportDialog } from './SessionShareExportDialog';
 import { SessionRenameInput } from '../SessionRenameInput';
-import { SidebarTitleMarquee, type SessionItemProps } from './SessionItem';
+import { SessionActionText, SidebarTitleMarquee, type SessionItemProps } from './SessionItem';
 import { RemoteProjectIcon } from './RemoteProjectIcon';
 import { isRemoteSessionWriteBlocked } from '../lib/remoteSessionWriteGuard';
 import { prefetchDirtyWorktreeForRemoval } from '@/lib/worktreeRemovalWarning';
@@ -202,6 +202,8 @@ export const SessionCard = memo(function SessionCard({
   const displayTitle = getSessionDisplayTitle(session, t('ccAgent.common.unnamedSession'));
   const canHighlightDisplayTitle = canHighlightSessionDisplayTitle(session);
   const isArchived = session.status === 'archived';
+  // 已归档任务即使当前打开，也使用未激活的灰色高亮，和活跃任务明确区分。
+  const isVisualActive = isActive && !isArchived;
   const canQuickArchive = !isArchived && !isEmpty && !remoteWritesBlocked;
   // 卡片/列表的正文固定给预览区域。list 保留实时执行文案,正文只用最近消息;
   // card + 置顶才用稳定任务摘要,完成后由 summary 更新。
@@ -272,8 +274,12 @@ export const SessionCard = memo(function SessionCard({
 
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [archivePending, setArchivePending] = useState(false);
+  // 删除确认态直接覆盖当前卡片/列表行，不打开屏幕中央弹窗。
+  const [deletePending, setDeletePending] = useState(false);
   const [shareExportOpen, setShareExportOpen] = useState(false);
   const confirmPillRef = useRef<HTMLButtonElement>(null);
+  // 删除确认按钮的容器引用，用于点到卡片外时撤回确认。
+  const deleteConfirmRef = useRef<HTMLSpanElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const dragStartTargetRef = useRef<Element | null>(null);
 
@@ -422,8 +428,28 @@ export const SessionCard = memo(function SessionCard({
     };
   }, [archivePending]);
 
+  // 删除确认态沿用归档确认的点外撤回体验。
   useEffect(() => {
-    if (isEditing) setArchivePending(false);
+    if (!deletePending) return;
+    const dismiss = () => setDeletePending(false);
+    const timer = setTimeout(dismiss, 4000);
+    const onDocMouseDown = (e: MouseEvent) => {
+      const confirm = deleteConfirmRef.current;
+      if (confirm && e.target instanceof Node && confirm.contains(e.target)) return;
+      dismiss();
+    };
+    document.addEventListener('mousedown', onDocMouseDown, true);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', onDocMouseDown, true);
+    };
+  }, [deletePending]);
+
+  useEffect(() => {
+    if (isEditing) {
+      setArchivePending(false);
+      setDeletePending(false);
+    }
   }, [isEditing]);
 
   // ── menu handlers（与 SessionItem 等价） ──
@@ -450,13 +476,53 @@ export const SessionCard = memo(function SessionCard({
     }
     onAction(session.id, 'unarchive');
   }, [remoteWritesBlocked, session.id, onAction, t]);
-  const handleDeleteSelect = useCallback(() => {
-    if (remoteWritesBlocked) {
-      toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
-      return;
-    }
-    onAction(session.id, 'delete');
-  }, [remoteWritesBlocked, session.id, onAction, t]);
+  const handleDeleteSelect = useCallback(
+    (direct = false) => {
+      if (remoteWritesBlocked) {
+        toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
+        return;
+      }
+      onAction(session.id, direct ? 'delete-now' : 'delete');
+    },
+    [remoteWritesBlocked, session.id, onAction, t],
+  );
+
+  // 卡片模式的归档任务操作：只在卡片 hover/focus 时显示取消归档与垃圾桶图标。
+  const renderArchivedActions = () => (
+    <>
+      <CardAction
+        isActive={isVisualActive}
+        label={t('ccAgent.sidebar.sessionMenu.unarchive')}
+        onClick={() => handleUnarchiveSelect()}
+      >
+        <Undo size={13} strokeWidth={2} />
+      </CardAction>
+      <CardAction
+        isActive={isVisualActive}
+        label={t('ccAgent.sidebar.sessionMenu.delete')}
+        onClick={() => setDeletePending(true)}
+      >
+        <Trash2 size={13} strokeWidth={2} />
+      </CardAction>
+    </>
+  );
+
+  // 删除确认态仍覆盖任务名右侧，只保留醒目的删除按钮；点卡片外即可撤回。
+  const renderDeleteConfirmation = () => (
+    <span ref={deleteConfirmRef} className="flex w-[4.5rem] items-center justify-end gap-0.5">
+      <SessionActionText
+        label={t('ccAgent.sidebar.sessionMenu.delete')}
+        onClick={() => {
+          setDeletePending(false);
+          handleDeleteSelect(true);
+        }}
+        isActive={isVisualActive}
+        danger
+      >
+        {t('ccAgent.sidebar.sessionMenu.delete')}
+      </SessionActionText>
+    </span>
+  );
   const handlePinSelect = useCallback(() => {
     if (remoteWritesBlocked) {
       toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
@@ -574,7 +640,7 @@ export const SessionCard = memo(function SessionCard({
         isRunning={leftIconRunning}
         isAttached={isAttached}
         hasAttentionNotification={hasAttentionNotification}
-        isActive={isActive}
+        isActive={isVisualActive}
         showAttentionDot={false}
       />
     </span>
@@ -587,7 +653,7 @@ export const SessionCard = memo(function SessionCard({
       <ScheduleBindingBadge
         schedules={boundSchedules}
         size={iconSize}
-        activeForeground={isActive}
+        activeForeground={isVisualActive}
       />
     ) : showAutomationTimer ? (
       <Tip text={t('ccAgent.sidebar.scheduleBinding.viewTask')}>
@@ -599,7 +665,7 @@ export const SessionCard = memo(function SessionCard({
           onKeyDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <AutomationTimerIcon size={iconSize} activeForeground={isActive} />
+          <AutomationTimerIcon size={iconSize} activeForeground={isVisualActive} />
         </button>
       </Tip>
     ) : null;
@@ -682,21 +748,25 @@ export const SessionCard = memo(function SessionCard({
               // 列表行高由内容撑开,真实 border 只在选中时存在 → 该行凭空高 2px,
               // 把下方所有行整体推移,选中/取消时列表跳动(2026-08-12 用户反馈)。
               // inset shadow 画在盒内、不参与布局,行高与未选中时逐像素一致。
-              isActive
+              isVisualActive
                 ? 'bg-sidebar-item-active text-sidebar-item-active-foreground shadow-[inset_0_0_0_1px_var(--sidebar-item-active-border)]'
-                : cn(
-                    'hover:bg-sidebar-item-hover',
-                    // 菜单开着时鼠标常会离开行,行底仍保持 hover 色。
-                    menuPos !== null && 'bg-sidebar-item-hover',
-                  ),
+                : isArchived && isActive
+                  ? 'bg-sidebar-item-hover text-foreground'
+                  : cn(
+                      'hover:bg-sidebar-item-hover',
+                      // 菜单开着时鼠标常会离开行,行底仍保持 hover 色。
+                      menuPos !== null && 'bg-sidebar-item-hover',
+                    ),
             )
           : cn(
               // 卡片:白底 + 描边 + 圆角。多列瀑布由 CardMasonry/DraggableCardColumns
               // 负责分配列;卡片高度随标题/摘要自然变化。
               'rounded-xl bg-[var(--surface-elevated)] border',
-              isActive
+              isVisualActive
                 ? 'border-[var(--sidebar-item-active-border)] !bg-sidebar-item-active text-sidebar-item-active-foreground'
-                : 'border-sidebar-border hover:!bg-sidebar-item-hover',
+                : isArchived && isActive
+                  ? 'border-sidebar-border !bg-sidebar-item-hover text-foreground'
+                  : 'border-sidebar-border hover:!bg-sidebar-item-hover',
             ),
         // 多选选中态(与列表 SessionItem 同款):内描边软高亮,不与 active 互斥。
         isSelected && 'ring-1 ring-inset ring-[var(--focus-ring-soft)]',
@@ -755,7 +825,7 @@ export const SessionCard = memo(function SessionCard({
                   }}
                   containerClassName="relative min-w-0 flex-1 self-stretch"
                   inputClassName="absolute inset-x-0 top-1/2 h-6 -translate-y-1/2 text-sm font-medium text-foreground"
-                  activeForeground={isActive}
+                  activeForeground={isVisualActive}
                 />
               ) : (
                 <div className="flex min-w-0 flex-1 items-center gap-1">
@@ -763,14 +833,14 @@ export const SessionCard = memo(function SessionCard({
                     title={displayTitle}
                     className={cn(
                       'text-sm font-medium leading-[1.3]',
-                      isActive ? 'text-sidebar-item-active-foreground' : 'text-foreground',
+                      isVisualActive ? 'text-sidebar-item-active-foreground' : 'text-foreground',
                     )}
                   >
                     {matchIndices && matchIndices.length > 0 && canHighlightDisplayTitle
                       ? highlightSegments(session.title, matchIndices, {
                           highlightClassName: cn(
                             'bg-transparent font-semibold',
-                            isActive
+                            isVisualActive
                               ? 'text-[var(--sidebar-item-active-foreground)]'
                               : 'text-[var(--msg-assistant-text)]',
                           ),
@@ -784,7 +854,7 @@ export const SessionCard = memo(function SessionCard({
                       strokeWidth={1.8}
                       connectionStatus={remoteIconConnectionStatus}
                       className={
-                        isActive
+                        isVisualActive
                           ? 'text-sidebar-item-active-foreground'
                           : 'text-sidebar-action-icon'
                       }
@@ -795,7 +865,7 @@ export const SessionCard = memo(function SessionCard({
                       title={sourceLabel}
                       className={cn(
                         'min-w-0 truncate text-xs font-normal',
-                        isActive
+                        isVisualActive
                           ? 'text-sidebar-item-active-foreground/70'
                           : 'text-[var(--cmd-palette-item-meta)]',
                       )}
@@ -814,7 +884,7 @@ export const SessionCard = memo(function SessionCard({
                 pieces={cardInfoPieces}
                 prRef={cardInfoPrRef}
                 worktree={cardInfoWorktree ?? undefined}
-                isActive={isActive}
+                isActive={isVisualActive}
                 isArchived={isArchived}
                 canQuickArchive={canQuickArchive}
                 archivePending={archivePending}
@@ -829,6 +899,13 @@ export const SessionCard = memo(function SessionCard({
                 onArchiveNow={() => onAction(session.id, 'archive-now')}
                 canUnarchive={!remoteWritesBlocked}
                 onUnarchive={handleUnarchiveSelect}
+                deletePending={deletePending}
+                onStartDelete={() => setDeletePending(true)}
+                onDeleteNow={() => {
+                  setDeletePending(false);
+                  handleDeleteSelect(true);
+                }}
+                deleteConfirmRef={deleteConfirmRef}
                 yieldToOrdinalBadge={ordinalBadgeLabel != null}
                 ordinalBadgeLabel={ordinalBadgeLabel}
               />
@@ -847,7 +924,7 @@ export const SessionCard = memo(function SessionCard({
               '[display:-webkit-box] [-webkit-line-clamp:1] [-webkit-box-orient:vertical]',
               rightStatusKind !== 'time' && 'pr-5',
               awaitingText
-                ? isActive
+                ? isVisualActive
                   ? 'text-[var(--sidebar-item-active-foreground)] font-medium'
                   : 'text-[var(--card-status-awaiting)] font-medium'
                 : 'text-[var(--text-secondary)]',
@@ -859,49 +936,50 @@ export const SessionCard = memo(function SessionCard({
           {rightStatusKind !== 'time' && (
             <SidebarRightStatusIndicator
               kind={rightStatusKind}
-              isActive={isActive}
+              isActive={isVisualActive}
               className="absolute right-2.5 bottom-2"
             />
           )}
         </div>
       ) : (
         <div className="relative flex h-full flex-col px-[10px] pt-[8px] pb-[8px]">
-          {/* 右上角 hover 操作钮(More + Archive/Undo);archivePending 时换成红色确认胶囊。
+          {/* 右上角 hover 操作钮(More + Archive);archivePending 时换成红色确认胶囊。
             时间在右下角(见下),操作钮放右上角空位、不和时间挤在一起。 */}
-          {!isEditing && !archivePending && (
+          {!isEditing && !archivePending && !deletePending && (
             <div
               className={cn(
                 'absolute right-[6px] top-[6px] z-10 flex items-center gap-0.5',
-                menuPos !== null
-                  ? 'opacity-100'
-                  : 'opacity-0 group-hover/card:opacity-100 focus-within:opacity-100',
+                isArchived && !remoteWritesBlocked
+                  ? 'hidden group-hover/card:flex focus-within:flex'
+                  : menuPos !== null
+                    ? 'opacity-100'
+                    : 'opacity-0 group-hover/card:opacity-100 focus-within:opacity-100',
               )}
             >
-              <CardAction
-                label={t('ccAgent.sidebar.sessionMenu.moreActions')}
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  prefetchRemovalPreflight();
-                  setMenuPos({ x: rect.left, y: rect.bottom + 2 });
-                }}
-              >
-                <EllipsisVertical size={13} strokeWidth={2} />
-              </CardAction>
               {isArchived && !remoteWritesBlocked ? (
-                <CardAction
-                  label={t('ccAgent.sidebar.sessionMenu.unarchive')}
-                  onClick={() => handleUnarchiveSelect()}
-                >
-                  <Undo size={13} strokeWidth={2} />
-                </CardAction>
-              ) : canQuickArchive ? (
-                <CardAction
-                  label={t('ccAgent.sidebar.sessionMenu.archived')}
-                  onClick={() => beginArchivePending(true)}
-                >
-                  <Archive size={13} strokeWidth={2} />
-                </CardAction>
-              ) : null}
+                renderArchivedActions()
+              ) : (
+                <>
+                  <CardAction
+                    label={t('ccAgent.sidebar.sessionMenu.moreActions')}
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      prefetchRemovalPreflight();
+                      setMenuPos({ x: rect.left, y: rect.bottom + 2 });
+                    }}
+                  >
+                    <EllipsisVertical size={13} strokeWidth={2} />
+                  </CardAction>
+                  {canQuickArchive ? (
+                    <CardAction
+                      label={t('ccAgent.sidebar.sessionMenu.archived')}
+                      onClick={() => beginArchivePending(true)}
+                    >
+                      <Archive size={13} strokeWidth={2} />
+                    </CardAction>
+                  ) : null}
+                </>
+              )}
             </div>
           )}
           {canQuickArchive && archivePending && (
@@ -927,6 +1005,15 @@ export const SessionCard = memo(function SessionCard({
               {t('ccAgent.sidebar.sessionMenu.archived')}
             </button>
           )}
+          {isArchived && !remoteWritesBlocked && deletePending && (
+            <div
+              className="absolute right-[6px] top-[6px] z-20 flex h-[22px] items-center justify-end"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {renderDeleteConfirmation()}
+            </div>
+          )}
 
           {/* 卡片标题始终保留原来的流式盒子；编辑时只把原标题隐藏，并以绝对定位的
             24px 输入框覆盖。这样一行 / 两行标题都维持原高度，也不会凭空多出状态图标。 */}
@@ -940,7 +1027,7 @@ export const SessionCard = memo(function SessionCard({
               className={cn(
                 'min-w-0 text-12 font-semibold leading-[1.22] tracking-[-0.005em]',
                 '[display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden',
-                isActive ? 'text-sidebar-item-active-foreground' : 'text-foreground',
+                isVisualActive ? 'text-sidebar-item-active-foreground' : 'text-foreground',
                 isEditing && 'invisible',
               )}
               style={{ textIndent: 0, paddingLeft: 0 }}
@@ -949,7 +1036,7 @@ export const SessionCard = memo(function SessionCard({
                 ? highlightSegments(session.title, matchIndices, {
                     highlightClassName: cn(
                       'bg-transparent font-semibold',
-                      isActive
+                      isVisualActive
                         ? 'text-[var(--sidebar-item-active-foreground)]'
                         : 'text-[var(--msg-assistant-text)]',
                     ),
@@ -970,7 +1057,7 @@ export const SessionCard = memo(function SessionCard({
                 }}
                 containerClassName="absolute inset-x-0 top-1/2 -translate-y-1/2"
                 inputClassName="h-6 text-12 font-semibold text-foreground"
-                activeForeground={isActive}
+                activeForeground={isVisualActive}
               />
             )}
           </div>
@@ -1000,7 +1087,9 @@ export const SessionCard = memo(function SessionCard({
             className={cn(
               'mt-[6px] flex items-center gap-1.5',
               'text-11 font-medium leading-none tabular-nums',
-              isActive ? 'text-sidebar-item-active-foreground' : 'text-[var(--text-tertiary)]',
+              isVisualActive
+                ? 'text-sidebar-item-active-foreground'
+                : 'text-[var(--text-tertiary)]',
             )}
           >
             <SessionStatusIcon
@@ -1008,7 +1097,7 @@ export const SessionCard = memo(function SessionCard({
               isRunning={leftIconRunning}
               isAttached={isAttached}
               hasAttentionNotification={hasAttentionNotification}
-              isActive={isActive}
+              isActive={isVisualActive}
               size={11}
             />
             {renderAutomationMeta(11)}
@@ -1019,7 +1108,9 @@ export const SessionCard = memo(function SessionCard({
                 strokeWidth={1.8}
                 connectionStatus={remoteIconConnectionStatus}
                 className={
-                  isActive ? 'text-sidebar-item-active-foreground' : 'text-[var(--text-tertiary)]'
+                  isVisualActive
+                    ? 'text-sidebar-item-active-foreground'
+                    : 'text-[var(--text-tertiary)]'
                 }
               />
             )}
@@ -1028,10 +1119,10 @@ export const SessionCard = memo(function SessionCard({
               pieces={cardInfoPieces}
               prRef={cardInfoPrRef}
               worktree={cardInfoWorktree ?? undefined}
-              isActive={isActive}
+              isActive={isVisualActive}
               className={cn(
                 'ml-auto shrink-0 text-11 font-medium leading-none',
-                !isActive && 'text-[var(--cmd-palette-item-meta)]',
+                !isVisualActive && 'text-[var(--cmd-palette-item-meta)]',
               )}
             />
           </div>
@@ -1047,7 +1138,7 @@ export const SessionCard = memo(function SessionCard({
         <span
           className={cn(
             'pointer-events-none absolute right-2 top-2 z-20 flex',
-            isActive ? 'text-sidebar-item-active-foreground' : 'text-[var(--text-tertiary)]',
+            isVisualActive ? 'text-sidebar-item-active-foreground' : 'text-[var(--text-tertiary)]',
           )}
         >
           <SessionOrdinalBadgeKbd label={ordinalBadgeLabel} />
@@ -1102,7 +1193,7 @@ export const SessionCard = memo(function SessionCard({
                 <DropdownMenuSeparator className={MENU_SEPARATOR_CLASS} />
                 <DropdownMenuItem
                   disabled={remoteWritesBlocked}
-                  onSelect={handleDeleteSelect}
+                  onSelect={() => handleDeleteSelect()}
                   className={MENU_ITEM_CLASS}
                 >
                   {t('ccAgent.sidebar.sessionMenu.delete')}
@@ -1121,7 +1212,7 @@ export const SessionCard = memo(function SessionCard({
                 <DropdownMenuSeparator className={MENU_SEPARATOR_CLASS} />
                 <DropdownMenuItem
                   disabled={remoteWritesBlocked}
-                  onSelect={handleDeleteSelect}
+                  onSelect={() => handleDeleteSelect()}
                   className={MENU_ITEM_CLASS}
                 >
                   {t('ccAgent.sidebar.sessionMenu.delete')}
@@ -1166,7 +1257,7 @@ export const SessionCard = memo(function SessionCard({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={remoteWritesBlocked}
-                  onSelect={handleDeleteSelect}
+                  onSelect={() => handleDeleteSelect()}
                   className={MENU_ITEM_CLASS}
                 >
                   {t('ccAgent.sidebar.sessionMenu.delete')}
@@ -1189,7 +1280,7 @@ export const SessionCard = memo(function SessionCard({
 });
 
 /** 右上角时间槽位——card / list 变体共用。默认显示 [worktree + 时间];hover/菜单打开
- *  时整组让位给操作按钮(More + Archive/Undo),archivePending 时显示红色二次确认胶囊。
+ *  时整组让位给操作按钮(More + Archive),archivePending 时显示红色二次确认胶囊。
  *  交互逻辑与对话列表(SessionItem)一致。Agent 身份 / 草稿由左侧 SessionStatusIcon 承担；
  *  list 的右下状态指示器由 SidebarRightStatusIndicator 单独承担。 */
 function TimeActionsSlot({
@@ -1207,6 +1298,10 @@ function TimeActionsSlot({
   onOpenMenu,
   onArchiveNow,
   onUnarchive,
+  deletePending,
+  onStartDelete,
+  onDeleteNow,
+  deleteConfirmRef,
   yieldToOrdinalBadge = false,
   ordinalBadgeLabel,
 }: {
@@ -1224,30 +1319,39 @@ function TimeActionsSlot({
   onOpenMenu: (e: ReactMouseEvent<HTMLButtonElement>) => void;
   onArchiveNow: () => void;
   onUnarchive: () => void;
+  /** 已归档任务的行内删除确认态。 */
+  deletePending: boolean;
+  onStartDelete: () => void;
+  onDeleteNow: () => void;
+  deleteConfirmRef: RefObject<HTMLSpanElement | null>;
   /** mod+1..9 序号徽标出现时让位:徽标独占右缘,不与时间/badge 并排。 */
   yieldToOrdinalBadge?: boolean;
   ordinalBadgeLabel?: string | null;
 }) {
   const { t } = useTranslation();
+  // 已归档任务只在 hover/focus 时显示操作，时间仍是默认内容；删除确认态固定留在原位。
+  const isVisualActive = isActive && !isArchived;
+
   return (
     <div className="group/slot relative ml-auto flex h-[22px] shrink-0 items-center justify-end">
       <div className="grid h-[22px] grid-cols-[max-content] items-center justify-items-end">
         {/* 默认内容:worktree + 信息槽;hover / 菜单打开 / archivePending 时淡出让位给操作钮。 */}
         <div
           className={cn(
-            // duration 与操作钮的渐显同拍(120ms),让位/回归一进一出同步。
             'col-start-1 row-start-1 flex items-center gap-1 transition-opacity duration-[120ms]',
-            !archivePending && 'group-hover/card:opacity-0 group-focus-within/slot:opacity-0',
-            (menuOpen || yieldToOrdinalBadge) && 'opacity-0',
-            // 确认胶囊覆盖同一槽位时立即隐藏日期，避免 120ms 淡出期间文字叠在一起。
-            archivePending && 'invisible opacity-0',
+            // 时间与操作按钮必须互斥，使用 hidden 而不是 opacity，避免确认态或
+            // hover 态下时间文字仍从图标下面露出。
+            !archivePending &&
+              !deletePending &&
+              'group-hover/card:hidden group-focus-within/slot:hidden',
+            (menuOpen || yieldToOrdinalBadge || archivePending || deletePending) && 'hidden',
           )}
         >
           <SessionInfoMeta
             pieces={pieces}
             prRef={prRef}
             worktree={worktree}
-            isActive={isActive}
+            isActive={isVisualActive}
             className="leading-none"
           />
         </div>
@@ -1295,49 +1399,96 @@ function TimeActionsSlot({
               aria-hidden
               className={cn(
                 'invisible col-start-1 row-start-1 h-[22px] items-center gap-0.5',
-                menuOpen ? 'flex' : 'hidden group-hover/card:flex group-focus-within/slot:flex',
+                isArchived && canUnarchive
+                  ? deletePending
+                    ? 'flex w-[4.5rem] justify-end'
+                    : 'flex w-[2.625rem] justify-end'
+                  : menuOpen
+                    ? 'flex'
+                    : 'hidden group-hover/card:flex group-focus-within/slot:flex',
               )}
             >
-              <span className="size-5 shrink-0" />
-              {(isArchived && canUnarchive) || canQuickArchive ? (
-                <span className="size-5 shrink-0" />
-              ) : null}
+              {isArchived && canUnarchive ? (
+                <>
+                  <span className="size-5 shrink-0" />
+                  <span className="size-5 shrink-0" />
+                </>
+              ) : (
+                <>
+                  <span className="size-5 shrink-0" />
+                  {canQuickArchive ? <span className="size-5 shrink-0" /> : null}
+                </>
+              )}
             </div>
             <div
               className={cn(
                 'absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-0.5',
-                menuOpen
-                  ? 'opacity-100'
-                  : 'pointer-events-none opacity-0 group-hover/card:pointer-events-auto group-hover/card:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100',
+                isArchived && canUnarchive
+                  ? deletePending
+                    ? 'pointer-events-auto w-[4.5rem] opacity-100'
+                    : 'hidden w-[2.625rem] group-hover/card:flex group-focus-within/slot:flex'
+                  : menuOpen
+                    ? 'flex'
+                    : 'hidden group-hover/card:flex group-focus-within/slot:flex',
               )}
             >
-              <CardAction
-                variant="list"
-                isActive={isActive}
-                label={t('ccAgent.sidebar.sessionMenu.moreActions')}
-                onClick={onOpenMenu}
-              >
-                <EllipsisVertical size={14} strokeWidth={2} />
-              </CardAction>
               {isArchived && canUnarchive ? (
-                <CardAction
-                  variant="list"
-                  isActive={isActive}
-                  label={t('ccAgent.sidebar.sessionMenu.unarchive')}
-                  onClick={() => onUnarchive()}
-                >
-                  <Undo size={14} strokeWidth={2} />
-                </CardAction>
-              ) : canQuickArchive ? (
-                <CardAction
-                  variant="list"
-                  isActive={isActive}
-                  label={t('ccAgent.sidebar.sessionMenu.archived')}
-                  onClick={() => setArchivePending(true)}
-                >
-                  <Archive size={14} strokeWidth={2} />
-                </CardAction>
-              ) : null}
+                deletePending ? (
+                  <span
+                    ref={deleteConfirmRef}
+                    className="flex w-full items-center justify-end gap-0.5"
+                  >
+                    <SessionActionText
+                      label={t('ccAgent.sidebar.sessionMenu.delete')}
+                      onClick={() => onDeleteNow()}
+                      isActive={isVisualActive}
+                      danger
+                    >
+                      {t('ccAgent.sidebar.sessionMenu.delete')}
+                    </SessionActionText>
+                  </span>
+                ) : (
+                  <>
+                    <CardAction
+                      variant="list"
+                      isActive={isVisualActive}
+                      label={t('ccAgent.sidebar.sessionMenu.unarchive')}
+                      onClick={() => onUnarchive()}
+                    >
+                      <Undo size={14} strokeWidth={2} />
+                    </CardAction>
+                    <CardAction
+                      variant="list"
+                      isActive={isVisualActive}
+                      label={t('ccAgent.sidebar.sessionMenu.delete')}
+                      onClick={() => onStartDelete()}
+                    >
+                      <Trash2 size={14} strokeWidth={2} />
+                    </CardAction>
+                  </>
+                )
+              ) : (
+                <>
+                  <CardAction
+                    variant="list"
+                    isActive={isVisualActive}
+                    label={t('ccAgent.sidebar.sessionMenu.moreActions')}
+                    onClick={onOpenMenu}
+                  >
+                    <EllipsisVertical size={14} strokeWidth={2} />
+                  </CardAction>
+                  {canQuickArchive ? (
+                    <CardAction
+                      variant="list"
+                      isActive={isVisualActive}
+                      label={t('ccAgent.sidebar.sessionMenu.archived')}
+                      onClick={() => setArchivePending(true)}
+                    >
+                      <Archive size={14} strokeWidth={2} />
+                    </CardAction>
+                  ) : null}
+                </>
+              )}
             </div>
           </>
         )}

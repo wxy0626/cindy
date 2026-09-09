@@ -24,6 +24,17 @@
 
 import type { UsageSnapshot } from '../../types/events.js';
 
+/** 用量归属范围：主代理或子代理。历史缺省值按 parent 解释。 */
+export type UsageScope = 'parent' | 'subagent';
+
+/** 按 scope 汇总的 token 桶。 */
+export interface UsageScopeTotals {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreate: number;
+}
+
 /**
  * One provider request (or the narrowest reliable upstream usage boundary).
  *
@@ -34,6 +45,8 @@ import type { UsageSnapshot } from '../../types/events.js';
 export interface UsageSegment {
   /** Stable only within the owning turn; used to merge split provider frames. */
   id?: string;
+  /** 用量归属范围；缺省时兼容历史数据并按 parent 处理。 */
+  scope?: UsageScope;
   /** Actual model for this request when the provider exposes it. */
   model?: string;
   /** Request price variant. Fast maps to the gateway priority tariff. */
@@ -58,6 +71,11 @@ export class UsageTracker {
   // 每次 ingestApiCallUsage 累加, endTurn 后由 resetCurrentTurn 清零。
   // 老链路对标: agentManager.ts:2362-2365 currentTurn{Input,Output,CacheRead,CacheCreate}Tokens
   private currentTurn = { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 };
+  /** 按 parent/subagent 维护当前 turn 的 token 汇总。 */
+  private currentTurnByScope: Record<UsageScope, UsageScopeTotals> = {
+    parent: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
+    subagent: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
+  };
 
   // Request/segment boundaries for request-scoped pricing. This list follows
   // the same turn lifecycle as currentTurn and is copied before exposure.
@@ -127,15 +145,21 @@ export class UsageTracker {
       return;
     }
     const existing = this.currentTurnSegments[existingIndex]!;
+    // 合并时移除后帧 scope，保持请求首帧确定的归属范围。
+    const usageWithoutScope = { ...usage };
+    delete usageWithoutScope.scope;
     const merged: UsageSegment = {
       ...existing,
-      ...usage,
+      ...usageWithoutScope,
       id: segmentId,
       // Request identity is fixed by the first frame. Runtime settings may
       // change before a terminal frame arrives, but that must not re-price an
       // already-dispatched request.
       model: existing.model ?? usage.model,
       priceVariant: existing.priceVariant ?? usage.priceVariant,
+      // scope 与请求身份一样由首帧确定；无 scope 的首帧必须继续按 parent，
+      // 不能被后续子代理帧改写。
+      ...(existing.scope !== undefined ? { scope: existing.scope } : {}),
       inputTokens: Math.max(existing.inputTokens, usage.inputTokens),
       outputTokens: Math.max(existing.outputTokens, usage.outputTokens),
       cacheReadTokens: Math.max(existing.cacheReadTokens ?? 0, usage.cacheReadTokens ?? 0),
@@ -147,19 +171,25 @@ export class UsageTracker {
         : {}),
     };
     this.currentTurnSegments[existingIndex] = merged;
+    // 历史无 scope 的请求按 parent 归类。
+    const existingScope = existing.scope === 'subagent' ? 'subagent' : 'parent';
     this.applyUsageDelta(
       {
         inputTokens: merged.inputTokens - existing.inputTokens,
         outputTokens: merged.outputTokens - existing.outputTokens,
         cacheReadTokens: (merged.cacheReadTokens ?? 0) - (existing.cacheReadTokens ?? 0),
         cacheCreateTokens: (merged.cacheCreateTokens ?? 0) - (existing.cacheCreateTokens ?? 0),
+        scope: existingScope,
       },
       false,
     );
     if (
-      merged.inputTokens > 0 ||
-      (merged.cacheReadTokens ?? 0) > 0 ||
-      (merged.cacheCreateTokens ?? 0) > 0
+      existingScope !== 'subagent' &&
+      (
+        merged.inputTokens > 0 ||
+        (merged.cacheReadTokens ?? 0) > 0 ||
+        (merged.cacheCreateTokens ?? 0) > 0
+      )
     ) {
       this.lastApi = {
         input: merged.inputTokens,
@@ -170,8 +200,12 @@ export class UsageTracker {
   }
 
   private appendUsageSegment(usage: UsageSegment): void {
+    // 只接受已知 scope；未知值按历史无 scope 兼容处理。
+    const scope = usage.scope === 'subagent' || usage.scope === 'parent' ? usage.scope : undefined;
+    const usageWithoutScope = { ...usage };
+    delete usageWithoutScope.scope;
     const normalized: UsageSegment = {
-      ...usage,
+      ...usageWithoutScope,
       inputTokens: Math.max(0, usage.inputTokens),
       outputTokens: Math.max(0, usage.outputTokens),
       cacheReadTokens: Math.max(0, usage.cacheReadTokens ?? 0),
@@ -180,6 +214,7 @@ export class UsageTracker {
         ? { reasoningTokens: Math.max(0, usage.reasoningTokens) }
         : {}),
       ...(usage.costUsd !== undefined ? { costUsd: Math.max(0, usage.costUsd) } : {}),
+      ...(scope !== undefined ? { scope } : {}),
     };
     if (normalized.id)
       this.currentTurnSegmentIndex.set(normalized.id, this.currentTurnSegments.length);
@@ -190,15 +225,17 @@ export class UsageTracker {
   private applyUsageDelta(
     usage: Pick<
       UsageSegment,
-      'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheCreateTokens'
+      'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheCreateTokens' | 'scope'
     >,
     isNewApiCall: boolean,
   ): void {
     const cr = usage.cacheReadTokens ?? 0;
     const cc = usage.cacheCreateTokens ?? 0;
+    const scope = usage.scope === 'subagent' ? 'subagent' : 'parent';
 
     // lastApi: 覆盖, 反映"最后一次 API call" (如果入参全 0 则不覆盖，防止被没有 input_tokens 的 delta 冲掉)
-    if (isNewApiCall && (usage.inputTokens > 0 || cr > 0 || cc > 0)) {
+    // 子代理请求不代表主代理上下文，不能污染主代理的 contextTokens。
+    if (scope === 'parent' && isNewApiCall && (usage.inputTokens > 0 || cr > 0 || cc > 0)) {
       this.lastApi.input = usage.inputTokens;
       this.lastApi.cacheRead = cr;
       this.lastApi.cacheCreate = cc;
@@ -209,6 +246,10 @@ export class UsageTracker {
     this.currentTurn.output += usage.outputTokens;
     this.currentTurn.cacheRead += cr;
     this.currentTurn.cacheCreate += cc;
+    this.currentTurnByScope[scope].input += usage.inputTokens;
+    this.currentTurnByScope[scope].output += usage.outputTokens;
+    this.currentTurnByScope[scope].cacheRead += cr;
+    this.currentTurnByScope[scope].cacheCreate += cc;
 
     // cache 命中率累加: 同时进 turn / session 两个桶
     // usage.inputTokens 已经是"未命中缓存的输入 token"(claude message_delta 直接是 input_tokens,
@@ -310,6 +351,14 @@ export class UsageTracker {
     return { ...this.currentTurn };
   }
 
+  /** 返回当前 turn 按 parent/subagent 汇总的 token 用量副本。 */
+  getTurnUsageByScope(): Record<UsageScope, UsageScopeTotals> {
+    return {
+      parent: { ...this.currentTurnByScope.parent },
+      subagent: { ...this.currentTurnByScope.subagent },
+    };
+  }
+
   /** Current turn's provider request boundaries, returned as defensive copies. */
   getTurnUsageSegments(): UsageSegment[] {
     return this.currentTurnSegments.map((segment) => ({ ...segment }));
@@ -361,6 +410,10 @@ export class UsageTracker {
     const snap = this.snapshot();
     // reset currentTurn for next turn (lastApi / contextWindow / cost 跨 turn 保留)
     this.currentTurn = { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 };
+    this.currentTurnByScope = {
+      parent: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
+      subagent: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
+    };
     this.currentTurnSegments = [];
     this.currentTurnSegmentIndex.clear();
     // turnCache 同步清零, sessionCache 跨 turn 累计保留
@@ -375,6 +428,10 @@ export class UsageTracker {
    */
   beginTurn(): void {
     this.currentTurn = { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 };
+    this.currentTurnByScope = {
+      parent: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
+      subagent: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
+    };
     this.currentTurnSegments = [];
     this.currentTurnSegmentIndex.clear();
     // 兜底清 turnCache, 防止上一 turn 异常 / abort 没走到 endTurn 留下脏数据;

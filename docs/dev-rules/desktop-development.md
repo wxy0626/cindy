@@ -14,6 +14,7 @@ Agent 启动 Desktop 只使用仓库根的安全包装命令，并显式选择�
 ```bash
 pnpm restart:desktop:remote --region=global
 pnpm restart:desktop:remote --region=cn
+pnpm restart:desktop:local --region=cn
 ```
 
 默认 `dev` 沙箱与 checkout 路径无关：无论从主仓还是哪个 worktree 启动，
@@ -34,7 +35,9 @@ pnpm restart:desktop:remote -- --shared
 失败时把 `code` / `message` 交给用户。若有 `next=` 且用户没有点名必须共享，
 可以执行那条 next 命令重试。不要给启动命令接会吞退出码的管道。
 
-Desktop 连接的是你自己的 Cindy 云端账号（remote）。这与登录页中免 Cindy 账号的
+Desktop 连接的是你自己的 Cindy 云端账号（remote）。本地运行桌面端但连接中国大陆云端时，
+使用 `pnpm restart:desktop:local --region=cn`；它仍是本地开发进程和本地沙箱，但认证、
+设备连接及业务端点来自 CN 清单，不要求本机启动 `localhost:3344`。这与登录页中免 Cindy 账号的
 「跳过登录」（应用内显示为「未登录」，无需账号即可使用本机 agent；代码内部标识仍为
 `local` mode）不是同一个概念。Agent 不得自行改用
 `pnpm dev:desktop` 或 `pnpm dev:desktop:remote` 绕过包装脚本。

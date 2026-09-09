@@ -20,8 +20,8 @@ const sessionCardSource = readFileSync(
 );
 
 // 非菜单条目的 sessionMenu.* 用法,各处都排除后再比较:
-//   - moreActions:SessionItem 行内 ··· 按钮的 aria-label(header 用自己的
-//     ccAgent.sessionHeader.moreActions)
+//   - moreActions:SessionItem 行内 ··· 按钮的 aria-label(header 已移除可见按钮，
+//     菜单改由右键任务标题触发)
 //   - *Done / *Failed / *Blocked / *Unsupported / *Nothing:动作的 toast 反馈文案
 //     (header 的 move/export handler 内联在组件里,非菜单项)
 const NON_MENU_KEY_PATTERN = /(?:Done|Failed|Blocked|Unsupported|Nothing)$/;

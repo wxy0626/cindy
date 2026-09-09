@@ -241,6 +241,11 @@ export async function setStatus(
   );
 }
 
+/** 永久删除已归档项目会话；主进程会再次校验状态和项目类型。 */
+export function permanentlyDeleteArchived(sessionIds: string[]): Promise<{ deleted: number }> {
+  return wrap(window.electronAPI.localDb.sessions.permanentDeleteArchived(sessionIds));
+}
+
 /**
  * 单字段 bump：把 sessions.user_send_at 设为 atMs（默认 now）。
  * 不返回 row、不刷 updatedAt。renderer 在用户按下发送的瞬间触发。

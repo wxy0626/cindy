@@ -917,6 +917,7 @@ export function devEnvPrefix(env = process.env, platform = process.platform) {
 function launchInSystemTerminal(mode) {
   if (process.platform === 'win32') {
     const command = `cd /d ${cmdDoubleQuote(rootDir)} && ${devEnvPrefix()}${packageManagerCommand(mode)}`;
+    try { fs.writeFileSync(path.join(rootDir, 'scripts', '.debug-dev-window-command.txt'), command); } catch {}
     const script = [
       "Start-Process -FilePath 'cmd.exe'",
       `-ArgumentList @('/c', ${psSingleQuote(command)})`,
@@ -1079,7 +1080,8 @@ async function main() {
     argv = argv.map((arg) => (arg === rawIsolatedArg ? isolatedArg : arg));
     console.log(`==> Isolated sandbox from worktree: ${parseIsolationName(isolatedArg)}`);
   }
-  const killOnly = argv.includes('--kill-only');
+ const killOnly = argv.includes('--kill-only');
+  const fastSwitch = argv.includes('--fast-switch');
   const waitReady = argv.includes('--wait-ready');
   const preserveRunning = argv.includes('--preserve-running');
   const replaceRunningArg = argv.find((arg) => arg.startsWith('--replace-running-root='));
@@ -1171,7 +1173,7 @@ async function main() {
   // apps/desktop/scripts/dev-local-env.mjs 统一负责(human 直跑与 restart 同路径)。
   if (startupConfig?.endpointsCdn) {
     console.log(`==> Endpoints via CDN: dev will fetch the ${startupConfig.region} online endpoint manifest.`);
-  } else if (startupConfig && mode === 'remote' && startupConfig.endpointManifestFile) {
+  } else if (startupConfig && startupConfig.endpointManifestFile) {
     console.log(`==> Endpoint manifest: ${startupConfig.endpointManifestFile}`);
   }
   // --isolated[=<名字>]: dev 使用独立的 userData 目录(数据库/登录态/会话全部与
@@ -1442,7 +1444,7 @@ async function main() {
 
   if (killOnly) return;
 
-  if (!preserveRunning) clearDesktopDevCaches(rootDir);
+  if (!preserveRunning && !fastSwitch) clearDesktopDevCaches(rootDir);
 
   let startupStatusPath = null;
   if (waitReady) {

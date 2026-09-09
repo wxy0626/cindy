@@ -626,9 +626,9 @@ function DatabaseSlimmingSection() {
               id="db-slimming-archive-age"
               aria-label={t('settings.about.storage.dbSlimmingArchiveAgeLabel')}
               className={cn(
-                'flex h-8 min-w-[104px] items-center justify-between gap-2 rounded-full border px-3 text-12 outline-none transition-colors',
+                'settings-dropdown-trigger flex h-8 min-w-[104px] items-center justify-between gap-2 rounded-full px-3 text-12 outline-none transition-colors',
                 'border-[var(--settings-input-border)] bg-[var(--settings-input-bg)] text-[var(--settings-input-text)]',
-                'hover:bg-[var(--settings-menu-bg-hover)] focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-soft)]',
+                'hover:bg-[var(--settings-menu-bg-hover)]',
                 'disabled:cursor-not-allowed disabled:opacity-50',
               )}
             >

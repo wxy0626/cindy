@@ -1,3 +1,5 @@
+import type { WindowsCloseBehavior } from '../shared/windowBehavior.js';
+
 /** BrowserWindow surface needed to leave fullscreen before hiding to the Windows tray. */
 export interface WindowsTrayWindow {
   hide(): void;
@@ -31,6 +33,14 @@ export interface WindowsTrayQuitDependencies {
 /** Tray surface needed to confirm the JS-driven menu still has a live icon. */
 export interface WindowsTrayMenuHost {
   isDestroyed(): boolean;
+}
+
+/** 判断 Windows 启动时是否创建托盘图标;关闭策略只决定关窗动作,不决定图标存在。 */
+export function shouldCreateWindowsTrayAtStartup(
+  platform: NodeJS.Platform,
+  _windowsCloseBehavior: WindowsCloseBehavior | null,
+): boolean {
+  return platform === 'win32';
 }
 
 /** Menu surface used to let Electron choose the native cursor position. */

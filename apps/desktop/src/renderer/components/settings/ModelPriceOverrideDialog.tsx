@@ -275,7 +275,7 @@ export function ModelPriceOverrideDialog({ provider, row, open, onOpenChange }: 
                       currency: event.target.value as 'USD' | 'CNY',
                     }))
                   }
-                  className={fieldClass}
+                  className={cn(fieldClass, 'settings-dropdown-trigger')}
                 >
                   {(view?.allowedCurrencies ?? ['USD']).map((currency) => (
                     <option key={currency} value={currency}>

@@ -19,7 +19,7 @@ describe('SessionContentHeader window drag region', () => {
 
   it('keeps real controls out of the Electron drag region', () => {
     expect(sessionHeaderSource).toMatch(
-      /aria-label=\{t\('ccAgent\.sessionHeader\.moreActions'\)\}[\s\S]{0,120}style=\{WINDOW_NO_DRAG_STYLE\}/,
+      /onContextMenu=\{handleHeaderContextMenu\}[\s\S]{0,160}style=\{WINDOW_NO_DRAG_STYLE\}/,
     );
     expect(gitContextBadgeSource).toMatch(
       /onClick=\{\(\) => void window\.electronAPI\.openExternal\(prRef\.url\)\}[\s\S]{0,180}style=\{WINDOW_NO_DRAG_STYLE\}/,

@@ -114,12 +114,8 @@ export function AccountSwitcherDialog({
   const handleSwitch = async (account: DesktopSavedAccount) => {
     if (account.isCurrent || switchingKey || addingAccount || !mutationAllowed) return;
     setSwitchingKey(account.accountKey);
-
     try {
       if (!(await confirmRunningTaskInterruption())) return;
-
-      // Main owns the account boundary: it stops and drains the outgoing runtime
-      // before committing the selected account, so this await is also the stop barrier.
       await switchAccount(account.accountKey);
       onOpenChange(false);
     } catch {
@@ -128,6 +124,7 @@ export function AccountSwitcherDialog({
       setSwitchingKey(null);
     }
   };
+
 
   const handleAddAccount = async () => {
     if (switchingKey || addingAccount || !mutationAllowed) return;
@@ -143,7 +140,8 @@ export function AccountSwitcherDialog({
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <>
+      <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay
           className="fixed inset-0 z-[10000] bg-[var(--overlay-modal)] data-[state=open]:animate-confirm-overlay-in data-[state=closed]:animate-confirm-overlay-out"
@@ -259,6 +257,7 @@ export function AccountSwitcherDialog({
           </div>
         </Dialog.Content>
       </Dialog.Portal>
-    </Dialog.Root>
+      </Dialog.Root>
+    </>
   );
 }

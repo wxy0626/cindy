@@ -16,8 +16,8 @@
  *     确认"模式：第一次点击 → 按钮就地变成红色 Confirm 胶囊（pending 态，无弹窗）；
  *     第二次点击 → 通过 onAction(id, 'archive-now') 走父层的"跳过 ConfirmDialog 直接执行"
  *     分支；4 秒不操作 / 在 pending 期间点击别处任意位置 → 自动撤回到 Archive 图标。
- *     仅对"可归档"的 session 显示（非 archived、非空 draft）；其它两种状态隐藏按钮，
- *     用户走右键菜单（Unarchive / Delete，仍保留原 ConfirmDialog 弹窗）。
+ *     archived session 仅在 hover/focus 时显示 Undo + Trash2；其它状态只对可归档
+ *     session 显示 Archive 快捷按钮，删除仍走右键菜单（仍保留原 ConfirmDialog 弹窗）。
  *   - 选中态 bg-sidebar-item-active + font-semibold
  *
  * 关于 indented prop（缩进控制）：
@@ -31,7 +31,7 @@
 
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import { Archive, ChevronRight, EllipsisVertical, Play, Undo } from 'lucide-react';
+import { Archive, ChevronRight, EllipsisVertical, Play, Trash2, Undo } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -251,6 +251,9 @@ export function SidebarTitleMarquee({ children, className, title }: SidebarTitle
   );
 }
 
+/** 侧栏会话生命周期动作，delete-now 仅供行内确认态跳过中央确认框。 */
+export type SessionAction = 'delete' | 'delete-now' | 'archive' | 'archive-now' | 'unarchive';
+
 export interface SessionItemProps {
   session: Session;
   isActive: boolean;
@@ -263,7 +266,7 @@ export interface SessionItemProps {
   /** Multi-select visual state in the sidebar. */
   isSelected?: boolean;
   onClick: SessionClickHandler;
-  onAction: (sessionId: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
+  onAction: (sessionId: string, action: SessionAction) => void;
   onRename: (sessionId: string, newTitle: string) => void;
   onTogglePin: (sessionId: string, currentlyPinned: boolean) => void;
   onMoveSession?: (sessionId: string, target: SessionMoveTarget) => void;
@@ -498,21 +501,23 @@ export const SessionItem = memo(function SessionItem({
   }, [effectiveScheduleId, t]);
   const displayTitle = getSessionDisplayTitle(session, t('ccAgent.common.unnamedSession'));
   const canHighlightDisplayTitle = canHighlightSessionDisplayTitle(session);
+  // 已归档任务即使被打开，也沿用未激活的灰色视觉，避免与活跃任务的白色高亮混淆。
+  const isArchived = session.status === 'archived';
+  const isVisualActive = isActive && !isArchived;
   const titleContent =
     matchIndices && matchIndices.length > 0 && canHighlightDisplayTitle
       ? highlightSegments(session.title, matchIndices, {
           highlightClassName: cn(
             'bg-transparent font-semibold',
-            isActive
+            isVisualActive
               ? 'text-[var(--sidebar-item-active-foreground)]'
               : 'text-[var(--msg-assistant-text)]',
           ),
         })
       : displayTitle;
-  // F-PJ-10：archived 视图下的 session 走特殊视觉/菜单分支
+  // F-PJ-10：archived 视图下的 session 走特殊视觉/菜单分支。
   //   - 左侧 status icon 由 CircleDashed 换成 Archive
-  //   - 右侧 ⋮ 菜单只显示 Rename + Unarchive（屏蔽 Pin/Delete/Archive 等无意义项）
-  const isArchived = session.status === 'archived';
+  //   - 右侧操作只在 hover/focus 时显示 Undo + Trash2
   const canQuickArchive = !isArchived && !isEmpty && !remoteWritesBlocked;
 
   // 右键菜单弹出位置：null = 关闭；{x,y} = 在该屏幕坐标处弹出（fixed 定位的
@@ -524,8 +529,12 @@ export const SessionItem = memo(function SessionItem({
   // "Confirm" 胶囊替换；4s 不动 or 点别处 → 自动撤回。第二次点击 Confirm 才真正
   // 触发 onAction(id, 'archive-now') 跳过 ConfirmDialog 直接归档。
   const [archivePending, setArchivePending] = useState(false);
+  // 删除确认只覆盖当前任务行,避免把用户带到屏幕中央的确认弹窗。
+  const [deletePending, setDeletePending] = useState(false);
   // confirm 胶囊 DOM 引用——outside-mousedown 用它判断点击是否落在自己身上。
   const confirmPillRef = useRef<HTMLButtonElement>(null);
+  // 删除确认态的包围节点，用于点到当前任务行以外时撤回确认。
+  const deleteConfirmRef = useRef<HTMLSpanElement>(null);
 
   // 归档/删除前那次 dirty-worktree 预检要在 main 侧跑 git status,是"点了归档、
   // 行还没消失"里剩下的最大一块等待。每个入口真正执行前都隔着一次人类操作
@@ -674,9 +683,29 @@ export const SessionItem = memo(function SessionItem({
     };
   }, [archivePending]);
 
+  // 删除确认态沿用归档确认的点外撤回体验，不改变右键菜单的中央确认流程。
+  useEffect(() => {
+    if (!deletePending) return;
+    const dismiss = () => setDeletePending(false);
+    const timer = setTimeout(dismiss, 4000);
+    const onDocMouseDown = (e: MouseEvent) => {
+      const confirm = deleteConfirmRef.current;
+      if (confirm && e.target instanceof Node && confirm.contains(e.target)) return;
+      dismiss();
+    };
+    document.addEventListener('mousedown', onDocMouseDown, true);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', onDocMouseDown, true);
+    };
+  }, [deletePending]);
+
   // 编辑态 / 切换 session 时一并撤回 pending，避免脏状态泄漏到下一次
   useEffect(() => {
-    if (isEditing) setArchivePending(false);
+    if (isEditing) {
+      setArchivePending(false);
+      setDeletePending(false);
+    }
   }, [isEditing]);
 
   // F-PJ-9 menu handlers — Radix DropdownMenu 在 onSelect 后自动关闭菜单
@@ -706,13 +735,16 @@ export const SessionItem = memo(function SessionItem({
     onAction(session.id, 'unarchive');
   }, [remoteWritesBlocked, session.id, onAction, t]);
 
-  const handleDeleteSelect = useCallback(() => {
-    if (remoteWritesBlocked) {
-      toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
-      return;
-    }
-    onAction(session.id, 'delete');
-  }, [remoteWritesBlocked, session.id, onAction, t]);
+  const handleDeleteSelect = useCallback(
+    (direct = false) => {
+      if (remoteWritesBlocked) {
+        toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
+        return;
+      }
+      onAction(session.id, direct ? 'delete-now' : 'delete');
+    },
+    [remoteWritesBlocked, session.id, onAction, t],
+  );
 
   const handlePinSelect = useCallback(() => {
     if (remoteWritesBlocked) {
@@ -830,54 +862,79 @@ export const SessionItem = memo(function SessionItem({
     Boolean(effectiveScheduleId);
   const sessionActionButtons = (
     <>
-      {/* 自动化会话专属 Run 直点按钮:仅顶层散落(insideAutomationGroup
+      {deletePending ? (
+        <span ref={deleteConfirmRef} className="flex w-full items-center justify-end gap-0.5">
+          <SessionActionText
+            label={t('ccAgent.sidebar.sessionMenu.delete')}
+            onClick={() => {
+              setDeletePending(false);
+              handleDeleteSelect(true);
+            }}
+            isActive={isVisualActive}
+            danger
+          >
+            {t('ccAgent.sidebar.sessionMenu.delete')}
+          </SessionActionText>
+        </span>
+      ) : isArchived && !remoteWritesBlocked ? (
+        <>
+          <SessionAction
+            label={t('ccAgent.sidebar.sessionMenu.unarchive')}
+            onClick={() => handleUnarchiveSelect()}
+            isActive={isVisualActive}
+          >
+            <Undo size={14} strokeWidth={2} />
+          </SessionAction>
+          <SessionAction
+            label={t('ccAgent.sidebar.sessionMenu.delete')}
+            onClick={() => setDeletePending(true)}
+            isActive={isVisualActive}
+          >
+            <Trash2 size={14} strokeWidth={2} />
+          </SessionAction>
+        </>
+      ) : (
+        <>
+          {/* 自动化会话专属 Run 直点按钮:仅顶层散落(insideAutomationGroup
           为 false)的 automation-generated 会话可见 —— 分组内 (SessionEntryList
           展开的子行) 组头已经暴露过同链路操作,再挂一份纯属视觉噪音。其它硬边界:
           未归档 + 非 draft + 非远程只读。Edit 与左侧 Timer chip 同链路,不再重复
           暴露;Run 走 main.maker.schedule.runNow,与 AutomationSessionGroupItem
           组头 [Run ▶️][More ⋮] 保持高频直点、低频收纳的同构。 */}
-      {showAutomationRunAction && (
-        <SessionAction
-          label={t('ccAgent.sidebar.automationGroup.menu.runNow')}
-          onClick={() => void handleAutomationRunClick()}
-          isActive={isActive}
-        >
-          <Play size={14} strokeWidth={2} />
-        </SessionAction>
+          {showAutomationRunAction && (
+            <SessionAction
+              label={t('ccAgent.sidebar.automationGroup.menu.runNow')}
+              onClick={() => void handleAutomationRunClick()}
+              isActive={isVisualActive}
+            >
+              <Play size={14} strokeWidth={2} />
+            </SessionAction>
+          )}
+          <SessionAction
+            label={t('ccAgent.sidebar.sessionMenu.moreActions')}
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              prefetchRemovalPreflight();
+              setMenuPos({ x: rect.left, y: rect.bottom + 2 });
+            }}
+            isActive={isVisualActive}
+          >
+            <EllipsisVertical size={14} strokeWidth={2} />
+          </SessionAction>
+          {canQuickArchive ? (
+            <SessionAction
+              label={t('ccAgent.sidebar.sessionMenu.archived')}
+              onClick={() => {
+                prefetchRemovalPreflight();
+                setArchivePending(true);
+              }}
+              isActive={isVisualActive}
+            >
+              <Archive size={14} strokeWidth={2} />
+            </SessionAction>
+          ) : null}
+        </>
       )}
-      <SessionAction
-        label={t('ccAgent.sidebar.sessionMenu.moreActions')}
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          prefetchRemovalPreflight();
-          setMenuPos({ x: rect.left, y: rect.bottom + 2 });
-        }}
-        isActive={isActive}
-      >
-        <EllipsisVertical size={14} strokeWidth={2} />
-      </SessionAction>
-      {isArchived && !remoteWritesBlocked ? (
-        <SessionAction
-          label={t('ccAgent.sidebar.sessionMenu.unarchive')}
-          onClick={() => handleUnarchiveSelect()}
-          isActive={isActive}
-        >
-          <Undo size={14} strokeWidth={2} />
-        </SessionAction>
-      ) : canQuickArchive ? (
-        <SessionAction
-          label={t('ccAgent.sidebar.sessionMenu.archived')}
-          onClick={() => {
-            // 第一步:亮出 Confirm 胶囊,同时把 dirty 预检发出去。用户抬手
-            // 再点第二下的间隔足够那次 git status 跑完 → 归档零等待。
-            prefetchRemovalPreflight();
-            setArchivePending(true);
-          }}
-          isActive={isActive}
-        >
-          <Archive size={14} strokeWidth={2} />
-        </SessionAction>
-      ) : null}
     </>
   );
 
@@ -917,7 +974,7 @@ export const SessionItem = memo(function SessionItem({
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onKeyDown={(e) => {
-        // target 守卫:内部按钮(More/Archive/Undo/Edit/Run 等)的 Enter/Space
+        // target 守卫:内部按钮(More/Archive/Edit/Run 等)的 Enter/Space
         // keydown 会冒泡到行级 onKeyDown,而这些按钮的 onClick 只 stopPropagation
         // click 不 stop keydown —— 不加守卫会造成「Tab 到按钮按 Enter 触发按钮动作
         // + 同时进入会话」的双触发。SessionItem 早期只有 More/Archive 时未暴露,
@@ -962,15 +1019,17 @@ export const SessionItem = memo(function SessionItem({
         !isEditing && 'cursor-pointer',
         // active 描边必须画在盒内且不参与布局。真实 border 会让固定宽高的
         // border-box 内容区四边各缩 1px,导致选中行的左侧 icon / 标题整体右移。
-        isActive
+        isVisualActive
           ? 'bg-sidebar-item-active text-sidebar-item-active-foreground shadow-[inset_0_0_0_1px_var(--sidebar-item-active-border)]'
-          : isSelected
-            ? 'bg-[var(--chat-input-chip-bg)] text-foreground'
-            : cn(
-                'text-foreground hover:bg-sidebar-item-hover',
-                // 菜单开着时鼠标常会离开行,行底仍保持 hover 色。
-                menuPos !== null && 'bg-sidebar-item-hover',
-              ),
+          : isArchived && isActive
+            ? 'bg-sidebar-item-hover text-foreground'
+            : isSelected
+              ? 'bg-[var(--chat-input-chip-bg)] text-foreground'
+              : cn(
+                  'text-foreground hover:bg-sidebar-item-hover',
+                  // 菜单开着时鼠标常会离开行,行底仍保持 hover 色。
+                  menuPos !== null && 'bg-sidebar-item-hover',
+                ),
         isSelected && 'ring-1 ring-inset ring-[var(--focus-ring-soft)]',
       )}
       aria-current={isActive ? 'page' : undefined}
@@ -986,7 +1045,7 @@ export const SessionItem = memo(function SessionItem({
           isRunning={leftIconRunning}
           isAttached={isAttached}
           hasAttentionNotification={hasAttentionNotification}
-          isActive={isActive}
+          isActive={isVisualActive}
           showAttentionDot={false}
         />
       </span>
@@ -1005,7 +1064,7 @@ export const SessionItem = memo(function SessionItem({
           }}
           containerClassName="min-w-0 flex-1"
           inputClassName="h-6 text-sm font-medium text-foreground"
-          activeForeground={isActive}
+          activeForeground={isVisualActive}
         />
       ) : (
         //   matchIndices 由父层(useSessionSearch)注入时,渲染高亮 segments;否则
@@ -1022,7 +1081,7 @@ export const SessionItem = memo(function SessionItem({
           {/* 绑定徽章优先于普通自动化 Timer:persistentSession 会话两者皆真,
               主图标统一为 Timer，绑定态额外承载频率/暂停信息。 */}
           {boundSchedules.length > 0 ? (
-            <ScheduleBindingBadge schedules={boundSchedules} activeForeground={isActive} />
+            <ScheduleBindingBadge schedules={boundSchedules} activeForeground={isVisualActive} />
           ) : isAutomationGenerated ? (
             <Tip text={t('ccAgent.sidebar.scheduleBinding.viewTask')}>
               <button
@@ -1035,13 +1094,13 @@ export const SessionItem = memo(function SessionItem({
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                <AutomationTimerIcon size={10} activeForeground={isActive} />
+                <AutomationTimerIcon size={10} activeForeground={isVisualActive} />
               </button>
             </Tip>
           ) : null}
           <SidebarTitleMarquee
             title={displayTitle}
-            className={isActive ? 'text-sidebar-item-active-foreground' : 'text-foreground'}
+            className={isVisualActive ? 'text-sidebar-item-active-foreground' : 'text-foreground'}
           >
             {titleContent}
           </SidebarTitleMarquee>
@@ -1052,7 +1111,7 @@ export const SessionItem = memo(function SessionItem({
               strokeWidth={1.8}
               connectionStatus={remoteIconConnectionStatus}
               className={cn(
-                isActive ? 'text-sidebar-item-active-foreground' : 'text-sidebar-action-icon',
+                isVisualActive ? 'text-sidebar-item-active-foreground' : 'text-sidebar-action-icon',
               )}
             />
           )}
@@ -1061,7 +1120,7 @@ export const SessionItem = memo(function SessionItem({
               title={sourceLabel}
               className={cn(
                 'min-w-0 truncate text-xs font-normal',
-                isActive
+                isVisualActive
                   ? 'text-sidebar-item-active-foreground/70'
                   : 'text-[var(--cmd-palette-item-meta)]',
               )}
@@ -1093,17 +1152,20 @@ export const SessionItem = memo(function SessionItem({
             <div
               className={cn(
                 'col-start-1 row-start-1 flex items-center gap-1',
-                // duration 与 action 按钮组的渐显同拍(120ms),让位/回归一进一出同步。
-                'transition-opacity duration-[120ms]',
-                !archivePending && 'group-hover:opacity-0 group-focus-within/slot:opacity-0',
-                menuPos !== null && 'opacity-0',
-                archivePending && 'opacity-0',
+                // 时间与操作按钮必须互斥渲染，不能用 opacity 叠放；否则窄侧栏里
+                // 时间文字会从 Undo/Trash2 下方露出来。默认只显示时间，行 hover
+                // 或操作按钮获得焦点时让位给操作区。
+                !archivePending &&
+                  !deletePending &&
+                  'group-hover:hidden group-focus-within/slot:hidden',
+                menuPos !== null && 'hidden',
+                (archivePending || deletePending) && 'hidden',
                 // mod+1..9 序号徽标出现时同样让位:徽标独占行尾,不与时间/badge 并排。
-                ordinalBadgeLabel != null && 'opacity-0',
+                ordinalBadgeLabel != null && 'hidden',
               )}
             >
               {showRightStatus ? (
-                <SidebarRightStatusIndicator kind={rightStatusKind} isActive={isActive} />
+                <SidebarRightStatusIndicator kind={rightStatusKind} isActive={isVisualActive} />
               ) : (
                 // 任务信息复选:按用户勾选拼装 pr / worktree / tokens / cost / time;默认仅
                 // time,与旧时间槽渲染等价。全不选 → SessionInfoMeta 渲染 null,槽宽归零。
@@ -1111,7 +1173,7 @@ export const SessionItem = memo(function SessionItem({
                   pieces={infoPieces}
                   prRef={infoPrRef}
                   worktree={infoWorktree ?? undefined}
-                  isActive={isActive}
+                  isActive={isVisualActive}
                 />
               )}
             </div>
@@ -1152,37 +1214,50 @@ export const SessionItem = memo(function SessionItem({
               尺寸/视觉与 Project Header 的 ProjectAction 同套（size-5 / icon 14 /
               strokeWidth 2 / gap-0.5）；普通行 hover 走 sidebar-item-hover，选中行
               则用 active foreground 的半透明叠色保持红色胶囊内的反色体系。
-              组装顺序固定为 [Run(automation only), More, Archive | Undo]：
+              组装顺序固定为 [Run(automation only), More, Archive]：
                 - 非 archived：More + Archive；Archive pill 撤回(超时/点外面)后
                   按钮立即还原,符合用户对 "撤回 = 回到点击前" 的直觉预期。
-                - archived：More + Undo（lucide Undo），单击直接走 unarchive，
-                  不像 Archive 那样需要二次确认 pill（unarchive 非破坏性）。 */}
+                - archived：hover/focus 显示 Undo + Trash2；点击 Trash2 后只覆盖为“删除”按钮，
+                  点击 Undo 直接取消归档；点击任务外部即可撤回删除确认。 */}
             {!archivePending && (
               <>
-                {/* 入流占位只负责把标题挤窄;真正的按钮保持可聚焦,不能 display:none。 */}
+                {/* 入流占位只负责把标题挤窄；真正的按钮只在 hover/focus 时显示。 */}
                 <div
                   aria-hidden
                   className={cn(
                     'invisible col-start-1 row-start-1 h-6 items-center gap-0.5',
-                    menuPos !== null
-                      ? 'flex'
-                      : 'hidden group-hover:flex group-focus-within/slot:flex',
+                    isArchived && !remoteWritesBlocked
+                      ? deletePending
+                        ? 'flex w-[4.5rem] justify-end'
+                        : 'flex w-[2.625rem] justify-end'
+                      : menuPos !== null
+                        ? 'flex'
+                        : 'hidden group-hover:flex group-focus-within/slot:flex',
                   )}
                 >
                   {showAutomationRunAction ? <span className="size-5 shrink-0" /> : null}
-                  <span className="size-5 shrink-0" />
                   {isArchived && !remoteWritesBlocked ? (
-                    <span className="size-5 shrink-0" />
-                  ) : canQuickArchive ? (
-                    <span className="size-5 shrink-0" />
-                  ) : null}
+                    <>
+                      <span className="size-5 shrink-0" />
+                      <span className="size-5 shrink-0" />
+                    </>
+                  ) : (
+                    <>
+                      <span className="size-5 shrink-0" />
+                      {canQuickArchive ? <span className="size-5 shrink-0" /> : null}
+                    </>
+                  )}
                 </div>
                 <div
                   className={cn(
                     'absolute right-0 top-0 flex h-6 items-center gap-0.5',
-                    menuPos !== null
-                      ? 'opacity-100'
-                      : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100',
+                    isArchived && !remoteWritesBlocked
+                      ? deletePending
+                        ? 'pointer-events-auto w-[4.5rem] opacity-100'
+                        : 'hidden w-[2.625rem] group-hover:flex group-focus-within/slot:flex'
+                      : menuPos !== null
+                        ? 'flex'
+                        : 'hidden group-hover:flex group-focus-within/slot:flex',
                   )}
                 >
                   {sessionActionButtons}
@@ -1202,7 +1277,7 @@ export const SessionItem = memo(function SessionItem({
         <span
           className={cn(
             'pointer-events-none absolute inset-y-0 right-2 z-20 flex items-center',
-            isActive ? 'text-sidebar-item-active-foreground' : 'text-sidebar-action-icon',
+            isVisualActive ? 'text-sidebar-item-active-foreground' : 'text-sidebar-action-icon',
           )}
         >
           <SessionOrdinalBadgeKbd label={ordinalBadgeLabel} />
@@ -1262,7 +1337,7 @@ export const SessionItem = memo(function SessionItem({
                 <DropdownMenuSeparator className={MENU_SEPARATOR_CLASS} />
                 <DropdownMenuItem
                   disabled={remoteWritesBlocked}
-                  onSelect={handleDeleteSelect}
+                  onSelect={() => handleDeleteSelect()}
                   className={MENU_ITEM_CLASS}
                 >
                   {t('ccAgent.sidebar.sessionMenu.delete')}
@@ -1282,7 +1357,7 @@ export const SessionItem = memo(function SessionItem({
                 <DropdownMenuSeparator className={MENU_SEPARATOR_CLASS} />
                 <DropdownMenuItem
                   disabled={remoteWritesBlocked}
-                  onSelect={handleDeleteSelect}
+                  onSelect={() => handleDeleteSelect()}
                   className={MENU_ITEM_CLASS}
                 >
                   {t('ccAgent.sidebar.sessionMenu.delete')}
@@ -1328,7 +1403,7 @@ export const SessionItem = memo(function SessionItem({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={remoteWritesBlocked}
-                  onSelect={handleDeleteSelect}
+                  onSelect={() => handleDeleteSelect()}
                   className={MENU_ITEM_CLASS}
                 >
                   {t('ccAgent.sidebar.sessionMenu.delete')}
@@ -1404,6 +1479,46 @@ function SessionAction({
           isActive
             ? 'text-sidebar-item-active-foreground hover:text-sidebar-item-active-foreground hover:bg-[color-mix(in_srgb,var(--sidebar-item-active-foreground)_14%,transparent)]'
             : 'text-sidebar-action-icon hover:bg-sidebar-item-hover hover:text-foreground',
+        )}
+      >
+        {children}
+      </button>
+    </Tip>
+  );
+}
+
+/** 侧栏行内的文字动作，用于归档任务垃圾桶点击后的删除确认态。 */
+export function SessionActionText({
+  label,
+  onClick,
+  isActive,
+  danger = false,
+  children,
+}: {
+  label: string;
+  onClick: (e: ReactMouseEvent<HTMLButtonElement>) => void;
+  isActive: boolean;
+  danger?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Tip text={label}>
+      <button
+        type="button"
+        aria-label={label}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick(e);
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        className={cn(
+          'shrink-0 whitespace-nowrap rounded-md px-1.5 text-xs font-medium leading-5 focus:outline-none',
+          isActive
+            ? 'text-sidebar-item-active-foreground hover:bg-[color-mix(in_srgb,var(--sidebar-item-active-foreground)_14%,transparent)]'
+            : danger
+              ? 'bg-[color-mix(in_srgb,hsl(var(--destructive))_16%,transparent)] px-2 text-sm font-semibold text-[hsl(var(--destructive))] hover:bg-[color-mix(in_srgb,hsl(var(--destructive))_28%,transparent)]'
+              : 'text-sidebar-action-icon hover:bg-sidebar-item-hover hover:text-foreground',
         )}
       >
         {children}

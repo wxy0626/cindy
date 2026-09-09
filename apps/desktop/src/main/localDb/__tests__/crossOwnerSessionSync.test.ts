@@ -20,6 +20,8 @@ import {
   syncSessionsFromSiblingDbs,
 } from '../crossOwnerSessionSync';
 import { createBetterSqliteDatabase } from '../betterSqliteFactory';
+import { DEFAULT_LOCAL_PROJECT_SYNC_OPTIONS } from '../../../shared/localProjectSync';
+import { stableLocalProjectSyncId } from '../../localProjectSync';
 
 let tempRoot: string;
 
@@ -122,7 +124,81 @@ describe('discoverSiblingOwnerDbPaths', () => {
   });
 });
 
+describe('共享开关与真实字段约束', () => {
+  it('跨区域导入后部分关闭、全关和重新开启均保持正确，目录授权不跨账号复制', async () => {
+    const globalDir = path.join(tempRoot, 'CindyGlobal-dev2-dev');
+    const cnDir = path.join(tempRoot, 'Cindy-dev2-dev');
+    fs.mkdirSync(globalDir, { recursive: true });
+    fs.mkdirSync(cnDir, { recursive: true });
+    const source = createDb(siblingDbPath(globalDir, 'global-owner'));
+    const target = createDb(siblingDbPath(cnDir, 'cn-owner'));
+    try {
+      for (const db of [source, target]) {
+        db.exec(`ALTER TABLE sessions ADD COLUMN workspace_kind TEXT;
+          ALTER TABLE sessions ADD COLUMN remote_host_id TEXT;
+          ALTER TABLE sessions ADD COLUMN extra_dirs TEXT NOT NULL DEFAULT '[]';
+          ALTER TABLE sessions ADD COLUMN writable_dirs TEXT NOT NULL DEFAULT '[]';`);
+      }
+      source.exec(`INSERT INTO sessions (id, source, workspace_kind, updated_at, extra_dirs, writable_dirs)
+        VALUES ('project', 'desktop', 'project', 1, '["private"]', '["private"]'),
+               ('dialogue', 'desktop', 'dialogue', 1, '[]', '[]');
+        INSERT INTO messages (id, session_id, content) VALUES ('message', 'dialogue', 'cross-region');`);
+      target.exec("INSERT INTO sessions (id, source, workspace_kind, updated_at) VALUES ('own', 'desktop', 'project', 1)");
+      const deps = { userId: 'cn-owner', dbPath: siblingDbPath(cnDir, 'cn-owner'), userDataDir: cnDir, getDb: () => target };
+      const enabled = { ...DEFAULT_LOCAL_PROJECT_SYNC_OPTIONS };
+      const imported = await syncSessionsFromSiblingDbs({ ...deps, localProjectSync: enabled });
+      expect(imported.failed).toEqual([]);
+      expect(imported.sessionsUpserted).toBe(2);
+      expect(target.prepare("SELECT extra_dirs, writable_dirs FROM sessions WHERE source = 'shared'").all())
+        .toEqual([{ extra_dirs: '[]', writable_dirs: '[]' }, { extra_dirs: '[]', writable_dirs: '[]' }]);
+      expect(target.prepare('SELECT session_id, content FROM messages').get()).toEqual({
+        session_id: stableLocalProjectSyncId('global-owner', 'session', 'dialogue'), content: 'cross-region',
+      });
+      const repeated = await syncSessionsFromSiblingDbs({ ...deps, localProjectSync: enabled });
+      expect(repeated.sessionsUpserted).toBe(0);
+      await syncSessionsFromSiblingDbs({ ...deps, localProjectSync: { ...enabled, projectConversation: false } });
+      expect(target.prepare("SELECT workspace_kind FROM sessions WHERE source = 'shared'").all()).toEqual([{ workspace_kind: 'dialogue' }]);
+      const disabled = Object.fromEntries(Object.keys(enabled).map((key) => [key, false])) as typeof enabled;
+      await syncSessionsFromSiblingDbs({ ...deps, localProjectSync: disabled });
+      expect(target.prepare('SELECT id FROM sessions').all()).toEqual([{ id: 'own' }]);
+      expect(target.prepare('SELECT count(*) AS n FROM messages').get()).toEqual({ n: 0 });
+      const restored = await syncSessionsFromSiblingDbs({ ...deps, localProjectSync: enabled });
+      expect(restored.failed).toEqual([]);
+      expect(restored.sessionsUpserted).toBe(2);
+      expect(source.prepare('SELECT count(*) AS n FROM sessions').get()).toEqual({ n: 2 });
+    } finally {
+      source.close();
+      target.close();
+    }
+  });
+});
+
 describe('syncSessionsFromSiblingDbs', () => {
+  it('全部关闭时不枚举或读取兄弟账号数据库', async () => {
+    const dir = path.join(tempRoot, 'CindyShared');
+    fs.mkdirSync(dir, { recursive: true });
+    const siblingPath = siblingDbPath(dir, 'owner-a');
+    const sibling = createDb(siblingPath);
+    sibling.prepare("INSERT INTO sessions (id, title, updated_at) VALUES ('secret', '不应被读取', 100)").run();
+    sibling.close();
+    const mePath = siblingDbPath(dir, 'me');
+    const me = createDb(mePath);
+    me.prepare("INSERT INTO sessions (id, title, source, updated_at) VALUES ('old-shared', '历史镜像', 'shared', 90)").run();
+    me.prepare("INSERT INTO messages (id, session_id, content) VALUES ('old-message', 'old-shared', '历史内容')").run();
+    const summary = await syncSessionsFromSiblingDbs({
+      userId: 'me',
+      dbPath: mePath,
+      getDb: () => me,
+      userDataDir: path.join(tempRoot, 'Cindy'),
+      localProjectSync: null,
+    });
+
+    expect(summary).toMatchObject({ siblings: 0, sessionsUpserted: 0, messagesCopied: 0 });
+    expect(me.prepare('SELECT count(*) AS n FROM sessions').get()).toEqual({ n: 0 });
+    expect(me.prepare('SELECT count(*) AS n FROM messages').get()).toEqual({ n: 0 });
+    me.close();
+  });
+
   it('新会话整行导入、messages 与 media 幂等拷贝', async () => {
     const dir = path.join(tempRoot, 'CindyShared');
     fs.mkdirSync(dir, { recursive: true });
@@ -144,18 +220,19 @@ describe('syncSessionsFromSiblingDbs', () => {
 
     const me = createDb(siblingDbPath(dir, 'me'));
     const summary = await syncSessionsFromSiblingDbs({
+      userId: 'me',
+      dbPath: siblingDbPath(dir, 'me'),
       getDb: () => me,
-      getUserId: () => 'me',
-      getCurrentDbPath: () => siblingDbPath(dir, 'me'),
       userDataDir: path.join(tempRoot, 'Cindy'),
     });
 
     expect(summary.siblings).toBe(1);
     expect(summary.sessionsUpserted).toBe(1);
     expect(summary.messagesCopied).toBe(1);
-    expect(me.prepare('SELECT title, status FROM sessions WHERE id = ?').get('s-1')).toEqual({
+    expect(me.prepare('SELECT title, status, source FROM sessions WHERE id = ?').get('s-1')).toEqual({
       title: '来自兄弟账号',
       status: 'active',
+      source: 'shared',
     });
     expect(me.prepare('SELECT content FROM messages WHERE id = ?').get('m-1')).toEqual({
       content: 'hello',
@@ -165,9 +242,9 @@ describe('syncSessionsFromSiblingDbs', () => {
 
     // 幂等:再跑一遍不重复插入、不报错
     const again = await syncSessionsFromSiblingDbs({
+      userId: 'me',
+      dbPath: siblingDbPath(dir, 'me'),
       getDb: () => me,
-      getUserId: () => 'me',
-      getCurrentDbPath: () => siblingDbPath(dir, 'me'),
       userDataDir: path.join(tempRoot, 'Cindy'),
     });
     expect(again.sessionsUpserted).toBe(0);
@@ -196,9 +273,9 @@ describe('syncSessionsFromSiblingDbs', () => {
     local.run('s-deleted', '本地还活着', 'active', 100);
 
     await syncSessionsFromSiblingDbs({
+      userId: 'me',
+      dbPath: siblingDbPath(dir, 'me'),
       getDb: () => me,
-      getUserId: () => 'me',
-      getCurrentDbPath: () => siblingDbPath(dir, 'me'),
       userDataDir: path.join(tempRoot, 'Cindy'),
     });
 
@@ -227,9 +304,9 @@ describe('syncSessionsFromSiblingDbs', () => {
     const me = createDb(siblingDbPath(dir, 'me'));
 
     const summary = await syncSessionsFromSiblingDbs({
+      userId: 'me',
+      dbPath: siblingDbPath(dir, 'me'),
       getDb: () => me,
-      getUserId: () => 'me',
-      getCurrentDbPath: () => siblingDbPath(dir, 'me'),
       userDataDir: path.join(tempRoot, 'Cindy'),
     });
     expect(summary.failed).toHaveLength(0);

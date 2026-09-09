@@ -161,7 +161,7 @@ describe('ChatInput model source switching wiring', () => {
       'requireDestructiveConfirmation && (!hasVerifiedTargetWindow || !hasVerifiedUsage)',
     );
     expect(guard.slice(sameOrExpand, localVerdictShortcut)).toContain(
-      '!requireDestructiveConfirmation &&\n        (!trustedContextTokens || trustedContextTokens <= 0)',
+      '!requireDestructiveConfirmation && (!trustedContextTokens || trustedContextTokens <= 0)',
     );
     expect(guard.slice(localVerdictShortcut - 40, confirmation)).toContain(
       '!requireDestructiveConfirmation && verdict.level',
@@ -184,7 +184,7 @@ describe('ChatInput model source switching wiring', () => {
       'if (remoteHostId && (!hasVerifiedWindows || !hasVerifiedUsage)) return false;',
     );
     const zeroUsagePass = guard.indexOf(
-      '!requireDestructiveConfirmation &&\n        (!trustedContextTokens || trustedContextTokens <= 0)',
+      '!requireDestructiveConfirmation && (!trustedContextTokens || trustedContextTokens <= 0)',
     );
     const remoteBlock = guard.indexOf("verdict.level === 'danger' || verdict.level === 'overflow'");
     const warningPath = guard.indexOf("verdict.level === 'warn'");

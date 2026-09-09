@@ -99,7 +99,7 @@ export function ScriptCapabilityMultiSelect({ value, onChange }: Props) {
           type="button"
           aria-label={t('scheduler.editor.script.capabilitiesLabel')}
           className={cn(
-            'flex h-10 w-full items-center justify-between gap-2 rounded-full border border-[var(--settings-input-border)] bg-transparent px-4 text-sm',
+            'search-capsule-control flex h-10 w-full items-center justify-between gap-2 rounded-full bg-transparent px-4 text-sm',
             value.length
               ? 'text-[var(--settings-input-text)]'
               : 'text-[var(--settings-input-placeholder)]',

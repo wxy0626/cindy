@@ -10,6 +10,7 @@ import {
   deviceLinkProjectKey,
   extractDisplayName,
   groupSessions,
+  mergeProjectCatalogueWithVisibleSessions,
   normalizeProjectKey,
   normalizeWorkingDir,
   projectIdentityKey,
@@ -347,6 +348,22 @@ describe('groupSessions', () => {
     const c = s({ workingDir: '/p/gamma', updatedAt: '2026-04-18T00:00:00.000Z' });
     const r = groupSessions([a, b, c]);
     expect(r.projects.map((p) => p.displayName)).toEqual(['beta', 'alpha', 'gamma']);
+  });
+
+  it('retains an empty project folder when its only visible session is archived', () => {
+    const archived = s({
+      workingDir: '/repo/only-archived',
+      status: 'archived',
+      updatedAt: '2026-08-20T00:00:00.000Z',
+    });
+    const catalogue = groupSessions([archived], { includePinnedInProjects: true }).projects;
+    const visibleInActiveFilter = groupSessions([]).projects;
+
+    const retained = mergeProjectCatalogueWithVisibleSessions(catalogue, visibleInActiveFilter);
+
+    expect(retained).toHaveLength(1);
+    expect(retained[0]?.projectKey).toBe('local:/repo/only-archived');
+    expect(retained[0]?.sessions).toEqual([]);
   });
 
   it('disambiguates same-basename projects: earliest createdAt keeps basename, others get parent', () => {

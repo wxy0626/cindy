@@ -121,13 +121,44 @@ test("local dev applies the explicit region to the child environment", () => {
     {
       region: "cn",
       endpointsCdn: false,
-      endpointManifestFile: undefined,
+      endpointManifestFile: "config/endpoint.json",
     },
   );
   assert.deepEqual(env, {
     CINDY_AUTH_REGION: "cn",
     VITE_CINDY_AUTH_REGION: "cn",
+    XDT_ENDPOINT_MANIFEST_FILE: "config/endpoint.json",
   });
+});
+
+test("local CN dev uses the CN cloud manifest instead of localhost services", () => {
+  assert.deepEqual(
+    resolveDesktopDevStartupConfig({
+      argv: ["--region=cn"],
+      env: {},
+      mode: "local",
+    }),
+    {
+      region: "cn",
+      endpointsCdn: false,
+      endpointManifestFile: "config/endpoint.json",
+    },
+  );
+});
+
+test("local dev without CN keeps the localhost service fallback", () => {
+  assert.deepEqual(
+    resolveDesktopDevStartupConfig({
+      argv: [],
+      env: {},
+      mode: "local",
+    }),
+    {
+      region: "global",
+      endpointsCdn: false,
+      endpointManifestFile: undefined,
+    },
+  );
 });
 
 test("--endpoints-cdn keeps the selected region and bypasses the default local manifest", () => {

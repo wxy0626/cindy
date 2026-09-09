@@ -59,3 +59,11 @@ export function selectProjectBulkArchiveCandidates<T extends ProjectBulkArchiveS
     ).length,
   };
 }
+
+/** 选择项目级“删除项目”实际要处理的会话；只允许删除该项目下的已归档任务。 */
+export function selectProjectDeleteCandidates<T extends ProjectBulkArchiveSession>(
+  sessions: readonly T[],
+  belongsToProject: (session: T) => boolean,
+): T[] {
+  return sessions.filter((session) => belongsToProject(session) && session.status === 'archived');
+}

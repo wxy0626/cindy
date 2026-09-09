@@ -281,7 +281,7 @@ function FamilyDropdown({
                   className={cn(
                     'flex w-full items-center justify-between rounded-[8px] px-3 py-2',
                     'transition-colors hover:bg-[var(--settings-menu-bg-hover)]',
-                    isSelected && 'bg-[var(--settings-menu-bg-hover)]',
+                    isSelected && 'border border-[var(--focus-ring)] bg-[var(--settings-menu-bg-selected)]',
                   )}
                 >
                   <span className="text-13 font-medium text-[var(--settings-input-text)]">

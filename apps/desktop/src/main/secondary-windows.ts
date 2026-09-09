@@ -107,13 +107,14 @@ export function openSessionInNewWindow(
       ? { titleBarStyle: 'hidden' as const, trafficLightPosition: { x: 12, y: 16 } }
       : { frame: false };
   const persistedTheme = process.platform === 'win32' ? readWindowThemeSnapshot() : null;
-  const isDark = process.platform === 'win32'
-    ? resolveAppThemeIsDark(
-        nativeTheme.shouldUseDarkColors,
-        persistedTheme?.mode,
-        persistedTheme?.resolvedIsDark,
-      )
-    : nativeTheme.shouldUseDarkColors;
+  const isDark =
+    process.platform === 'win32'
+      ? resolveAppThemeIsDark(
+          nativeTheme.shouldUseDarkColors,
+          persistedTheme?.mode,
+          persistedTheme?.resolvedIsDark,
+        )
+      : nativeTheme.shouldUseDarkColors;
   const bgColor = isDark ? '#1f1f1e' : '#f8f8f6';
   const winBackdropConfig = resolveVibrancyConfig(
     persistedTheme?.familyId ?? 'cindy',
@@ -146,8 +147,12 @@ export function openSessionInNewWindow(
     minHeight: 600,
     title: BRAND_NAME,
     icon: app.isPackaged
-      ? path.join(process.resourcesPath, 'icon.png')
-      : path.join(__dirname, '../../resources/icon.png'),
+      ? path.join(process.resourcesPath, process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+      : path.join(
+          __dirname,
+          '../../resources',
+          process.platform === 'win32' ? 'icon.ico' : 'icon.png',
+        ),
     autoHideMenuBar: true,
     show: false,
     backgroundColor: bgColor,
@@ -287,10 +292,7 @@ export function applyVibrancyToSecondaryWindows(familyId: string, isDark: boolea
       };
       if (withMaterial.setBackgroundMaterial) {
         withMaterial.setBackgroundMaterial(config.backgroundMaterial);
-        win.webContents.send(
-          WINDOW_BACKDROP_MATERIAL_CHANGED_CHANNEL,
-          config.backgroundMaterial,
-        );
+        win.webContents.send(WINDOW_BACKDROP_MATERIAL_CHANGED_CHANNEL, config.backgroundMaterial);
       }
     }
     win.setBackgroundColor(config.backgroundColor);

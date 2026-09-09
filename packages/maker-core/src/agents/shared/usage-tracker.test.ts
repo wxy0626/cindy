@@ -35,6 +35,10 @@ describe('UsageTracker.getTurnUsage', () => {
 
     expect(captured).toEqual({ input: 100, output: 50, cacheRead: 200, cacheCreate: 0 });
     expect(tracker.getTurnUsage()).toEqual({ input: 0, output: 0, cacheRead: 0, cacheCreate: 0 });
+    expect(tracker.getTurnUsageByScope()).toEqual({
+      parent: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
+      subagent: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
+    });
   });
 
   it('beginTurn clears any stale bucket from an aborted turn', () => {
@@ -82,6 +86,54 @@ describe('UsageTracker.getTurnUsage', () => {
 
     segments[0]!.inputTokens = 999_999;
     expect(tracker.getTurnUsageSegments()[0]?.inputTokens).toBe(40_000);
+  });
+
+  it('groups usage by scope and treats legacy segments as parent usage', () => {
+    const tracker = new UsageTracker();
+    tracker.ingestApiCallUsage({ inputTokens: 100, outputTokens: 10 });
+    tracker.ingestApiCallUsage({
+      scope: 'parent',
+      inputTokens: 20,
+      outputTokens: 2,
+      cacheReadTokens: 30,
+    });
+    tracker.ingestApiCallUsage({
+      scope: 'subagent',
+      inputTokens: 400,
+      outputTokens: 40,
+      cacheCreateTokens: 50,
+    });
+
+    expect(tracker.getTurnUsageByScope()).toEqual({
+      parent: { input: 120, output: 12, cacheRead: 30, cacheCreate: 0 },
+      subagent: { input: 400, output: 40, cacheRead: 0, cacheCreate: 50 },
+    });
+    expect(tracker.snapshot().contextTokens).toBe(50);
+  });
+
+  it('does not let a subagent request overwrite parent lastApi, including split frames', () => {
+    const tracker = new UsageTracker();
+    tracker.ingestApiCallUsage({ scope: 'parent', inputTokens: 100, outputTokens: 1 });
+    tracker.upsertApiCallUsage('subagent-request', {
+      scope: 'subagent',
+      inputTokens: 500,
+      outputTokens: 5,
+      cacheReadTokens: 600,
+    });
+    tracker.upsertApiCallUsage('subagent-request', {
+      scope: 'subagent',
+      inputTokens: 500,
+      outputTokens: 8,
+      cacheReadTokens: 1_000,
+    });
+
+    expect(tracker.snapshot().contextTokens).toBe(100);
+    expect(tracker.getTurnUsageByScope().subagent).toEqual({
+      input: 500,
+      output: 8,
+      cacheRead: 1_000,
+      cacheCreate: 0,
+    });
   });
 
   it('merges split frames for one request without double-counting repeated input/cache', () => {

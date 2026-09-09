@@ -16,7 +16,6 @@ import { SubagentModelSection } from './SubagentModelSection';
 import { AuxiliaryModelSection } from './AuxiliaryModelSection';
 import { VisionBridgeSection } from './VisionBridgeSection';
 import { ProvidersSection } from './ProvidersSection';
-import { McpServersSection } from './McpServersSection';
 import { RemoteControlSection } from './RemoteControlSection';
 import { NotificationSection } from './NotificationSection';
 import { WindowBehaviorSection } from './WindowBehaviorSection';
@@ -42,7 +41,7 @@ import { HelpAssistantPanel } from './HelpAssistantPanel';
 import { AgentResourceSection } from './AgentResourceSection';
 import { PiPackagesSection } from './PiPackagesSection';
 import { CollaborationSection } from './CollaborationSection';
-import { BuiltinToolsSection } from './BuiltinToolsSection';
+import { ToolsSection } from './ToolsSection';
 import { ContactsSection } from './contacts/ContactsSection';
 import { ComputerUseSection } from './ComputerUseSection';
 import { useAuth } from '@/contexts/AuthContext';
@@ -212,7 +211,7 @@ export function SettingsView() {
 
   return (
     <div
-      className="h-full w-full overflow-hidden bg-[var(--settings-bg)]"
+      className="settings-page h-full w-full overflow-hidden bg-[var(--settings-bg)]"
       role="main"
       aria-label={t('settings.title')}
     >
@@ -545,12 +544,9 @@ export function SettingsView() {
                 id="settings-panel-builtin-tools"
                 aria-labelledby="settings-tab-builtin-tools"
               >
+                {/* 工具页:顶部「内置 / 外部」分段,内置工具与外部 MCP 各归其组。 */}
                 <section className="pb-[18px]" aria-label={t('settings.builtinTools.title')}>
-                  <BuiltinToolsSection workingDir={workingDir ?? undefined} />
-                </section>
-                {/* 外部(自定义)MCP 与内置工具同页管理:内置在上、外部在下,组成「工具」页。 */}
-                <section className="pb-[18px]" aria-label={t('settings.sections.mcpServers')}>
-                  <McpServersSection />
+                  <ToolsSection workingDir={workingDir ?? undefined} />
                 </section>
               </div>
             )}

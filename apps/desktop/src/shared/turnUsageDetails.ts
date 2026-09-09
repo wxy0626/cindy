@@ -10,6 +10,20 @@ import {
   type RegionalMoney,
 } from './regionalMoney.js';
 
+/** 一轮用量中按代理角色拆分的 token 桶。 */
+export interface TurnUsageBucket {
+  /** 未命中缓存、按输入价计费的 token。 */
+  inputTokens: number;
+  /** 模型输出 token。 */
+  outputTokens: number;
+  /** 从 prompt cache 读取的 token。 */
+  cacheReadTokens: number;
+  /** 写入 prompt cache 的 token。 */
+  cacheCreateTokens: number;
+  /** 该桶四类 token 的总和。 */
+  totalTokens: number;
+}
+
 export interface TurnUsageDetails {
   /** 新输入 token：未命中缓存、按输入价计费的部分。 */
   inputTokens: number;
@@ -21,6 +35,10 @@ export interface TurnUsageDetails {
   cacheCreateTokens: number;
   /** 展示用总 token：input + output + cacheRead + cacheCreate。 */
   totalTokens: number;
+  /** 主代理用量；旧消息没有分桶时由顶层字段兼容生成。 */
+  parentUsage?: TurnUsageBucket;
+  /** 子代理用量；没有子代理 token 时省略。 */
+  subagentUsage?: TurnUsageBucket;
   /** 可证明的纯模型生成耗时；不含工具执行/用户等待，用于计算输出速率。 */
   durationMs?: number;
   /** 整轮 wall-clock 耗时，仅供诊断展示；绝不用于计算输出速率。 */
@@ -44,6 +62,10 @@ export interface BuildTurnUsageDetailsInput {
   outputTokens?: number;
   cacheReadTokens?: number;
   cacheCreateTokens?: number;
+  /** 新消息的主代理 token 分桶；缺失时从顶层字段兼容推导。 */
+  parentUsage?: Readonly<Partial<TurnUsageBucket>> | null;
+  /** 新消息的子代理 token 分桶。 */
+  subagentUsage?: Readonly<Partial<TurnUsageBucket>> | null;
   model?: string | null;
   models?: Array<string | null | undefined> | readonly (string | null | undefined)[];
   perModelCost?: ReadonlyArray<
@@ -62,6 +84,109 @@ export interface BuildTurnUsageDetailsInput {
 
 function sanitizeToken(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+/** 将任意输入清洗成完整 token 桶；非法或缺失桶返回 undefined。 */
+function normalizeUsageBucket(value: unknown): TurnUsageBucket | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  const inputTokens = sanitizeToken(raw.inputTokens);
+  const outputTokens = sanitizeToken(raw.outputTokens);
+  const cacheReadTokens = sanitizeToken(raw.cacheReadTokens);
+  const cacheCreateTokens = sanitizeToken(raw.cacheCreateTokens);
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreateTokens,
+    totalTokens: inputTokens + outputTokens + cacheReadTokens + cacheCreateTokens,
+  };
+}
+
+/** 从顶层 token 字段读取兼容用量；旧消息全部视为主代理用量。 */
+function readTopLevelUsageBucket(value: {
+  inputTokens?: unknown;
+  outputTokens?: unknown;
+  cacheReadTokens?: unknown;
+  cacheCreateTokens?: unknown;
+}): TurnUsageBucket {
+  const inputTokens = sanitizeToken(value.inputTokens);
+  const outputTokens = sanitizeToken(value.outputTokens);
+  const cacheReadTokens = sanitizeToken(value.cacheReadTokens);
+  const cacheCreateTokens = sanitizeToken(value.cacheCreateTokens);
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreateTokens,
+    totalTokens: inputTokens + outputTokens + cacheReadTokens + cacheCreateTokens,
+  };
+}
+
+/** 用顶层合计减去已知桶，兼容只携带一个分桶的新旧 IPC 数据。 */
+function subtractUsageBucket(total: TurnUsageBucket, used: TurnUsageBucket): TurnUsageBucket {
+  const inputTokens = Math.max(0, total.inputTokens - used.inputTokens);
+  const outputTokens = Math.max(0, total.outputTokens - used.outputTokens);
+  const cacheReadTokens = Math.max(0, total.cacheReadTokens - used.cacheReadTokens);
+  const cacheCreateTokens = Math.max(0, total.cacheCreateTokens - used.cacheCreateTokens);
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreateTokens,
+    totalTokens: inputTokens + outputTokens + cacheReadTokens + cacheCreateTokens,
+  };
+}
+
+/** 解析主代理与子代理桶；没有任何新桶时把旧顶层字段归入主代理。 */
+function resolveUsageBuckets(value: {
+  inputTokens?: unknown;
+  outputTokens?: unknown;
+  cacheReadTokens?: unknown;
+  cacheCreateTokens?: unknown;
+  parentUsage?: unknown;
+  subagentUsage?: unknown;
+}): { parentUsage: TurnUsageBucket; subagentUsage: TurnUsageBucket } {
+  const topLevel = readTopLevelUsageBucket(value);
+  const parentUsage = normalizeUsageBucket(value.parentUsage);
+  const subagentUsage = normalizeUsageBucket(value.subagentUsage);
+  if (!parentUsage && !subagentUsage) {
+    return { parentUsage: topLevel, subagentUsage: emptyUsageBucket() };
+  }
+  if (parentUsage && subagentUsage) return { parentUsage, subagentUsage };
+  if (parentUsage) {
+    return { parentUsage, subagentUsage: subtractUsageBucket(topLevel, parentUsage) };
+  }
+  return {
+    parentUsage: subtractUsageBucket(topLevel, subagentUsage!),
+    subagentUsage: subagentUsage!,
+  };
+}
+
+/** 创建全零桶，避免聚合和兼容逻辑到处重复字面量。 */
+function emptyUsageBucket(): TurnUsageBucket {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreateTokens: 0,
+    totalTokens: 0,
+  };
+}
+
+/** 按字段累加 token 桶，并重新计算桶总量。 */
+function addUsageBuckets(first: TurnUsageBucket, second: TurnUsageBucket): TurnUsageBucket {
+  const inputTokens = first.inputTokens + second.inputTokens;
+  const outputTokens = first.outputTokens + second.outputTokens;
+  const cacheReadTokens = first.cacheReadTokens + second.cacheReadTokens;
+  const cacheCreateTokens = first.cacheCreateTokens + second.cacheCreateTokens;
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreateTokens,
+    totalTokens: inputTokens + outputTokens + cacheReadTokens + cacheCreateTokens,
+  };
 }
 
 function sanitizeDuration(value: unknown): number | undefined {
@@ -138,7 +263,12 @@ export function aggregateTurnUsageDetails(
     if (model && !modelNames.includes(model)) modelNames.push(model);
   };
   const perModel = new Map<string, RegionalMoney>();
+  let parentUsage = emptyUsageBucket();
+  let subagentUsage = emptyUsageBucket();
   for (const detail of details) {
+    const buckets = resolveUsageBuckets(detail);
+    parentUsage = addUsageBuckets(parentUsage, buckets.parentUsage);
+    subagentUsage = addUsageBuckets(subagentUsage, buckets.subagentUsage);
     addModel(detail.model);
     for (const model of detail.models ?? []) addModel(model);
     for (const item of detail.perModelCost ?? []) {
@@ -155,12 +285,17 @@ export function aggregateTurnUsageDetails(
   // TPS is only meaningful when every segment that contributes output tokens
   // also contributes a compatible generation duration. Dividing all output by
   // a partial duration silently inflates the displayed rate.
+  // 主代理输出才代表父对话生成速度，子代理输出只计入总用量和费用。
+  const parentOutputTokens = details.map(
+    (detail) => resolveUsageBuckets(detail).parentUsage.outputTokens,
+  );
   const hasCompleteOutputTiming = details.every(
-    (detail) => detail.outputTokens <= 0 || detail.durationMs !== undefined,
+    (_, index) => parentOutputTokens[index] <= 0 || details[index].durationMs !== undefined,
   );
   const durationMs = hasCompleteOutputTiming
     ? details.reduce(
-        (sum, item) => sum + (item.outputTokens > 0 ? (item.durationMs ?? 0) : 0),
+        (sum, item, index) =>
+          sum + (parentOutputTokens[index] > 0 ? (item.durationMs ?? 0) : 0),
         0,
       ) || undefined
     : undefined;
@@ -171,10 +306,8 @@ export function aggregateTurnUsageDetails(
     details.reduce((max, item) => Math.max(max, item.turnDurationMs ?? 0), 0) || undefined;
 
   return buildTurnUsageDetails({
-    inputTokens: details.reduce((sum, item) => sum + item.inputTokens, 0),
-    outputTokens: details.reduce((sum, item) => sum + item.outputTokens, 0),
-    cacheReadTokens: details.reduce((sum, item) => sum + item.cacheReadTokens, 0),
-    cacheCreateTokens: details.reduce((sum, item) => sum + item.cacheCreateTokens, 0),
+    parentUsage,
+    subagentUsage,
     durationMs,
     turnDurationMs,
     model: modelNames.length === 1 ? modelNames[0] : undefined,
@@ -213,11 +346,13 @@ export function mergeTurnUsageDetailsForMessage(
  * retained even when the terminal SDK segment contributes no tokens.
  */
 export function buildTurnUsageDetails(input: BuildTurnUsageDetailsInput): TurnUsageDetails | null {
-  const inputTokens = sanitizeToken(input.inputTokens);
-  const outputTokens = sanitizeToken(input.outputTokens);
-  const cacheReadTokens = sanitizeToken(input.cacheReadTokens);
-  const cacheCreateTokens = sanitizeToken(input.cacheCreateTokens);
-  const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreateTokens;
+  const buckets = resolveUsageBuckets(input);
+  const { parentUsage, subagentUsage } = buckets;
+  const inputTokens = parentUsage.inputTokens + subagentUsage.inputTokens;
+  const outputTokens = parentUsage.outputTokens + subagentUsage.outputTokens;
+  const cacheReadTokens = parentUsage.cacheReadTokens + subagentUsage.cacheReadTokens;
+  const cacheCreateTokens = parentUsage.cacheCreateTokens + subagentUsage.cacheCreateTokens;
+  const totalTokens = parentUsage.totalTokens + subagentUsage.totalTokens;
   const durationMs = sanitizeDuration(input.durationMs);
   const turnDurationMs = sanitizeDuration(input.turnDurationMs);
   if (totalTokens <= 0 && turnDurationMs === undefined) return null;
@@ -234,6 +369,8 @@ export function buildTurnUsageDetails(input: BuildTurnUsageDetailsInput): TurnUs
     cacheReadTokens,
     cacheCreateTokens,
     totalTokens,
+    parentUsage,
+    ...(subagentUsage.totalTokens > 0 ? { subagentUsage } : {}),
     cacheHitRate,
     ...(durationMs ? { durationMs } : {}),
     ...(turnDurationMs ? { turnDurationMs } : {}),
@@ -254,6 +391,9 @@ export function normalizeTurnUsageDetails(value: unknown): TurnUsageDetails | un
       cacheReadTokens: typeof raw.cacheReadTokens === 'number' ? raw.cacheReadTokens : undefined,
       cacheCreateTokens:
         typeof raw.cacheCreateTokens === 'number' ? raw.cacheCreateTokens : undefined,
+      // 持久化字段来自 JSON，先收窄为用量桶形状，再交给统一清洗逻辑。
+      parentUsage: raw.parentUsage as Readonly<Partial<TurnUsageBucket>> | null | undefined,
+      subagentUsage: raw.subagentUsage as Readonly<Partial<TurnUsageBucket>> | null | undefined,
       model: typeof raw.model === 'string' ? raw.model : undefined,
       models: Array.isArray(raw.models)
         ? raw.models.filter((m): m is string => typeof m === 'string')

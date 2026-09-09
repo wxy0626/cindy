@@ -31,7 +31,12 @@ const MIN_EXPECTED_BYTES = 1024;
 // dirDist: 产物是"目录 + 主执行文件"（非单文件），sibling-worktree 单文件复用不适用
 const KINDS = {
   claude: { binDir: 'claude-code-bin', base: 'claude', module: '../tools/claude/update.mjs' },
-  codex: { binDir: 'codex-bin', base: 'codex', module: '../tools/codex/update.mjs' },
+  codex: {
+    binDir: 'codex-bin',
+    base: 'codex',
+    companionBase: 'codex-code-mode-host',
+    module: '../tools/codex/update.mjs',
+  },
   ripgrep: { binDir: 'ripgrep-bin', base: 'rg', module: '../tools/ripgrep/update.mjs' },
   pi: {
     binDir: 'pi-bin',
@@ -62,6 +67,15 @@ export function currentPlatformKey() {
 /** win32 平台二进制带 .exe 后缀；其它平台用裸名。 */
 export function binFileFor(base, platformKey) {
   return platformKey.startsWith('win32') ? `${base}.exe` : base;
+}
+
+/** 返回当前平台需要同时存在的 Codex 运行文件。 */
+export function requiredBinFiles(kind, platformKey) {
+  const cfg = KINDS[kind];
+  if (!cfg) return [];
+  const files = [binFileFor(cfg.base, platformKey)];
+  if (cfg.companionBase) files.push(binFileFor(cfg.companionBase, platformKey));
+  return files;
 }
 
 /** 读 apps/<binDir>/<platform>/.version 里记录的已安装版本；缺失/读失败返回 null。 */
@@ -159,26 +173,26 @@ export function listSiblingWorktreeRoots(rootDir) {
  * COPYFILE_FICLONE，不支持的文件系统自动回退普通拷贝），先落 tmp 再 rename 保证
  * 不留半成品。成功返回来源目录路径，所有候选都不可用时返回 null（调用方走网络）。
  */
-export function tryReuseFromSiblingWorktree({ candidates, binFile, version, destDir }) {
+export function tryReuseFromSiblingWorktree({ candidates, binFile, binFiles = [binFile], version, destDir }) {
   for (const candidateDir of candidates) {
-    const srcBin = path.join(candidateDir, binFile);
     if (readInstalledVersion(path.join(candidateDir, '.version')) !== version) continue;
-    if (!isValidBinary(srcBin)) continue;
-    const destBin = path.join(destDir, binFile);
-    const tmpBin = `${destBin}.reuse-tmp`;
+    if (!binFiles.every((file) => isValidBinary(path.join(candidateDir, file)))) continue;
     try {
       fs.mkdirSync(destDir, { recursive: true });
-      fs.copyFileSync(srcBin, tmpBin, fs.constants.COPYFILE_FICLONE);
-      if (process.platform !== 'win32') fs.chmodSync(tmpBin, 0o755);
-      fs.renameSync(tmpBin, destBin);
+      for (const file of binFiles) {
+        const srcBin = path.join(candidateDir, file);
+        const destBin = path.join(destDir, file);
+        const tmpBin = `${destBin}.reuse-tmp`;
+        fs.copyFileSync(srcBin, tmpBin, fs.constants.COPYFILE_FICLONE);
+        if (process.platform !== 'win32') fs.chmodSync(tmpBin, 0o755);
+        fs.renameSync(tmpBin, destBin);
+      }
       fs.writeFileSync(path.join(destDir, '.version'), `${version}\n`);
       return candidateDir;
     } catch {
-      // 目标被占用（EBUSY，app 运行中）或源被并发改动等——清理残留，试下一个候选。
-      try {
-        fs.rmSync(tmpBin, { force: true });
-      } catch {
-        /* ignore */
+      // 目标被占用（EBUSY，app 运行中）或源被并发改动等——清理临时文件，试下一个候选。
+      for (const file of binFiles) {
+        try { fs.rmSync(`${path.join(destDir, file)}.reuse-tmp`, { force: true }); } catch { /* ignore */ }
       }
     }
   }
@@ -194,6 +208,7 @@ export async function ensureBinary(kind, platformKey = currentPlatformKey(), { f
   if (!cfg) throw new Error(`Unknown kind: ${kind} (known: ${Object.keys(KINDS).join(', ')})`);
 
   const binFile = binFileFor(cfg.base, platformKey);
+  const requiredFiles = requiredBinFiles(kind, platformKey);
   const binDirPath = path.join(ROOT, 'apps', cfg.binDir, platformKey);
   const binPath = path.join(binDirPath, binFile);
   const markerPath = path.join(binDirPath, '.version');
@@ -212,7 +227,7 @@ export async function ensureBinary(kind, platformKey = currentPlatformKey(), { f
   // dirDist 的"已就位"额外要求安装清单齐全,不能只看主执行文件。
   const presentAndValid = cfg.dirDist
     ? isValidDirDist(binDirPath, binPath, cfg.requiredDirDistFiles)
-    : isValidBinary(binPath);
+    : requiredFiles.every((file) => isValidBinary(path.join(binDirPath, file)));
   if (!force && presentAndValid && readInstalledVersion(markerPath) === version) {
     log(`${kind} ${platformKey}: already present @ ${version}, skip`);
     return binPath;
@@ -230,6 +245,7 @@ export async function ensureBinary(kind, platformKey = currentPlatformKey(), { f
         path.join(root, 'apps', cfg.binDir, platformKey),
       ),
       binFile,
+      binFiles: requiredFiles,
       version,
       destDir: binDirPath,
     });
@@ -274,7 +290,7 @@ export async function ensureBinary(kind, platformKey = currentPlatformKey(), { f
   const installed = readInstalledVersion(markerPath);
   const finalValid = cfg.dirDist
     ? isValidDirDist(binDirPath, binPath, cfg.requiredDirDistFiles)
-    : isValidBinary(binPath);
+    : requiredFiles.every((file) => isValidBinary(path.join(binDirPath, file)));
   if (!finalValid || installed !== version) {
     throw new Error(
       `${kind} ${platformKey}: ensure failed — expected ${version} at ${binPath} but installed marker is ${installed ?? '(none)'}. ` +

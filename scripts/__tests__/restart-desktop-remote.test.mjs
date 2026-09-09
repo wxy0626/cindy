@@ -36,6 +36,9 @@ import {
 	inheritedUserDataBlocksNamedIsolation,
 } from "../restart-desktop-remote.mjs";
 import {
+	existingReadyInstance,
+} from "../start-desktop-dev.mjs";
+import {
 	DESKTOP_DEV_VERDICT_PREFIX,
 	ISOLATED_RESTART_NEXT,
 	WORKTREE_ISOLATED_ARG,
@@ -90,6 +93,79 @@ test("macOS Terminal launch runs command before activating Terminal", () => {
 		doScriptIndex < activateIndex,
 		"do script must run before activate to avoid Terminal creating an empty default window",
 	);
+});
+
+test("start-desktop-dev derives the same dev sandbox as the restart pipeline", () => {
+	assert.equal(
+		path.basename(defaultIsolatedUserDataDir("dev", "global")),
+		"CindyGlobal-dev2-dev",
+	);
+	assert.equal(
+		path.basename(defaultIsolatedUserDataDir("dev", "cn")),
+		"Cindy-dev2-dev",
+	);
+});
+
+test("start-desktop-dev reuses an already-ready instance", () => {
+	const root = path.resolve("/repo/cindy-preview");
+	const report = {
+		match: true,
+		expected: { rootDir: root, commit: "abc123" },
+		instances: [{
+			pid: 10,
+			rootDir: root,
+			branch: "main",
+			state: "ready",
+			ready: true,
+			mode: "remote",
+			passive: false,
+			isolated: true,
+			userDataDir: "/tmp/CindyGlobal-dev2-dev",
+			commit: "abc123",
+			commitVerified: true,
+			region: "global",
+			source: "record",
+		}],
+	};
+	const instance = existingReadyInstance(report);
+	assert.equal(instance?.pid, 10);
+	assert.equal(instance?.ready, true);
+});
+
+test("start-desktop-dev does not reuse a stale or mismatched instance", () => {
+	const root = path.resolve("/repo/cindy-preview");
+	const report = {
+		match: false,
+		expected: { rootDir: root, commit: "abc123" },
+		instances: [{
+			pid: 11,
+			rootDir: root,
+			state: "starting",
+			ready: false,
+			commit: "def456",
+			commitVerified: true,
+		}],
+	};
+	assert.equal(existingReadyInstance(report), null);
+});
+
+test("start-desktop-dev finds ready instance by explicit sandbox userData", () => {
+	const root = path.resolve("/repo/cindy-preview");
+	const report = {
+		match: true,
+		expected: { rootDir: root, commit: "abc123" },
+		instances: [{
+			pid: 12,
+			rootDir: root,
+			state: "ready",
+			ready: true,
+			commit: "abc123",
+			commitVerified: true,
+			userDataDir: "/tmp/CindyGlobal-dev2-dev",
+			region: "global",
+		}],
+	};
+	assert.equal(existingReadyInstance(report)?.pid, 12);
 });
 
 test("desktop restart no longer depends on the retired Feishu build app id", () => {
@@ -251,6 +327,7 @@ test("normalizeDesktopRestartArgv defaults to one stable sandbox across worktree
 	assert.deepEqual(normalizeDesktopRestartArgv(["--wait-ready"], {}), [
 		"--wait-ready",
 		DEFAULT_ISOLATED_ARG,
+		"--isolated-auth",
 	]);
 	assert.deepEqual(
 		normalizeDesktopRestartArgv(["--wait-ready", "--isolated=review"], {}),

@@ -46,7 +46,9 @@ export type DbTxName =
   | 'wechatPromoteTaskAttachments'
   | 'wechatRefreshOutboxContexts'
   | 'wechatUnbindCleanup'
-  | 'session.importShare';
+  | 'session.importShare'
+  | 'account.importLocalProjects'
+  | 'account.syncSiblingSessions';
 
 export interface CodexImportMessagesArgs {
   sessionId: string;
@@ -503,6 +505,161 @@ export interface SessionImportShareArgs {
 }
 
 /**
+ * 登录后一次性本地项目同步的会话快照。
+ *
+ * 所有 ID（包括已重建的父会话/消息引用）由 main 侧安全快照生成；
+ * 运行态字段也必须由 main 侧先清空，事务层只负责按给定值落库。
+ */
+export interface LocalProjectImportSessionRow {
+  id: string;
+  title: string;
+  workingDir: string | null;
+  workspaceKind: string;
+  worktreePath: string | null;
+  model: string;
+  effort: string;
+  permissionMode: string;
+  providerId: string | null;
+  status: string;
+  sdkSessionId: string | null;
+  totalTokenUsage: number;
+  totalCostUsd: number;
+  totalCostAmount: number;
+  totalCostCurrency: string | null;
+  totalCostIsApproximate: boolean;
+  contextTokens: number;
+  contextWindow: number;
+  fastMode: boolean;
+  planModeEnabled: boolean;
+  clearedAt: number | null;
+  pinnedAt: number | null;
+  summary: string | null;
+  userSendAt: number | null;
+  agentKind: string;
+  orcaRole: string | null;
+  parentSessionId: string | null;
+  forkedAtMessageId: string | null;
+  source: string;
+  feishuOpenId: string | null;
+  feishuBotAppId: string | null;
+  imBotContextId: string | null;
+  imUserId: string | null;
+  usedProjectContext: boolean;
+  codexHistoryHasProductPrompt: boolean | null;
+  codexPlanJson: string | null;
+  extraDirs: string;
+  writableDirs: string;
+  remoteHostId: string | null;
+  activeTurnStartedAt: number | null;
+  activeTurnPid: number | null;
+  lastTurnEndedAt: number | null;
+  listPreview: string | null;
+  listPreviewRole: string | null;
+  listMessageCount: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface LocalProjectImportMessageRow {
+  id: string;
+  clientId: string;
+  sessionId: string;
+  role: string;
+  content: string;
+  toolUseId: string | null;
+  agentMeta: string | null;
+  agentKind: string | null;
+  createdAt: number;
+  rewindAt: number | null;
+}
+
+export interface LocalProjectImportRecentWorkdirRow {
+  path: string;
+  lastUsedAt: number;
+}
+
+export interface LocalProjectImportAliasRow {
+  projectKey: string;
+  alias: string;
+  updatedAt: number;
+}
+
+/** 共享项目运行记录的安全投影；provider 原生运行 ID 永不跨账号复制。 */
+export interface LocalProjectImportSubagentRunRow {
+  id: string;
+  sessionId: string;
+  provider: string;
+  logicalAgentId: string;
+  parentToolUseId: string | null;
+  aliases: string;
+  providerRunIds: string;
+  status: string;
+  title: string | null;
+  description: string | null;
+  summary: string | null;
+  returnedResult: string | null;
+  returnedResultEmpty: number | null;
+  returnedResultTruncated: number | null;
+  model: string | null;
+  reasoningEffort: string | null;
+  totalTokens: number | null;
+  toolUses: number | null;
+  durationMs: number | null;
+  costUsd: number | null;
+  capabilities: string;
+  activity: string;
+  startedAt: number;
+  updatedAt: number;
+  endedAt: number | null;
+  rewindAt: number | null;
+  deletedAt: number | null;
+}
+
+/**
+ * 一次性本地项目同步：四类数据共用一个 SQLite 事务。
+ * 每个 session 包含其完整 messages，避免消息在快照中指向未导入的 session。
+ */
+export interface AccountImportLocalProjectsArgs {
+  sessions: LocalProjectImportSessionRow[];
+  messages: LocalProjectImportMessageRow[];
+  recentWorkdirs: LocalProjectImportRecentWorkdirRow[];
+  projectAliases: LocalProjectImportAliasRow[];
+  subagentRuns: LocalProjectImportSubagentRunRow[];
+}
+
+/** account.importLocalProjects 的原子导入结果。 */
+export interface AccountImportLocalProjectsResult {
+  sessionCount: number;
+  messageCount: number;
+  recentWorkdirCount: number;
+  projectAliasCount: number;
+  subagentRunCount: number;
+}
+
+/**
+ * account.syncSiblingSessions — 当前 owner 库做一次跨 owner / 跨版本兄弟库
+ * 镜像同步。worker 内用原生 better-sqlite3 事务执行，比主进程 schedule 调原生
+ * Database 更可靠：主进程在 worker-thread 架构下根本拿不到原生句柄，原调度点
+ * 必败（database connection is not open / owner not ready）。sync 内部从
+ * userDataDir 父目录枚举所有品牌目录（Cindy/CindyGlobal/.../CindyShared）+ 沙箱。
+ */
+export interface AccountSyncSiblingSessionsArgs {
+  /** 当前 owner 的 db 文件路径，用于排除自己与文件 ID 收敛。 */
+  currentDbPath: string;
+  /** 当前 owner userId，用于排除自己的会话。 */
+  currentUserId: string;
+  /** 当前 owner 所在的 userData 目录（sync 从其父目录枚举品牌目录）。 */
+  userDataDir: string;
+}
+
+export interface AccountSyncSiblingSessionsResult {
+  siblings: number;
+  sessionsUpserted: number;
+  messagesCopied: number;
+  failed: Array<{ path: string; reason: string }>;
+}
+
+/**
  * Atomically replace every persisted owner of a desktop session with one IM
  * identity. The same identity may already point at another session.
  */
@@ -853,6 +1010,8 @@ export type DbTxArgsByName = {
   wechatRefreshOutboxContexts: WechatRefreshOutboxContextsArgs;
   wechatUnbindCleanup: WechatUnbindCleanupArgs;
   'session.importShare': SessionImportShareArgs;
+  'account.importLocalProjects': AccountImportLocalProjectsArgs;
+  'account.syncSiblingSessions': AccountSyncSiblingSessionsArgs;
 };
 
 export type DbTxResultByName = {
@@ -904,4 +1063,6 @@ export type DbTxResultByName = {
   wechatRefreshOutboxContexts: WechatRefreshOutboxContextsResult;
   wechatUnbindCleanup: WechatUnbindCleanupResult;
   'session.importShare': { messageCount: number };
+  'account.importLocalProjects': AccountImportLocalProjectsResult;
+  'account.syncSiblingSessions': AccountSyncSiblingSessionsResult;
 };

@@ -105,6 +105,31 @@ export interface ProjectGroupsResult {
   projects: ProjectNode[];
 }
 
+/**
+ * 将全状态项目目录与当前筛选后的项目会话合并。
+ *
+ * 项目文件夹是长期存在的目录节点，不能因为 active / archived 或最近活动筛选
+ * 让它暂时没有子会话就被删除；子会话数组为空只表示当前筛选下没有可见任务。
+ * visibleProjects 中若出现目录册尚未同步到的新项目，也要保留，避免加载竞态丢行。
+ */
+export function mergeProjectCatalogueWithVisibleSessions(
+  catalogueProjects: readonly ProjectNode[],
+  visibleProjects: readonly ProjectNode[],
+): ProjectNode[] {
+  const visibleByKey = new Map(visibleProjects.map((project) => [project.projectKey, project]));
+  const merged: ProjectNode[] = catalogueProjects.map((project) => {
+    const visibleProject = visibleByKey.get(project.projectKey);
+    return visibleProject
+      ? { ...project, sessions: visibleProject.sessions }
+      : { ...project, sessions: [] };
+  });
+  const catalogueKeys = new Set(catalogueProjects.map((project) => project.projectKey));
+  for (const project of visibleProjects) {
+    if (!catalogueKeys.has(project.projectKey)) merged.push(project);
+  }
+  return merged;
+}
+
 export interface GroupSessionsOptions {
   projectAliases?: ReadonlyMap<string, string> | Record<string, string>;
   /**

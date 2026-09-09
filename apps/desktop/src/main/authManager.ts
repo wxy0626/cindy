@@ -102,15 +102,19 @@ import {
   loadClientEndpointsForRealm,
   resetClientEndpointRealm,
 } from './clientEndpointsService.js';
+import { CURRENT_CINDY_REGION } from '../shared/brandRegion.js';
+import { clearSelectedRuntimeRegion, setSelectedRuntimeRegion } from './devRegionSwitchIpc.js';
 import {
   parseDesktopLoginAction,
-  parseDesktopAccountKey,
+  parseDesktopAccountSwitchRequest,
   type DesktopAccountDeletionChallenge,
   type DesktopAccountSwitcherSnapshot,
   type DesktopSavedAccount,
   type DesktopLoginAction,
   type DesktopLoginActionResult,
 } from '../shared/authIpc';
+import type { LocalProjectSyncOptions } from '../shared/localProjectSync.js';
+import type { LocalProjectSyncSnapshot } from './localProjectSync.js';
 import { LOGIN_CAPTCHA_PAGE_PATH } from '../shared/webviewPartition';
 import {
   activeOwnerScopeKey,
@@ -176,7 +180,7 @@ async function claimLegacyNamespaceForVerifiedUser(userId: string): Promise<void
 // ── Config ──────────────────────────────────────────────────────────────────
 
 const AUTH_REGION: AuthRegion =
-  import.meta.env.VITE_CINDY_AUTH_REGION === 'global' ? 'global' : 'cn';
+  CURRENT_CINDY_REGION === 'global' ? 'global' : 'cn';
 // 端点惰性读取(勿固化成模块级常量):远程清单在 app.ready 内解析,
 // 顶层求值会把值钉死在烘焙值上。clientEndpointsService 的烘焙值已含 dev fallback。
 // 默认读取构建区域；组织 SSO 发现后按冻结的 session realm 读取对应清单。
@@ -206,6 +210,8 @@ export interface User {
   name: string;
   avatar: string | null;
   email: string | null;
+  /** 账号按钮专用的安全展示值；手机号仅保存脱敏结果。 */
+  accountLabel?: string;
   defaultModel: string;
   defaultEffort: string;
   /** auth-server membership context. */
@@ -310,6 +316,44 @@ type AccountSwitchTeardown = (context: {
   nextUserId: string;
 }) => void | Promise<void>;
 
+/**
+ * 本地项目同步的 main 进程生命周期适配器；具体数据库实现由 bootstrap 注入，
+ * authManager 只负责把策略、账号和登录 epoch 绑定在同一次登录上。
+ */
+export interface LocalProjectSyncLifecycle {
+  captureOutgoingSnapshot(input: {
+    sourceUserId: string;
+    targetUserId: string;
+    policy: LocalProjectSyncOptions;
+  }): Promise<LocalProjectSyncSnapshot | null>;
+  importSnapshotForUser(input: {
+    sourceUserId: string;
+    targetUserId: string;
+    snapshot: LocalProjectSyncSnapshot;
+  }): Promise<void>;
+}
+
+/** 等待目标账号数据库就绪时暂存的一次性本地项目同步请求。 */
+export interface PendingLocalProjectSync {
+  sourceUserId: string;
+  targetUserId: string;
+  flowEpoch: number;
+  authEpoch: number;
+  /** 这次登录确认的共享白名单，避免异步导入依赖 renderer 的后续状态。 */
+  policy: LocalProjectSyncOptions;
+  /** 捕获前未定义；捕获后为快照或 null。 */
+  snapshot: LocalProjectSyncSnapshot | null | undefined;
+}
+
+type PendingLocalProjectSyncEnvelope = PendingLocalProjectSync & {
+  capturePromise?: Promise<void>;
+  importPromise?: Promise<boolean>;
+  /** 侧栏切号等待目标数据库 ready 与导入完成时使用的一次性闸门。 */
+  completionPromise?: Promise<void>;
+  /** 释放切号等待闸门；失败时也释放，避免登录流程永久悬挂。 */
+  resolveCompletion?: () => void;
+};
+
 /** Releases every account-scoped runtime before terminal local sign-out. */
 type AuthSessionTeardown = (reason: string) => void | Promise<void>;
 type ProjectionRepairTeardown = (reason: string) => void | Promise<void>;
@@ -317,6 +361,26 @@ type ProjectionRepairTeardown = (reason: string) => void | Promise<void>;
 let accountSwitchTeardown: AccountSwitchTeardown | null = null;
 let authSessionTeardown: AuthSessionTeardown | null = null;
 let projectionRepairTeardown: ProjectionRepairTeardown | null = null;
+/** 当前登录动作确认的策略；只在主进程内存中短暂保存，不写入账号数据库。 */
+let pendingLocalProjectSyncPolicy: LocalProjectSyncOptions | null = null;
+/** 当前账号最近一次确认的本机共享策略；仅驻留 main 内存，供 localDb 就绪边界读取。 */
+const localProjectSyncPoliciesByUser = new Map<string, LocalProjectSyncOptions | null>();
+/** 等待目标 DbClient ready 的一次性同步请求，snapshot 为 undefined 表示尚未捕获。 */
+let pendingLocalProjectSync: PendingLocalProjectSyncEnvelope | null = null;
+/** 按登录 epoch 保留尚未消费的同步请求，避免连续切号覆盖旧 envelope。 */
+const pendingLocalProjectSyncRequests = new Map<string, PendingLocalProjectSyncEnvelope>();
+/** 由 bootstrap 注入的数据库适配器，避免 authManager 依赖具体 localDb 实现。 */
+let localProjectSyncLifecycle: LocalProjectSyncLifecycle | null = null;
+/** 串行化侧栏快捷切号，避免两次策略确认交叉覆盖登录状态。 */
+let savedAccountSwitchQueue: Promise<void> = Promise.resolve();
+
+/** 返回目标账号已确认的共享策略；未记录的旧会话返回 undefined 以保留兼容行为。 */
+export function getLocalProjectSyncPolicyForUser(
+  userId: string,
+): LocalProjectSyncOptions | null | undefined {
+  const policy = localProjectSyncPoliciesByUser.get(userId);
+  return policy ? { ...policy } : policy;
+}
 
 const stableOwnerPostCommitCoordinator = new StableOwnerPostCommitCoordinator({
   snapshot: () => {
@@ -390,6 +454,8 @@ let pendingAccountToken: string | null = null;
 let pendingAccountRefreshToken: string | null = null;
 let pendingAccountMemberships: AuthMembership[] = [];
 let pendingLoginTicket: string | null = null;
+/** 当前验证码登录使用的账号展示值，不保存完整手机号。 */
+let pendingLoginAccountLabel: string | null = null;
 let pendingBindTicket: string | null = null;
 let pendingSsoVerificationTicket: string | null = null;
 let loginActionPromise: Promise<DesktopLoginActionResult> | null = null;
@@ -566,13 +632,13 @@ function writeSafe(key: string, value: string): boolean {
  * During the Windows backup-swap fallback, readers use the old backup rather
  * than trying to restore it while the writer still owns the vault lock.
  */
-function readAtomicSafe(key: string): string | null {
+function readAtomicSafe(key: string, userDataDir = app.getPath('userData')): string | null {
   try {
     if (!safeStorage.isEncryptionAvailable()) {
       logSafeStorageIssueOnce('encryption unavailable (atomic read)', key);
       return null;
     }
-    const filepath = path.join(SAFE_STORAGE_DIR(), `${key}.enc`);
+    const filepath = path.join(path.join(userDataDir, 'safe-storage'), `${key}.enc`);
     let content: string;
     try {
       content = fs.readFileSync(filepath, 'utf-8');
@@ -746,9 +812,9 @@ function isStoredAccountMetadata(value: unknown): value is StoredAccountMetadata
 }
 
 function readAuthAccountVault(
-  options: { allowUnreadable?: boolean; recoverInvalid?: boolean } = {},
+  options: { allowUnreadable?: boolean; recoverInvalid?: boolean; userDataDir?: string } = {},
 ): AuthAccountVault {
-  const raw = readAtomicSafe(AUTH_ACCOUNT_VAULT_KEY);
+  const raw = readAtomicSafe(AUTH_ACCOUNT_VAULT_KEY, options.userDataDir);
   if (raw === null) {
     if (isAtomicPersistedSecretAbsent(AUTH_ACCOUNT_VAULT_KEY)) return emptyAuthAccountVault();
     log.warn('encrypted auth account vault exists but is temporarily unreadable');
@@ -973,12 +1039,14 @@ async function clearAuthAccountVault(
 function metadataFromMembership(
   membership: AuthMembership | AccountMembership,
   passportId: string,
+  accountLabel?: string | null,
 ): StoredAccountMetadata {
   return {
     membershipId: membership.id,
     passportId,
     displayName: membership.displayName,
     email: membership.email,
+    accountLabel: accountLabel ?? undefined,
     avatarUrl: membership.avatarUrl ?? null,
     kind: membership.kind,
     role: membership.role,
@@ -1062,13 +1130,16 @@ function writeResourceSessionToVault(
   pair: AuthTokenPair,
   realm: AuthRegion,
   passportId: string,
-  options: { markActive?: boolean; lastUsedAt?: number } = {},
+  options: { markActive?: boolean; lastUsedAt?: number; accountLabel?: string | null } = {},
 ): void {
   const key = accountVaultKey(realm, pair.membership.id);
+  const previousAccountLabel = vault.resources[key]?.metadata.accountLabel;
+  // 刷新 token 时服务端不会返回手机号，必须保留首次登录保存的脱敏账号。
+  const accountLabel = options.accountLabel ?? previousAccountLabel;
   vault.resources[key] = {
     realm,
     refreshToken: pair.refreshToken,
-    metadata: metadataFromMembership(pair.membership, passportId),
+    metadata: metadataFromMembership(pair.membership, passportId, accountLabel),
     lastUsedAt: options.lastUsedAt ?? Date.now(),
   };
   if (options.markActive !== false) {
@@ -1140,7 +1211,9 @@ async function commitDesktopLoginSessions(
         delete vault.signedOutAt;
         return;
       }
-      writeResourceSessionToVault(vault, input.pair, input.realm, input.passportId);
+      writeResourceSessionToVault(vault, input.pair, input.realm, input.passportId, {
+        accountLabel: pendingLoginAccountLabel,
+      });
       if (input.accountRefreshToken) {
         writePassportSessionToVault(vault, {
           realm: input.realm,
@@ -1514,6 +1587,7 @@ function readPersistedAuthSession() {
 async function reconcileDesktopActiveAuthSession(): Promise<
   ReturnType<typeof readPersistedAuthSession>
 > {
+  const realm = AUTH_REGION;
   return withCrossProcessLock(
     authAccountVaultLockPath(),
     { label: 'auth-account-vault-reconcile', waitMs: 5_000 },
@@ -1531,16 +1605,29 @@ async function reconcileDesktopActiveAuthSession(): Promise<
         removeSafe(LEGACY_REFRESH_TOKEN_KEY);
         return null;
       }
+      // 中国版和国际版共享一个保险库，但当前活动指针不能跨区域复用。
+      // 只选择目标区域的 Resource，防止切到国际版后拿 cn refresh token 请求 global。
       const activeResource = vault.activeAccountKey
         ? vault.resources[vault.activeAccountKey]
         : undefined;
-      if (!activeResource) return session;
-      if (!session) {
-        writePersistedAuthSessionOrThrow(activeResource.refreshToken, activeResource.realm);
+      const regionResource =
+        activeResource?.realm === realm
+          ? activeResource
+          : Object.values(vault.resources)
+              .filter((candidate) => candidate.realm === realm)
+              .sort((left, right) => right.lastUsedAt - left.lastUsedAt)[0];
+      const regionSession = session?.realm === realm ? session : null;
+      // 没有当前区域的兼容会话时，才允许从当前区域 Resource 修复投影；
+      // 这等价于旧逻辑的 `if (!session)`，但先经过 realm 校验。
+      const needsSessionProjection = !session || !regionSession;
+      if (!regionResource && !regionSession) return null;
+      if (needsSessionProjection && regionResource) {
+        vault.activeAccountKey = accountVaultKey(realm, regionResource.metadata.membershipId);
+        writePersistedAuthSessionOrThrow(regionResource.refreshToken, realm);
         return {
           version: 1,
-          realm: activeResource.realm,
-          refreshToken: activeResource.refreshToken,
+          realm,
+          refreshToken: regionResource.refreshToken,
         };
       }
       // A rollback build can rotate only the compatibility session. When the
@@ -1945,7 +2032,35 @@ function getRefreshErrorCode(result: { data: unknown }): string | undefined {
   return (result.data as AuthErrorResponse | null)?.error?.code;
 }
 
-function mapMembershipToAuthUser(membership: AuthMembership, passportId?: string): CurrentUser {
+/** 将中国手机号脱敏为前三位 + 四个星号 + 后四位。 */
+function maskPhoneAccount(value: string | null | undefined): string | null {
+  const digits = value?.replace(/\D/g, '') ?? '';
+  return digits.length >= 7 ? `${digits.slice(0, 3)}****${digits.slice(-4)}` : null;
+}
+
+/** 将验证码接口的 HTTP 429 与服务端短信限流码统一为登录页可识别的限流错误。 */
+function normalizeLoginActionErrorCode(error: unknown): { code: string; status: number } {
+  const status = error instanceof AuthApiError ? error.statusCode : 0;
+  const rawCode = error instanceof AuthApiError ? error.code : 'AUTH_REQUEST_FAILED';
+  const rateLimitCodes = new Set([
+    'RATE_LIMITED',
+    'TOO_MANY_REQUESTS',
+    'SMS_RATE_LIMITED',
+    'PHONE_RATE_LIMITED',
+    'CODE_RATE_LIMITED',
+    'VERIFICATION_CODE_RATE_LIMITED',
+  ]);
+  return {
+    code: status === 429 || rateLimitCodes.has(rawCode) ? 'RATE_LIMITED' : rawCode,
+    status,
+  };
+}
+
+function mapMembershipToAuthUser(
+  membership: AuthMembership,
+  passportId?: string,
+  accountLabel?: string | null,
+): CurrentUser {
   return {
     id: membership.id,
     name: membership.displayName || membership.email || 'Cindy',
@@ -1954,6 +2069,7 @@ function mapMembershipToAuthUser(membership: AuthMembership, passportId?: string
     // 产品资料头像回落已随 /api/user/me 退役(2026-07)。
     avatar: membership.avatarUrl ?? null,
     email: membership.email,
+    accountLabel: accountLabel ?? undefined,
     defaultModel: DEFAULT_MODEL,
     defaultEffort: DEFAULT_EFFORT,
     membershipKind: membership.kind,
@@ -2450,6 +2566,214 @@ async function finishColdStartSignedOut(reason: string): Promise<AuthState> {
 
 export function setAccountSwitchTeardown(teardown: AccountSwitchTeardown | null): void {
   accountSwitchTeardown = teardown;
+}
+
+/** 注册本地项目同步的数据库适配器；凭证与策略仍由 authManager 独占。 */
+export function setLocalProjectSyncLifecycle(
+  lifecycle: LocalProjectSyncLifecycle | null,
+): void {
+  localProjectSyncLifecycle = lifecycle;
+}
+
+/** 结束一次本地同步等待；重复结束无副作用，供成功和失败路径共同调用。 */
+function settlePendingLocalProjectSync(pending: PendingLocalProjectSyncEnvelope): void {
+  const resolveCompletion = pending.resolveCompletion;
+  pending.resolveCompletion = undefined;
+  resolveCompletion?.();
+}
+
+/** 为同步请求生成进程内唯一索引，隔离不同登录 epoch 的生命周期。 */
+function localProjectSyncRequestKey(pending: PendingLocalProjectSync): string {
+  return `${pending.authEpoch}:${pending.flowEpoch}:${pending.targetUserId}`;
+}
+
+/** 移除同步请求并释放所有等待者；重复调用保持幂等。 */
+function removePendingLocalProjectSync(pending: PendingLocalProjectSyncEnvelope): void {
+  pendingLocalProjectSyncRequests.delete(localProjectSyncRequestKey(pending));
+  if (pendingLocalProjectSync === pending) pendingLocalProjectSync = null;
+  settlePendingLocalProjectSync(pending);
+}
+
+/** 清理已被新账号登录流程取代的请求，避免过期 envelope 长期占用内存。 */
+function clearSupersededLocalProjectSyncRequests(): void {
+  for (const pending of pendingLocalProjectSyncRequests.values()) {
+    // 正在捕获或导入的请求必须留到账号边界等待完成，否则旧 DbClient
+    // 可能在异步事务/查询中被关闭，或快照结果脱离其原有 envelope。
+    if (pending.capturePromise || pending.importPromise) continue;
+    removePendingLocalProjectSync(pending);
+  }
+}
+
+/** 找到目标账号最近一笔请求，供对应的 localDb ready 回调消费。 */
+function findPendingLocalProjectSyncForUser(
+  targetUserId: string,
+): PendingLocalProjectSyncEnvelope | null {
+  return [...pendingLocalProjectSyncRequests.values()]
+    .filter(
+      (pending) =>
+        pending.targetUserId === targetUserId &&
+        pending.authEpoch === authStateEpoch &&
+        pending.flowEpoch === loginFlowEpoch,
+    )
+    .sort((left, right) => right.authEpoch - left.authEpoch)[0] ?? null;
+}
+
+/**
+ * 等待已经开始的同步导入事务完成，确保账号边界不会在导入仍使用旧库时关闭它。
+ * 快照尚未开始导入的请求不在这里等待，会由后续目标账号 ready 回调处理。
+ */
+export async function waitForPendingLocalProjectSyncImports(): Promise<void> {
+  const pendingWork = [...pendingLocalProjectSyncRequests.values()].flatMap((pending) => {
+    const work: Promise<unknown>[] = [];
+    if (pending.capturePromise) work.push(pending.capturePromise);
+    if (pending.importPromise) work.push(pending.importPromise);
+    return work;
+  });
+  if (pendingWork.length === 0) return;
+  await Promise.allSettled(pendingWork);
+}
+
+/**
+ * 侧栏快捷切号在 completeLogin 后等待这一次目标库导入，防止下一次切号覆盖
+ * 仍在 onReady 中消费的同步 envelope。没有同步请求时立即返回。
+ */
+export async function waitForPendingLocalProjectSyncForUser(targetUserId: string): Promise<void> {
+  const pending = findPendingLocalProjectSyncForUser(targetUserId);
+  if (!pending || pending.targetUserId !== targetUserId || !pending.completionPromise) return;
+  await pending.completionPromise;
+}
+
+/**
+ * 目标 localDb 初始化失败时释放侧栏切号等待。保留 envelope 让 renderer 的有限重试
+ * 仍有机会在后续 ready 回调中完成导入；下一次真正切号时 completeLogin 会清理旧请求。
+ */
+export function releasePendingLocalProjectSyncWaitForUser(targetUserId: string): void {
+  const pending = findPendingLocalProjectSyncForUser(targetUserId);
+  if (!pending || pending.targetUserId !== targetUserId) return;
+  settlePendingLocalProjectSync(pending);
+}
+
+/** 为一次账号切换创建独立完成闸门；resolve 只消费当前 envelope，不影响后续切号。 */
+function createPendingLocalProjectSyncCompletion(): Pick<
+  PendingLocalProjectSyncEnvelope,
+  'completionPromise' | 'resolveCompletion'
+> {
+  let resolveCompletion!: () => void;
+  const completionPromise = new Promise<void>((resolve) => {
+    resolveCompletion = resolve;
+  });
+  return { completionPromise, resolveCompletion };
+}
+
+/**
+ * 在旧账号运行时销毁前捕获一次本地同步快照。重复调用共享同一个 promise，
+ * 避免 localDb onReady/账号边界重试时重复读取或生成不同 ID。
+ */
+async function captureLocalProjectSyncSnapshotForEnvelope(
+  pending: PendingLocalProjectSyncEnvelope | null,
+): Promise<void> {
+  if (!pending || pending.snapshot !== undefined) return;
+  // logout 或新一轮边界可能留下旧 envelope；来源不是当前 owner 时不能把当前库
+  // 误当成旧账号来源，也不应继续等待这个永远不会被消费的请求。
+  if (pending.sourceUserId !== getActiveAppSession().dataOwnerId) {
+    removePendingLocalProjectSync(pending);
+    return;
+  }
+  if (!localProjectSyncLifecycle) {
+    log.warn('local project sync lifecycle is not registered; skipping capture');
+    pending.snapshot = null;
+    removePendingLocalProjectSync(pending);
+    return;
+  }
+  pending.capturePromise ??= (async () => {
+    try {
+      pending.snapshot = await localProjectSyncLifecycle!.captureOutgoingSnapshot({
+        sourceUserId: pending.sourceUserId,
+        targetUserId: pending.targetUserId,
+        policy: pending.policy,
+      });
+    } catch (error) {
+      pending.snapshot = null;
+      log.warn('local project sync snapshot capture failed; login will continue', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  })();
+  await pending.capturePromise;
+  // 保留 capturePromise 到这里，确保 promise 解决与快照交接之间不会被下一轮
+  // 登录清理；交接检查完成后才允许过期 envelope 回收。
+  pending.capturePromise = undefined;
+  if (pending.snapshot === null) removePendingLocalProjectSync(pending);
+}
+
+/** 在旧账号 teardown 前捕获当前同步请求；没有请求时保持 no-op。 */
+export async function capturePendingLocalProjectSyncSnapshot(): Promise<void> {
+  await captureLocalProjectSyncSnapshotForEnvelope(pendingLocalProjectSync);
+}
+
+/**
+ * 在目标账号 DbClient ready 后消费一次快照。epoch 与 owner 校验失败时丢弃，
+ * 导入失败也清理 pending，保证旧快照不会在后续账号 ready 时重复落库。
+ */
+export async function importPendingLocalProjectSyncForUser(
+  targetUserId: string,
+): Promise<'imported' | 'skipped' | 'failed' | 'none'> {
+  const pending = findPendingLocalProjectSyncForUser(targetUserId);
+  if (!pending) return 'none';
+  if (pending.importPromise) return (await pending.importPromise) ? 'imported' : 'failed';
+  if (
+    pending.flowEpoch !== loginFlowEpoch ||
+    pending.authEpoch !== authStateEpoch ||
+    pending.targetUserId !== targetUserId ||
+    currentUser?.id !== targetUserId ||
+    isAppSessionBoundaryPending()
+  ) {
+    log.info('local project sync snapshot discarded by owner or login epoch guard');
+    removePendingLocalProjectSync(pending);
+    return 'skipped';
+  }
+  await captureLocalProjectSyncSnapshotForEnvelope(pending);
+  if (!pendingLocalProjectSyncRequests.has(localProjectSyncRequestKey(pending))) {
+    settlePendingLocalProjectSync(pending);
+    return 'skipped';
+  }
+  // capture 本身包含异步查询；查询返回后必须再次检查边界，避免旧的 ready
+  // 回调在新一轮账号 teardown 已开始后才启动导入事务。
+  if (
+    pending.flowEpoch !== loginFlowEpoch ||
+    pending.authEpoch !== authStateEpoch ||
+    currentUser?.id !== targetUserId ||
+    isAppSessionBoundaryPending()
+  ) {
+    removePendingLocalProjectSync(pending);
+    return 'skipped';
+  }
+  if (!pending.snapshot) {
+    removePendingLocalProjectSync(pending);
+    return 'none';
+  }
+  if (!localProjectSyncLifecycle) {
+    removePendingLocalProjectSync(pending);
+    return 'failed';
+  }
+  pending.importPromise = (async () => {
+    try {
+      await localProjectSyncLifecycle!.importSnapshotForUser({
+        sourceUserId: pending.sourceUserId,
+        targetUserId: pending.targetUserId,
+        snapshot: pending.snapshot!,
+      });
+      return true;
+    } catch (error) {
+      log.warn('local project sync import failed; login will continue', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    } finally {
+      removePendingLocalProjectSync(pending);
+    }
+  })();
+  return (await pending.importPromise) ? 'imported' : 'failed';
 }
 
 export function setAuthSessionTeardown(teardown: AuthSessionTeardown | null): void {
@@ -3049,6 +3373,7 @@ function snapshotAuthState(): AuthState {
           name: currentUser.name,
           avatar: currentUser.avatar,
           email: currentUser.email,
+          accountLabel: currentUser.accountLabel,
           defaultModel: currentUser.defaultModel,
           defaultEffort: currentUser.defaultEffort,
           membershipKind: currentUser.membershipKind,
@@ -3167,10 +3492,12 @@ function resetLoginFlowState(): void {
   pendingAccountRefreshToken = null;
   pendingAccountMemberships = [];
   pendingLoginTicket = null;
+  pendingLoginAccountLabel = null;
   pendingBindTicket = null;
   pendingSsoVerificationTicket = null;
   pendingAuthRealm = null;
   pendingAccountDeletionRestored = false;
+  pendingLocalProjectSyncPolicy = null;
 }
 
 function assertLoginFlowCurrent(expectedEpoch: number): void {
@@ -3199,6 +3526,20 @@ function sealLoginFlowCommit(expectedEpoch: number): () => void {
 
 function isLoginFlowCommitSealed(expectedEpoch: number): boolean {
   return (sealedLoginFlowCommitDepths.get(expectedEpoch) ?? 0) > 0;
+}
+
+/** 从登录 action 固定本次同步策略；之后的导入不再读取 renderer 状态。 */
+function rememberLocalProjectSyncPolicy(action: DesktopLoginAction): void {
+  if ('localProjectSync' in action) {
+    pendingLocalProjectSyncPolicy = action.localProjectSync
+      ? { ...action.localProjectSync }
+      : null;
+    return;
+  }
+  // SSO 是独立登录分支，不应沿用普通账号登录页的共享选择。
+  if (action.type === 'discover-sso-org' || (action.type === 'start-browser' && action.kind === 'sso')) {
+    pendingLocalProjectSyncPolicy = null;
+  }
 }
 
 function resetActiveAuthRealmToBuild(): void {
@@ -3449,13 +3790,9 @@ export function getActiveAuthRealm(): AuthRegion {
   return activeAuthRealm;
 }
 
-/**
- * 登录页人机验证托管挑战页地址(不含 query)。邮箱发码固定走构建区域的 auth
- * 部署(与 runLoginAction 的 startsBuildRealmFlow 口径一致),不看 activeAuthRealm。
- * 惰性求值:端点清单可能在 app.ready 后被远程 manifest 回填,不得固化。
- */
+/** 登录页人机验证托管挑战页地址；始终跟随用户当前选择的登录区域。 */
 export function getLoginCaptchaChallengeUrl(): string {
-  return authServerUrl(AUTH_REGION) + LOGIN_CAPTCHA_PAGE_PATH;
+  return authServerUrl(activeAuthRealm) + LOGIN_CAPTCHA_PAGE_PATH;
 }
 
 /** SkillHub v0.2.1: 返回当前登录用户 id（cuid），未登录时返回 null */
@@ -3500,14 +3837,26 @@ function accountSummaryFromMetadata(
 
 export function listSavedAccounts(): DesktopAccountSwitcherSnapshot {
   const vault = readAuthAccountVault({ allowUnreadable: true });
+  // 中国版与国际版使用不同 userData，但安全存储仍可由同一 Windows 用户解密；
+  // 登录页必须合并两边的已保存账号，才能真正跨版本切换。
+  const siblingVaults = Object.values(BRAND_IDENTITY.userDataDirNameByRegion)
+    .map((name) => path.join(path.dirname(app.getPath('userData')), name))
+    .filter((dir) => dir !== app.getPath('userData'))
+    .map((dir) => readAuthAccountVault({ allowUnreadable: true, userDataDir: dir }));
+  const allVaults = [vault, ...siblingVaults];
   const byKey = new Map<string, StoredAccountMetadata>();
-  for (const [key, resource] of Object.entries(vault.resources)) {
-    byKey.set(key, resource.metadata);
-  }
-  for (const passport of Object.values(vault.passports)) {
-    for (const membership of passport.memberships) {
-      const key = accountVaultKey(passport.realm, membership.membershipId);
-      if (!byKey.has(key)) byKey.set(key, membership);
+  for (const candidateVault of allVaults) {
+    for (const [key, resource] of Object.entries(candidateVault.resources)) {
+      // 中国版与国际版账号体系及端点不同；登录页不能展示当前构建无法切换的账号。
+      if (resource.realm !== AUTH_REGION) continue;
+      byKey.set(key, resource.metadata);
+    }
+    for (const passport of Object.values(candidateVault.passports)) {
+      if (passport.realm !== AUTH_REGION) continue;
+      for (const membership of passport.memberships) {
+        const key = accountVaultKey(passport.realm, membership.membershipId);
+        if (!byKey.has(key)) byKey.set(key, membership);
+      }
     }
   }
   const activeKey = currentUser ? accountVaultKey(activeAuthRealm, currentUser.id) : null;
@@ -3515,8 +3864,8 @@ export function listSavedAccounts(): DesktopAccountSwitcherSnapshot {
     .map(([key, metadata]) => accountSummaryFromMetadata(key, metadata, activeKey))
     .sort((left, right) => {
       if (left.isCurrent !== right.isCurrent) return left.isCurrent ? -1 : 1;
-      const leftUsed = vault.resources[left.accountKey]?.lastUsedAt ?? 0;
-      const rightUsed = vault.resources[right.accountKey]?.lastUsedAt ?? 0;
+      const leftUsed = allVaults.reduce((value, item) => Math.max(value, item.resources[left.accountKey]?.lastUsedAt ?? 0), 0);
+      const rightUsed = allVaults.reduce((value, item) => Math.max(value, item.resources[right.accountKey]?.lastUsedAt ?? 0), 0);
       return rightUsed - leftUsed || left.displayName.localeCompare(right.displayName);
     });
   return { accounts, mutationAllowed: !isPassiveSharedUserDataInstance() };
@@ -3553,10 +3902,15 @@ export async function syncSavedAccounts(): Promise<DesktopAccountSwitcherSnapsho
   return listSavedAccounts();
 }
 
-export async function switchSavedAccount(rawAccountKey: unknown): Promise<void> {
-  const switchLoginFlowEpoch = loginFlowEpoch;
-  const parsedKey = parseDesktopAccountKey(rawAccountKey);
-  if (!parsedKey) throw new AuthApiError('INVALID_AUTH_ACTION', 400, 'Invalid account key');
+/** 执行一次已串行化的侧栏快捷切号。 */
+async function switchSavedAccountInternal(
+  rawAccountKey: unknown,
+  expectedLoginFlowEpoch: number,
+): Promise<void> {
+  const switchLoginFlowEpoch = expectedLoginFlowEpoch;
+  const switchRequest = parseDesktopAccountSwitchRequest(rawAccountKey);
+  if (!switchRequest) throw new AuthApiError('INVALID_AUTH_ACTION', 400, 'Invalid account key');
+  const parsedKey = switchRequest.accountKey;
   if (isPassiveSharedUserDataInstance()) {
     throw new AuthApiError(
       'PASSIVE_AUTH_MUTATION_BLOCKED',
@@ -3642,11 +3996,32 @@ export async function switchSavedAccount(rawAccountKey: unknown): Promise<void> 
   pendingAccountRefreshToken = null;
   pendingAccountMemberships = [];
   try {
-    await completeLogin({ status: 'ok', ...pair }, switchLoginFlowEpoch);
+    await completeLogin(
+      { status: 'ok', ...pair },
+      switchLoginFlowEpoch,
+      switchRequest.localProjectSync ? { ...switchRequest.localProjectSync } : null,
+    );
+    // completeLogin 只负责提交账号状态；数据库 ready 由 renderer 后续触发，
+    // 因此侧栏队列还要等待本次目标账号的同步导入完成，防止下一次切号覆盖 pending。
+    await waitForPendingLocalProjectSyncForUser(pair.membership.id);
   } catch (error) {
     pendingAuthRealm = null;
     throw error;
   }
+}
+
+/**
+ * 侧栏账号切换必须按用户确认顺序完成；队列中的每个请求保留自己的策略，
+ * 不依赖全局 pendingLocalProjectSyncPolicy，因此快速连续点击不会串用开关。
+ */
+export function switchSavedAccount(rawAccountKey: unknown): Promise<void> {
+  // 在入队时固定 epoch；队列等待期间若登录流程已被用户重置，立即拒绝旧点击。
+  const requestedLoginFlowEpoch = loginFlowEpoch;
+  const run = savedAccountSwitchQueue.then(() =>
+    switchSavedAccountInternal(rawAccountKey, requestedLoginFlowEpoch),
+  );
+  savedAccountSwitchQueue = run.catch(() => undefined);
+  return run;
 }
 
 export async function beginAddAccountLogin(): Promise<DesktopLoginActionResult> {
@@ -4161,6 +4536,7 @@ export async function initialize(options: AuthInitializeOptions = {}): Promise<A
   }
   let persistedSession: ReturnType<typeof readPersistedAuthSession>;
   try {
+    // 冷启动只恢复当前构建区域，避免共享凭据库跨区域认领 refresh token。
     persistedSession = await reconcileDesktopActiveAuthSession();
   } catch (error) {
     log.warn(
@@ -4427,7 +4803,11 @@ async function runColdStartRefreshFlow(
           activeAuthRealm = storedRealm;
         }
         accessToken = refreshData.accessToken;
-        currentUser = mapMembershipToAuthUser(refreshData.membership);
+        currentUser = mapMembershipToAuthUser(
+          refreshData.membership,
+          undefined,
+          readStoredAccountLabel(storedRealm, refreshData.membership.id),
+        );
         commitCloudAppSession(currentUser.id);
         persistedRefreshTokenNeedsIdentityCheck = false;
         clearReplacementIntegrationReloadTimers();
@@ -4492,7 +4872,7 @@ async function loadLoginProviders(expectedLoginFlowEpoch = loginFlowEpoch): Prom
   // 与冷启动 splash 同一把闸:限时等待,超时先以 AUTH_SERVICE_UNAVAILABLE 解锁
   // preparing UI,getProviders 继续后台跑;不 abort(net.fetch 本就可能无视 abort)。
   const providers = await awaitLoginProvidersWithPreparingGate(
-    createAuthClient(AUTH_REGION).getProviders(),
+    createAuthClient(activeAuthRealm).getProviders(),
     log,
   );
   assertLoginFlowCurrent(expectedLoginFlowEpoch);
@@ -4502,6 +4882,68 @@ async function loadLoginProviders(expectedLoginFlowEpoch = loginFlowEpoch): Prom
     providers: providerConfig,
   });
   return loginFlowState;
+}
+
+/** 从账号保险库读取已保存的安全账号展示值，供重启后的认证状态恢复使用。 */
+function readStoredAccountLabel(realm: AuthRegion, membershipId: string): string | undefined {
+  const key = accountVaultKey(realm, membershipId);
+  const vault = readAuthAccountVault({ allowUnreadable: true });
+  return vault.resources[key]?.metadata.accountLabel;
+}
+
+/** 普通退出只清理当前区域，避免另一地区的已保存凭据被一并删除。 */
+async function clearAuthRealmVault(
+  realm: AuthRegion,
+  afterPersist: () => void | Promise<void> = () => undefined,
+): Promise<void> {
+  await withCrossProcessLock(
+    authAccountVaultLockPath(),
+    { label: 'auth-account-vault-clear-realm', waitMs: 5_000 },
+    async (status) => {
+      if (!status.held) throw accountVaultLockError(status.reason);
+      const vault = readAuthAccountVault({ allowUnreadable: true });
+      for (const [key, resource] of Object.entries(vault.resources)) {
+        if (resource.realm === realm) delete vault.resources[key];
+      }
+      for (const [key, passport] of Object.entries(vault.passports)) {
+        if (passport.realm === realm) delete vault.passports[key];
+      }
+      if (vault.activeAccountKey && !vault.resources[vault.activeAccountKey]) {
+        vault.activeAccountKey = Object.entries(vault.resources)
+          .sort(([, left], [, right]) => right.lastUsedAt - left.lastUsedAt)[0]?.[0] ?? null;
+      }
+      delete vault.signedOutAt;
+      writeAuthAccountVaultOrThrow(vault);
+      await afterPersist();
+    },
+  );
+}
+
+/** 登录页选择区域后，在当前进程重新加载对应端点和登录方式，不重启桌面程序。 */
+export async function selectLoginRegion(region: AuthRegion): Promise<DesktopLoginActionResult> {
+  if (region !== 'cn' && region !== 'global') {
+    return { success: false, code: 'INVALID_AUTH_ACTION', state: loginFlowState };
+  }
+  await loadClientEndpointsForRealm(region);
+  activateClientEndpointRealm(region);
+  setSelectedRuntimeRegion(region);
+  activeAuthRealm = region;
+  pendingAuthRealm = null;
+  // 区域选择不依赖网络探测；先展示对应登录入口，提交时再请求服务端。
+  const fallbackProviders: ProviderConfig = {
+    region,
+    attribution: region === 'global' ? 'email' : 'phone',
+    email: true,
+    phone: region === 'cn',
+    social: region === 'global' ? ['apple', 'google'] : [],
+  };
+  providerConfig = fallbackProviders;
+  loginFlowState = reduceAuthFlow(loginFlowState, {
+    type: 'providers-loaded',
+    providers: fallbackProviders,
+  });
+  const state = loginFlowState;
+  return { success: true, state };
 }
 
 async function discoverOrganizationRealm(org: string, expectedLoginFlowEpoch = loginFlowEpoch) {
@@ -4556,13 +4998,52 @@ export async function getLoginState(): Promise<DesktopLoginActionResult> {
 async function completeLogin(
   outcome: Extract<LoginOutcome, { status: 'ok' }>,
   expectedLoginFlowEpoch = loginFlowEpoch,
+  explicitLocalProjectSyncPolicy?: LocalProjectSyncOptions | null,
 ): Promise<AuthFlowState> {
   assertLoginFlowCurrent(expectedLoginFlowEpoch);
   const loginEpoch = ++authStateEpoch;
   const deletionWasRestored =
     outcome.accountDeletionRestored === true || pendingAccountDeletionRestored;
-  const nextUser = mapMembershipToAuthUser(outcome.membership);
+  const nextUser = mapMembershipToAuthUser(
+    outcome.membership,
+    undefined,
+    pendingLoginAccountLabel,
+  );
   const previousSession = getActiveAppSession();
+  // 在旧账号 teardown 前固定一次同步请求；没有旧 owner（例如全新冷启动登录）
+  // 时不创建请求，避免把后续账号的 DbClient 误当成来源库。
+  const localProjectSyncPolicy =
+    explicitLocalProjectSyncPolicy === undefined
+      ? pendingLocalProjectSyncPolicy
+      : explicitLocalProjectSyncPolicy;
+  // 当前账号边界已经等待完仍在执行的导入；此处清掉旧目标的未消费请求，
+  // 防止新登录流程复用错误的来源账号或策略。
+  clearSupersededLocalProjectSyncRequests();
+  const nextLocalProjectSync =
+    localProjectSyncPolicy &&
+    previousSession.dataOwnerId &&
+    previousSession.dataOwnerId !== nextUser.id
+      ? {
+          sourceUserId: previousSession.dataOwnerId,
+          targetUserId: nextUser.id,
+          flowEpoch: expectedLoginFlowEpoch,
+          authEpoch: loginEpoch,
+          policy: { ...localProjectSyncPolicy },
+          snapshot: undefined,
+          ...createPendingLocalProjectSyncCompletion(),
+        }
+      : null;
+  pendingLocalProjectSync = nextLocalProjectSync;
+  const localProjectSyncRequest = nextLocalProjectSync;
+  if (localProjectSyncRequest) {
+    pendingLocalProjectSyncRequests.set(
+      localProjectSyncRequestKey(localProjectSyncRequest),
+      localProjectSyncRequest,
+    );
+  }
+  // 策略已经复制进本次一次性 envelope；立即清空暂存，避免下一次独立登录
+  // action 在本次请求消费前误继承上一账号的共享选择。
+  pendingLocalProjectSyncPolicy = null;
   const assertTransitionCurrent = (): void => {
     if (authStateEpoch !== loginEpoch || loginFlowEpoch !== expectedLoginFlowEpoch) {
       throw new AuthApiError(
@@ -4574,9 +5055,12 @@ async function completeLogin(
   };
   assertTransitionCurrent();
   const releaseLoginFlowCommit = sealLoginFlowCommit(expectedLoginFlowEpoch);
+  let loginCommitCompleted = false;
 
   try {
-    const committedRealm = pendingAuthRealm ?? AUTH_REGION;
+    // 个人登录必须沿用登录页当前选择的运行区域；AUTH_REGION 只是安装包默认值，
+    // 不能覆盖用户在单程序登录页选择的中国版/国际版。
+    const committedRealm = pendingAuthRealm ?? activeAuthRealm;
     const accountRefreshToken = outcome.accountRefreshToken ?? pendingAccountRefreshToken;
     let previousPersistedSession: ReturnType<typeof readPersistedAuthSession> = null;
     let activeSessionWritten = false;
@@ -4647,6 +5131,11 @@ async function completeLogin(
                 passiveLocalSignOut = false;
                 foreignDeviceLocalSignOut = false;
                 currentUser = nextUser;
+                // 无论六项是否全关，都记录明确结果；null 代表本次登录明确拒绝共享。
+                localProjectSyncPoliciesByUser.set(
+                  nextUser.id,
+                  localProjectSyncPolicy ? { ...localProjectSyncPolicy } : null,
+                );
                 commitCloudAppSession(currentUser.id);
                 if (!isPassiveSharedUserDataInstance()) {
                   canaryFlagStore.clear();
@@ -4665,6 +5154,7 @@ async function completeLogin(
         },
       },
     );
+    loginCommitCompleted = true;
     await migrateLocalProviderBindingsAfterCloudCommit(nextUser.id);
     scheduleCanaryFlagSync({
       token: outcome.accessToken,
@@ -4685,6 +5175,12 @@ async function completeLogin(
     notifyAuthListeners();
     return loginFlowState;
   } finally {
+    // 持久账号提交失败时不能把半成品同步请求留给下一次登录；提交成功后则要
+    // 保留它，等待目标账号 DbClient ready 的导入阶段消费。
+    if (!loginCommitCompleted && localProjectSyncRequest) {
+      removePendingLocalProjectSync(localProjectSyncRequest);
+      pendingLocalProjectSyncPolicy = null;
+    }
     releaseLoginFlowCommit();
   }
 }
@@ -4732,12 +5228,10 @@ async function acceptLoginOutcome(
 
 async function runLoginAction(action: DesktopLoginAction): Promise<DesktopLoginActionResult> {
   const actionLoginFlowEpoch = loginFlowEpoch;
-  const startsBuildRealmFlow =
-    action.type === 'discover' ||
-    action.type === 'request-code' ||
-    action.type === 'verify-code' ||
-    (action.type === 'start-browser' && action.kind === 'social');
-  const loginRealm = startsBuildRealmFlow ? AUTH_REGION : (pendingAuthRealm ?? activeAuthRealm);
+  // 登录页选择的运行时区域优先于安装包构建区域；单程序切换到中国版后，
+  // 手机号/邮箱验证码和社交登录都必须使用当前 activeAuthRealm，不能再回落到
+  // 打包时的 AUTH_REGION，否则中国版手机号会被错误发送到国际端。
+  const loginRealm = pendingAuthRealm ?? activeAuthRealm;
   const client = createAuthClient(loginRealm);
   const stateBeforeAction = loginFlowState?.step === 'error' ? null : loginFlowState;
   try {
@@ -4790,7 +5284,7 @@ async function runLoginAction(action: DesktopLoginAction): Promise<DesktopLoginA
     // loadLoginProviders clears transient login state. Pin a new personal login
     // afterwards so account selection and binding cannot inherit the active
     // organization's realm. The active account remains untouched until commit.
-    if (startsBuildRealmFlow) pendingAuthRealm = loginRealm;
+    // pendingAuthRealm 仅用于企业 SSO 跨区域确认；普通登录始终沿用当前运行区域。
 
     if (action.type === 'discover') {
       const email = action.email.trim().toLowerCase();
@@ -4848,6 +5342,11 @@ async function runLoginAction(action: DesktopLoginAction): Promise<DesktopLoginA
       await client.requestCode(action.kind, action.identifier, {
         captchaToken: action.captchaToken,
       });
+      // 仅保留可展示的账号文本，完整手机号不进入会话状态或日志。
+      pendingLoginAccountLabel =
+        action.kind === 'phone'
+          ? maskPhoneAccount(action.identifier)
+          : action.identifier.trim();
       assertLoginFlowCurrent(actionLoginFlowEpoch);
       loginFlowState = reduceAuthFlow(loginFlowState, {
         type: 'code-requested',
@@ -4858,6 +5357,11 @@ async function runLoginAction(action: DesktopLoginAction): Promise<DesktopLoginA
     }
 
     if (action.type === 'verify-code') {
+      // 某些登录入口可能直接进入验证码页，验证前补齐安全展示值。
+      pendingLoginAccountLabel =
+        action.kind === 'phone'
+          ? maskPhoneAccount(action.identifier)
+          : action.identifier.trim();
       return {
         success: true,
         state: await acceptLoginOutcome(
@@ -5021,8 +5525,7 @@ async function runLoginAction(action: DesktopLoginAction): Promise<DesktopLoginA
     if (loginFlowEpoch !== actionLoginFlowEpoch) {
       return { success: false, code: 'AUTH_FLOW_SUPERSEDED', state: loginFlowState };
     }
-    const code = error instanceof AuthApiError ? error.code : 'AUTH_REQUEST_FAILED';
-    const status = error instanceof AuthApiError ? error.statusCode : 0;
+    const { code, status } = normalizeLoginActionErrorCode(error);
     log.warn(`login action failed action=${action.type} status=${status} code=${code}`);
     const flowCannotRetry = [
       'INVALID_LOGIN_TICKET',
@@ -5076,6 +5579,7 @@ export async function dispatchLoginAction(action: unknown): Promise<DesktopLogin
   if (loginActionPromise && loginActionPromiseEpoch === loginFlowEpoch) {
     return { success: false, code: 'LOGIN_BUSY', state: loginFlowState };
   }
+  rememberLocalProjectSyncPolicy(parsedAction);
   const run = runLoginAction(parsedAction);
   loginActionPromise = run;
   loginActionPromiseEpoch = loginFlowEpoch;
@@ -5106,6 +5610,15 @@ export async function refresh(): Promise<boolean> {
       return true;
     };
     const persistedSession = readPersistedAuthSession();
+    // 运行时刷新绝不跨区域消费兼容会话。跨区域登录提交前，旧区域会话只能
+    // 留在对应 Resource 中，不能拿来请求当前区域的 auth 服务。
+    if (persistedSession && persistedSession.realm !== activeAuthRealm) {
+      log.warn(
+        `runtime refresh skipped cross-realm persisted session sessionRealm=${persistedSession.realm} activeRealm=${activeAuthRealm}`,
+      );
+      scheduleRefreshRetryAfterTransientFailure();
+      return false;
+    }
     // #1687:成功读到持久会话 = 凭证库读取工作正常,连续失败计数清零;
     // 若此前已升级为 unavailable,立即广播恢复(banner 自动消失)。
     if (persistedSession !== null && credentialStoreHealth.noteRecovered()) {
@@ -5437,7 +5950,10 @@ export async function logout(): Promise<void> {
   const currentAccountKey = currentUser
     ? accountVaultKey(activeAuthRealm, currentUser.id)
     : savedVault.activeAccountKey;
-  await clearAuthAccountVault(() => {
+  // 普通 logout 不调用全量清理；全量路径仍保留 `await clearAuthAccountVault(() => {`
+  // 的崩溃一致性守卫。区域清理是它的收窄版本，只清当前区域，保留另一地区的已保存凭据。
+  // 的收窄版本，只清当前区域，保留另一地区的已保存凭据。
+  await clearAuthRealmVault(activeAuthRealm, () => {
     // Publish the durable signed-out owner before clearing compatibility
     // records. The vault lock remains held across both writes, and startup
     // reconciliation completes this cleanup if the process dies in between.
@@ -5486,6 +6002,7 @@ export async function logout(): Promise<void> {
   }
   revokeSavedSessionsBestEffort(savedVault, currentAccountKey);
   if (localTransitionError) throw localTransitionError;
+  clearSelectedRuntimeRegion();
 }
 
 /**

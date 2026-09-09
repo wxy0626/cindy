@@ -5,7 +5,7 @@ import type { RegionalMoney } from '../../shared/regionalMoney';
 import type { AutoResumeInfo, RecoveryCheckpoint } from '../../shared/agentInputQueue';
 import type { ReviewRunMeta } from '../../shared/reviewRun';
 import type { AgentTaskTerminalStatus } from '@cindy/maker-shared/agent-task';
-import type { ToolLoopErrorDetails } from '@cindy/maker-core';
+import type { ContextUsageData, ToolLoopErrorDetails } from '@cindy/maker-core';
 
 export type SessionStatus = 'active' | 'archived' | 'deleted';
 export type WorkspaceKind = 'project' | 'dialogue';
@@ -13,8 +13,7 @@ export type DeviceLinkConnectionStatus = 'connected' | 'disconnected';
 
 /**
  * 当前 session 接的是哪个 agent。决定 message.agentMeta 的 JSON 形态。
- * 暂时只有 'cc'（Claude Code）。未来扩展 'codex' 等时新增枚举值即可，
- * schema 不动；老 session DEFAULT 'cc' 兜底。
+ * 四值与 DB agent_kind 枚举一致（cc/codex/pi）；老 session DEFAULT 'cc' 兜底。
  */
 export type AgentKind = 'cc' | 'codex' | 'pi';
 export type MakerVendor = AgentKind | 'orca';
@@ -129,6 +128,12 @@ export interface CcMeta {
   userTurnCostIsEstimate?: boolean;
   /** Per-turn token/cache 明细,与 turnCostUsd 同时由 main patch 到 agent_meta。 */
   turnUsageDetails?: TurnUsageDetails;
+
+  /**
+   * 主进程在 turn 完成后采集的完整上下文来源详情；写入 assistant agent_meta，
+   * 供重新进入任务时直接恢复悬浮卡，展示路径不再实时请求。
+   */
+  contextUsage?: ContextUsageData;
 
   /**
    * Host-side 模型降级标记:turn 结束时 main 检测到「所选模型家族在本轮实际

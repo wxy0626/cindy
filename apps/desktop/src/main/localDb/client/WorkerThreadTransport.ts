@@ -396,6 +396,8 @@ function dispatchTx(readyDb, payload) {
       return imReplaceBinding(readyDb, request.args);
     case 'session.importShare':
       return sessionImportShare(readyDb, request.args);
+    case 'account.importLocalProjects':
+      return accountImportLocalProjects(readyDb, request.args);
     default:
       throw Object.assign(new Error('unknown tx: ' + name), { code: 'UNKNOWN_TX' });
   }
@@ -1046,6 +1048,231 @@ function sessionImportShare(readyDb, args) {
     return count;
   })();
   return { messageCount };
+}
+
+// 登录后导入 main 侧已重建 ID、已清空运行态的本地项目快照。
+// ⚠️ 与 worker/opHandlers/tx.ts 的同名事务保持参数校验、顺序和回滚语义一致。
+function accountImportLocalProjects(readyDb, args) {
+  const payload = asRecord(args, 'account.importLocalProjects args');
+  const sessions = expectArray(payload.sessions, 'sessions').map((raw, index) => {
+    const row = asRecord(raw, 'sessions.' + index);
+    return {
+      id: expectString(row.id, 'sessions.' + index + '.id'),
+      title: expectString(row.title, 'sessions.' + index + '.title'),
+      workingDir: nullableString(row.workingDir),
+      workspaceKind: expectString(row.workspaceKind, 'sessions.' + index + '.workspaceKind'),
+      model: expectString(row.model, 'sessions.' + index + '.model'),
+      effort: expectString(row.effort, 'sessions.' + index + '.effort'),
+      permissionMode: expectString(row.permissionMode, 'sessions.' + index + '.permissionMode'),
+      status: expectString(row.status, 'sessions.' + index + '.status'),
+      sdkSessionId: nullableString(row.sdkSessionId),
+      totalTokenUsage: expectNumber(row.totalTokenUsage, 'sessions.' + index + '.totalTokenUsage'),
+      totalCostUsd: expectNumber(row.totalCostUsd, 'sessions.' + index + '.totalCostUsd'),
+      totalCostAmount: expectNumber(row.totalCostAmount, 'sessions.' + index + '.totalCostAmount'),
+      totalCostCurrency: nullableString(row.totalCostCurrency),
+      totalCostIsApproximate: expectBoolean(row.totalCostIsApproximate, 'sessions.' + index + '.totalCostIsApproximate'),
+      contextTokens: expectNumber(row.contextTokens, 'sessions.' + index + '.contextTokens'),
+      contextWindow: expectNumber(row.contextWindow, 'sessions.' + index + '.contextWindow'),
+      fastMode: expectBoolean(row.fastMode, 'sessions.' + index + '.fastMode'),
+      planModeEnabled: expectBoolean(row.planModeEnabled, 'sessions.' + index + '.planModeEnabled'),
+      clearedAt: nullableNumber(row.clearedAt),
+      pinnedAt: nullableNumber(row.pinnedAt),
+      summary: nullableString(row.summary),
+      providerId: nullableString(row.providerId),
+      userSendAt: nullableNumber(row.userSendAt),
+      agentKind: expectString(row.agentKind, 'sessions.' + index + '.agentKind'),
+      orcaRole: nullableString(row.orcaRole),
+      parentSessionId: nullableString(row.parentSessionId),
+      forkedAtMessageId: nullableString(row.forkedAtMessageId),
+      worktreePath: nullableString(row.worktreePath),
+      source: expectString(row.source, 'sessions.' + index + '.source'),
+      feishuOpenId: nullableString(row.feishuOpenId),
+      feishuBotAppId: nullableString(row.feishuBotAppId),
+      imBotContextId: nullableString(row.imBotContextId),
+      imUserId: nullableString(row.imUserId),
+      usedProjectContext: expectBoolean(row.usedProjectContext, 'sessions.' + index + '.usedProjectContext'),
+      codexHistoryHasProductPrompt: row.codexHistoryHasProductPrompt == null
+        ? null
+        : expectBoolean(row.codexHistoryHasProductPrompt, 'sessions.' + index + '.codexHistoryHasProductPrompt'),
+      codexPlanJson: nullableString(row.codexPlanJson),
+      extraDirs: expectString(row.extraDirs, 'sessions.' + index + '.extraDirs'),
+      writableDirs: expectString(row.writableDirs, 'sessions.' + index + '.writableDirs'),
+      remoteHostId: nullableString(row.remoteHostId),
+      activeTurnStartedAt: nullableNumber(row.activeTurnStartedAt),
+      activeTurnPid: nullableNumber(row.activeTurnPid),
+      lastTurnEndedAt: nullableNumber(row.lastTurnEndedAt),
+      listPreview: nullableString(row.listPreview),
+      listPreviewRole: nullableString(row.listPreviewRole),
+      listMessageCount: nullableNumber(row.listMessageCount),
+      createdAt: expectNumber(row.createdAt, 'sessions.' + index + '.createdAt'),
+      updatedAt: expectNumber(row.updatedAt, 'sessions.' + index + '.updatedAt'),
+    };
+  });
+  const messages = expectArray(payload.messages, 'messages').map((raw, index) => {
+    const row = asRecord(raw, 'messages.' + index);
+    return {
+      id: expectString(row.id, 'messages.' + index + '.id'),
+      clientId: expectString(row.clientId, 'messages.' + index + '.clientId'),
+      sessionId: expectString(row.sessionId, 'messages.' + index + '.sessionId'),
+      role: expectString(row.role, 'messages.' + index + '.role'),
+      content: expectString(row.content, 'messages.' + index + '.content'),
+      toolUseId: nullableString(row.toolUseId),
+      agentMeta: nullableString(row.agentMeta),
+      agentKind: nullableString(row.agentKind),
+      createdAt: expectNumber(row.createdAt, 'messages.' + index + '.createdAt'),
+      rewindAt: nullableNumber(row.rewindAt),
+    };
+  });
+  const recentWorkdirs = expectArray(payload.recentWorkdirs, 'recentWorkdirs').map((raw, index) => {
+    const row = asRecord(raw, 'recentWorkdirs.' + index);
+    return {
+      path: expectString(row.path, 'recentWorkdirs.' + index + '.path'),
+      lastUsedAt: expectNumber(row.lastUsedAt, 'recentWorkdirs.' + index + '.lastUsedAt'),
+    };
+  });
+  const projectAliases = expectArray(payload.projectAliases, 'projectAliases').map((raw, index) => {
+    const row = asRecord(raw, 'projectAliases.' + index);
+    return {
+      projectKey: expectString(row.projectKey, 'projectAliases.' + index + '.projectKey'),
+      alias: expectString(row.alias, 'projectAliases.' + index + '.alias'),
+      updatedAt: expectNumber(row.updatedAt, 'projectAliases.' + index + '.updatedAt'),
+    };
+  });
+  const subagentRuns = expectArray(payload.subagentRuns, 'subagentRuns').map((raw, index) => {
+    const row = asRecord(raw, 'subagentRuns.' + index);
+    return {
+      id: expectString(row.id, 'subagentRuns.' + index + '.id'),
+      sessionId: expectString(row.sessionId, 'subagentRuns.' + index + '.sessionId'),
+      provider: expectString(row.provider, 'subagentRuns.' + index + '.provider'),
+      logicalAgentId: expectString(row.logicalAgentId, 'subagentRuns.' + index + '.logicalAgentId'),
+      parentToolUseId: nullableString(row.parentToolUseId),
+      aliases: expectString(row.aliases, 'subagentRuns.' + index + '.aliases'),
+      providerRunIds: expectString(row.providerRunIds, 'subagentRuns.' + index + '.providerRunIds'),
+      status: expectString(row.status, 'subagentRuns.' + index + '.status'),
+      title: nullableString(row.title),
+      description: nullableString(row.description),
+      summary: nullableString(row.summary),
+      returnedResult: nullableString(row.returnedResult),
+      returnedResultEmpty: nullableNumber(row.returnedResultEmpty),
+      returnedResultTruncated: nullableNumber(row.returnedResultTruncated),
+      model: nullableString(row.model),
+      reasoningEffort: nullableString(row.reasoningEffort),
+      totalTokens: nullableNumber(row.totalTokens),
+      toolUses: nullableNumber(row.toolUses),
+      durationMs: nullableNumber(row.durationMs),
+      costUsd: row.costUsd == null ? null : expectNumber(row.costUsd, 'subagentRuns.' + index + '.costUsd'),
+      capabilities: expectString(row.capabilities, 'subagentRuns.' + index + '.capabilities'),
+      activity: expectString(row.activity, 'subagentRuns.' + index + '.activity'),
+      startedAt: expectNumber(row.startedAt, 'subagentRuns.' + index + '.startedAt'),
+      updatedAt: expectNumber(row.updatedAt, 'subagentRuns.' + index + '.updatedAt'),
+      endedAt: nullableNumber(row.endedAt),
+      rewindAt: nullableNumber(row.rewindAt),
+      deletedAt: nullableNumber(row.deletedAt),
+    };
+  });
+
+  const sessionIds = new Set();
+  for (const session of sessions) {
+    if (sessionIds.has(session.id)) throw invalidArgs('duplicate session id: ' + session.id);
+    sessionIds.add(session.id);
+  }
+  const messageIds = new Set();
+  const messageKeys = new Set();
+  for (const message of messages) {
+    if (!sessionIds.has(message.sessionId)) throw invalidArgs('message references missing session: ' + message.sessionId);
+    if (messageIds.has(message.id)) throw invalidArgs('duplicate message id: ' + message.id);
+    const key = JSON.stringify([message.sessionId, message.clientId]);
+    if (messageKeys.has(key)) throw invalidArgs('duplicate message clientId: ' + message.sessionId + '/' + message.clientId);
+    messageIds.add(message.id);
+    messageKeys.add(key);
+  }
+  const recentWorkdirPaths = new Set();
+  for (const row of recentWorkdirs) {
+    if (recentWorkdirPaths.has(row.path)) throw invalidArgs('duplicate recent workdir: ' + row.path);
+    recentWorkdirPaths.add(row.path);
+  }
+  const projectKeys = new Set();
+  for (const row of projectAliases) {
+    if (projectKeys.has(row.projectKey)) throw invalidArgs('duplicate project alias: ' + row.projectKey);
+    projectKeys.add(row.projectKey);
+  }
+  const subagentRunIds = new Set();
+  for (const row of subagentRuns) {
+    if (!sessionIds.has(row.sessionId)) throw invalidArgs('subagent run references missing session: ' + row.sessionId);
+    if (subagentRunIds.has(row.id)) throw invalidArgs('duplicate subagent run id: ' + row.id);
+    subagentRunIds.add(row.id);
+  }
+
+  const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+  const visiting = new Set();
+  const visited = new Set();
+  const orderedSessions = [];
+  const visit = (session) => {
+    if (visited.has(session.id)) return;
+    if (visiting.has(session.id)) throw invalidArgs('cyclic parentSessionId: ' + session.id);
+    visiting.add(session.id);
+    if (session.parentSessionId && sessionsById.has(session.parentSessionId)) visit(sessionsById.get(session.parentSessionId));
+    visiting.delete(session.id);
+    visited.add(session.id);
+    orderedSessions.push(session);
+  };
+  for (const session of sessions) visit(session);
+
+  const insertSession = readyDb.prepare(
+    'INSERT INTO sessions (id, title, working_dir, workspace_kind, model, effort, permission_mode, status, sdk_session_id, total_token_usage, total_cost_usd, total_cost_amount, total_cost_currency, total_cost_is_approximate, context_tokens, context_window, fast_mode, plan_mode_enabled, cleared_at, pinned_at, summary, provider_id, user_send_at, agent_kind, orca_role, parent_session_id, forked_at_message_id, worktree_path, source, feishu_open_id, feishu_bot_app_id, im_bot_context_id, im_user_id, used_project_context, codex_history_has_product_prompt, codex_plan_json, extra_dirs, writable_dirs, remote_host_id, active_turn_started_at, active_turn_pid, last_turn_ended_at, list_preview, list_preview_role, list_message_count, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING',
+  );
+  const insertMessage = readyDb.prepare(
+    'INSERT INTO messages (id, client_id, session_id, role, content, tool_use_id, agent_meta, agent_kind, created_at, rewind_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id, client_id) DO UPDATE SET id = excluded.id, role = excluded.role, content = excluded.content, tool_use_id = excluded.tool_use_id, agent_meta = excluded.agent_meta, agent_kind = excluded.agent_kind, created_at = excluded.created_at, rewind_at = excluded.rewind_at',
+  );
+  const upsertRecentWorkdir = readyDb.prepare(
+    'INSERT INTO recent_workdirs (path, last_used_at) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET last_used_at = MAX(recent_workdirs.last_used_at, excluded.last_used_at)',
+  );
+  const upsertProjectAlias = readyDb.prepare(
+    'INSERT INTO project_aliases (project_key, alias, updated_at) VALUES (?, ?, ?) ON CONFLICT(project_key) DO UPDATE SET alias = CASE WHEN excluded.updated_at >= project_aliases.updated_at THEN excluded.alias ELSE project_aliases.alias END, updated_at = MAX(project_aliases.updated_at, excluded.updated_at)',
+  );
+  // 旧版账号库可能没有运行记录表；此能力缺失不应阻断其它本地数据导入。
+  const hasSubagentRunsTable = Boolean(
+    readyDb.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'subagent_runs' LIMIT 1").get(),
+  );
+  const insertSubagentRun = hasSubagentRunsTable
+    ? readyDb.prepare(
+        'INSERT INTO subagent_runs (id, session_id, provider, logical_agent_id, parent_tool_use_id, aliases, provider_run_ids, status, title, description, summary, returned_result, returned_result_empty, returned_result_truncated, model, reasoning_effort, total_tokens, tool_uses, duration_ms, cost_usd, capabilities, activity, started_at, updated_at, ended_at, rewind_at, deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING',
+      )
+    : null;
+
+  const result = readyDb.transaction(() => {
+    for (const session of orderedSessions) {
+      insertSession.run(
+        session.id, session.title, session.workingDir, session.workspaceKind, session.model, session.effort,
+        session.permissionMode, session.status, session.sdkSessionId, session.totalTokenUsage, session.totalCostUsd,
+        session.totalCostAmount, session.totalCostCurrency, session.totalCostIsApproximate ? 1 : 0, session.contextTokens,
+        session.contextWindow, session.fastMode ? 1 : 0, session.planModeEnabled ? 1 : 0, session.clearedAt, session.pinnedAt,
+        session.summary, session.providerId, session.userSendAt, session.agentKind, session.orcaRole, session.parentSessionId,
+        session.forkedAtMessageId, session.worktreePath, session.source, session.feishuOpenId, session.feishuBotAppId,
+        session.imBotContextId, session.imUserId, session.usedProjectContext ? 1 : 0,
+        session.codexHistoryHasProductPrompt == null ? null : session.codexHistoryHasProductPrompt ? 1 : 0,
+        session.codexPlanJson, session.extraDirs, session.writableDirs, session.remoteHostId, session.activeTurnStartedAt,
+        session.activeTurnPid, session.lastTurnEndedAt, session.listPreview, session.listPreviewRole, session.listMessageCount,
+        session.createdAt, session.updatedAt,
+      );
+    }
+    for (const message of messages) {
+      insertMessage.run(message.id, message.clientId, message.sessionId, message.role, message.content, message.toolUseId, message.agentMeta, message.agentKind, message.createdAt, message.rewindAt);
+    }
+    for (const row of recentWorkdirs) upsertRecentWorkdir.run(row.path, row.lastUsedAt);
+    for (const row of projectAliases) upsertProjectAlias.run(row.projectKey, row.alias, row.updatedAt);
+    if (insertSubagentRun) for (const row of subagentRuns) {
+      insertSubagentRun.run(row.id, row.sessionId, row.provider, row.logicalAgentId, row.parentToolUseId, row.aliases, row.providerRunIds, row.status, row.title, row.description, row.summary, row.returnedResult, row.returnedResultEmpty, row.returnedResultTruncated, row.model, row.reasoningEffort, row.totalTokens, row.toolUses, row.durationMs, row.costUsd, row.capabilities, row.activity, row.startedAt, row.updatedAt, row.endedAt, row.rewindAt, row.deletedAt);
+    }
+    return {
+      sessionCount: sessions.length,
+      messageCount: messages.length,
+      recentWorkdirCount: recentWorkdirs.length,
+      projectAliasCount: projectAliases.length,
+      subagentRunCount: insertSubagentRun ? subagentRuns.length : 0,
+    };
+  })();
+  return result;
 }
 
 // ⚠️ F-COLLAB orca 事务: 与 worker/opHandlers/tx.ts 的同名 handler 必须逐字保持一致。
@@ -2022,6 +2249,12 @@ function isRecord(value) {
 
 function expectString(value, label) {
   if (typeof value !== 'string') throw invalidArgs(label + ' must be a string');
+  return value;
+}
+
+// 严格读取快照布尔字段，拒绝 SQLite 风格的 0/1 以保持三种后端一致。
+function expectBoolean(value, label) {
+  if (typeof value !== 'boolean') throw invalidArgs(label + ' must be a boolean');
   return value;
 }
 

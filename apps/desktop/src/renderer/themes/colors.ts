@@ -31,8 +31,8 @@ registerColor('surface-chip-alt', {
   dark: '#2c2c2a',
 }, 'Chip 暗态塌缩到 Card 的变体');
 registerColor('surface-hover', {
-  light: '#e5e5e5',
-  dark: '#3c3c3a',
+  light: '#e5e5e0',
+  dark: '#2a2a2a',
 }, '通用 hover 背景');
 registerColor('surface-hover-soft', {
   light: '#f8f8f6',
@@ -445,9 +445,9 @@ registerColor('sidebar-item-active-foreground', {
   dark: 'var(--foreground)',
 }, 'Selected pill 文字/图标前景(default=foreground 正文;CINDY 2026-07-20 撤红后跟正文色)');
 registerColor('sidebar-item-active-border', {
-  light: 'var(--sidebar-item-active)',
-  dark: 'var(--sidebar-item-active)',
-}, 'Selected pill 1px 描边(default=invisible 同 pill bg;CINDY 2026-07-20 撤红后跟中性边框)');
+  light: 'var(--border-default-hsl)',
+  dark: 'var(--border-default-hsl)',
+}, 'Selected pill 1px 中性描边,帮助选中态脱离相近背景');
 registerColor('sidebar-search-bg', {
   light: 'var(--surface-hsl)',
   dark: 'var(--surface-hsl)',
@@ -1032,7 +1032,7 @@ registerColor('model-dropdown-bg', {
 registerColor('model-dropdown-border', {
   light: 'var(--border-default)',
   dark: 'var(--border-default)',
-}, 'Board');
+}, 'Board — 下拉面板边框');
 registerColor('model-item-hover', {
   light: 'var(--surface-hover)',
   dark: 'var(--surface-hover)',
@@ -1102,9 +1102,9 @@ registerColor('engine-badge-pi', {
 }, 'Pi 引擎徽标色 — 自选紫,上游无官方品牌色(light/dark 同值)');
 // Permission selector
 registerColor('perm-item-selected-bg', {
-  light: '#f8f8f6',
-  dark: '#3c3c3a',
-}, 'Warm White — selected item bg');
+  light: 'var(--model-item-hover)',
+  dark: 'var(--model-item-hover)',
+}, '弹层选中态背景');
 
 // Narrow scoped text hints: only selected risky permission modes use color.
 registerColor('perm-auto-selected-text', {
@@ -1466,15 +1466,15 @@ registerColor('settings-menu-text', {
 registerColor('settings-menu-text-selected', {
   light: 'var(--text-primary)',
   dark: 'var(--text-primary)',
-}, 'Near Black — selected label');
+}, '卡片内选中态前景');
 registerColor('settings-menu-bg-selected', {
-  light: '#e8e8e6',
-  dark: '#2c2c2a',
-}, 'Soft tint — selected pill');
+  light: '#E2E2DE',
+  dark: '#333333',
+}, '卡片内选中态背景');
 registerColor('settings-menu-border-selected', {
   light: 'var(--border-transparent-mixed)',
   dark: 'var(--border-transparent-mixed)',
-}, 'Settings - inner sidebar menu items');
+}, '卡片内选中态边框');
 registerColor('settings-menu-bg-hover', {
   light: '#ececea',
   dark: '#2c2c2a',
@@ -1524,9 +1524,9 @@ registerColor('settings-input-border', {
   dark: 'var(--border-default)',
 }, 'Board');
 registerColor('settings-input-border-focus', {
-  light: 'var(--text-tertiary-stone)',
-  dark: 'var(--text-tertiary-stone)',
-}, 'Stone — focus hint');
+  light: 'var(--focus-ring)',
+  dark: 'var(--focus-ring)',
+}, 'Focus Blue — 输入与下拉控件焦点边框');
 registerColor('settings-input-text', {
   light: 'var(--text-primary)',
   dark: 'var(--text-primary)',

@@ -359,7 +359,7 @@ function SkillhubMarketListViewInner() {
 
         {/* search-input — 200x36 */}
         <div
-          className="flex shrink-0 items-center rounded-full border border-[var(--chat-input-border)] bg-[var(--chat-input-bg)]"
+          className="search-capsule-control flex shrink-0 items-center rounded-full"
           style={{ width: '200px', height: '36px', padding: '0 12px', gap: '8px', ...WINDOW_NO_DRAG_STYLE }}
         >
           <Search size={14} className="shrink-0 text-[var(--chat-input-placeholder)]" />

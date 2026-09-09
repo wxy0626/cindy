@@ -54,8 +54,12 @@ export function createRightSidebarWindow(): BrowserWindow {
     minHeight: 480,
     title: BRAND_NAME,
     icon: app.isPackaged
-      ? path.join(process.resourcesPath, 'icon.png')
-      : path.join(__dirname, '../../resources/icon.png'),
+      ? path.join(process.resourcesPath, process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+      : path.join(
+          __dirname,
+          '../../resources',
+          process.platform === 'win32' ? 'icon.ico' : 'icon.png',
+        ),
     autoHideMenuBar: true,
     show: false,
     backgroundColor: bgColor,
