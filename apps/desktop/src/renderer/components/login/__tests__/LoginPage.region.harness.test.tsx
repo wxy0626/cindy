@@ -2,6 +2,7 @@
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 
 import { CindyAuthClient, reduceAuthFlow, type AuthFlowState } from '@cindy/auth-client';
 import { createScenarioFetch } from '@cindy/auth-client/fixtures';
@@ -84,7 +85,11 @@ function mount(state: AuthFlowState | null, extra?: Partial<typeof loginHook.val
     enterLocalMode,
     ...extra,
   };
-  return render(<LoginPage />);
+  return render(
+    <MemoryRouter>
+      <LoginPage />
+    </MemoryRouter>,
+  );
 }
 
 beforeEach(() => {
@@ -176,5 +181,30 @@ describe('Global 构建变体:登录改版四件事同样生效', () => {
     fireEvent.click(screen.getByTestId('login-social-apple'));
     expect(screen.getByTestId('login-consent-dialog')).toBeTruthy();
     expect(loginHook.value.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('loading 中点击返回仍回到区域选择页,并可重新选择中国版', async () => {
+    const dispatch = vi.fn(async () => true);
+    const selectLoginRegion = vi.fn(async () => ({ success: true, code: null }));
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: { platform: 'darwin', currentCindyRegion: 'global', openExternal, acceptPrivacyConsent },
+    });
+    mount(await globalIdentifierState(), {
+      isLoading: true,
+      dispatch,
+      selectLoginRegion,
+    } as Partial<typeof loginHook.value>);
+
+    const back = screen.getByTestId('login-back-button') as HTMLButtonElement;
+    expect(back.disabled).toBe(false);
+    fireEvent.click(back);
+
+    expect(screen.getByTestId('login-region-selector')).toBeTruthy();
+    expect(dispatch).toHaveBeenCalledWith({ type: 'reset' });
+    fireEvent.click(screen.getByTestId('login-region-cn'));
+    await act(async () => undefined);
+    expect(selectLoginRegion).toHaveBeenCalledWith('cn');
+    expect(screen.queryByTestId('login-region-selector')).toBeNull();
   });
 });

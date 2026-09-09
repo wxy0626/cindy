@@ -2,6 +2,10 @@
 
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return { ...actual, useNavigate: () => vi.fn() };
+});
 
 import { CindyAuthClient, reduceAuthFlow, type AuthFlowState } from '@cindy/auth-client';
 import { createScenarioFetch } from '@cindy/auth-client/fixtures';

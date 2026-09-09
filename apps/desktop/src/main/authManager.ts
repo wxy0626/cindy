@@ -5321,26 +5321,41 @@ export async function selectLoginRegion(region: AuthRegion): Promise<DesktopLogi
   if (region !== 'cn' && region !== 'global') {
     return { success: false, code: 'INVALID_AUTH_ACTION', state: loginFlowState };
   }
-  await loadClientEndpointsForRealm(region);
-  activateClientEndpointRealm(region);
-  setSelectedRuntimeRegion(region);
-  activeAuthRealm = region;
-  pendingAuthRealm = null;
-  // 区域选择不依赖网络探测；先展示对应登录入口，提交时再请求服务端。
-  const fallbackProviders: ProviderConfig = {
-    region,
-    attribution: region === 'global' ? 'email' : 'phone',
-    email: true,
-    phone: region === 'cn',
-    social: region === 'global' ? ['apple', 'google'] : [],
-  };
-  providerConfig = fallbackProviders;
-  loginFlowState = reduceAuthFlow(loginFlowState, {
-    type: 'providers-loaded',
-    providers: fallbackProviders,
-  });
-  const state = loginFlowState;
-  return { success: true, state };
+  // 区域选择本身就是一次新的登录流；取消浏览器授权并让旧请求失效，
+  // 防止快速切换 CN/Global 时迟到的 providers 或登录结果覆盖当前选择。
+  const regionLoginFlowEpoch = ++loginFlowEpoch;
+  browserAuthorizationSlot.cancelActive();
+  resetLoginFlowState();
+  try {
+    await loadClientEndpointsForRealm(region);
+    assertLoginFlowCurrent(regionLoginFlowEpoch);
+    activateClientEndpointRealm(region);
+    setSelectedRuntimeRegion(region);
+    activeAuthRealm = region;
+    pendingAuthRealm = null;
+    // 区域选择不依赖网络探测；先展示对应登录入口，提交时再请求服务端。
+    const fallbackProviders: ProviderConfig = {
+      region,
+      attribution: region === 'global' ? 'email' : 'phone',
+      email: true,
+      phone: region === 'cn',
+      social: region === 'global' ? ['apple', 'google'] : [],
+    };
+    // fallback 只用于立即渲染区域对应的 identifier；首次提交时仍让
+    // runLoginAction 加载该区域真实 providers，避免丢失服务端新增的 SSO/社交方式。
+    providerConfig = null;
+    loginFlowState = reduceAuthFlow(loginFlowState, {
+      type: 'providers-loaded',
+      providers: fallbackProviders,
+    });
+    const state = loginFlowState;
+    return { success: true, state };
+  } catch (error) {
+    if (loginFlowEpoch !== regionLoginFlowEpoch) {
+      return { success: false, code: 'AUTH_FLOW_SUPERSEDED', state: loginFlowState };
+    }
+    throw error;
+  }
 }
 
 async function discoverOrganizationRealm(org: string, expectedLoginFlowEpoch = loginFlowEpoch) {
@@ -5982,6 +5997,13 @@ export async function dispatchLoginAction(action: unknown): Promise<DesktopLogin
     const settled = pendingAction ? await pendingAction : null;
     const state = settled?.state ?? loginFlowState ?? (await loadLoginProviders());
     return { success: true, state };
+  }
+  if (parsedAction.type === 'reset') {
+    // reset 是返回/重试的导航动作，必须先让当前请求失效，再绕过 LOGIN_BUSY。
+    // 旧 run 的 finally 只会清理自己的 promise，不会覆盖下面的新登录流。
+    loginFlowEpoch += 1;
+    browserAuthorizationSlot.cancelActive();
+    resetLoginFlowState();
   }
   if (loginActionPromise && loginActionPromiseEpoch === loginFlowEpoch) {
     return { success: false, code: 'LOGIN_BUSY', state: loginFlowState };

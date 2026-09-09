@@ -53,27 +53,43 @@ export function useLogin({ autoLoad = true }: { autoLoad?: boolean } = {}): UseL
   const [isLoading, setIsLoading] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const loadingRef = useRef(false);
+  const actionRequestIdRef = useRef(0);
 
   useEffect(() => {
     if (!autoLoad || loginState || loadingRef.current) return;
+    const requestId = ++actionRequestIdRef.current;
     loadingRef.current = true;
     setIsLoading(true);
     void loadLoginState()
       .then((result) => {
-        if (!result.success) setErrorCode(result.code);
+        if (actionRequestIdRef.current === requestId && !result.success) {
+          setErrorCode(result.code);
+        }
       })
-      .catch(() => setErrorCode('AUTH_SERVICE_UNAVAILABLE'))
+      .catch(() => {
+        if (actionRequestIdRef.current === requestId) {
+          setErrorCode('AUTH_SERVICE_UNAVAILABLE');
+        }
+      })
       .finally(() => {
-        loadingRef.current = false;
-        setIsLoading(false);
+        if (actionRequestIdRef.current === requestId) {
+          loadingRef.current = false;
+          setIsLoading(false);
+        }
       });
   }, [autoLoad, loadLoginState, loginState]);
 
   const dispatchWithResult = useCallback(
     async (action: DesktopLoginAction): Promise<{ success: boolean; code: string | null }> => {
-      if (loadingRef.current && action.type !== 'cancel-browser') {
+      // reset 是导航/取消动作，必须能够打断当前登录请求，不能被 loading 自己拦截。
+      if (
+        loadingRef.current &&
+        action.type !== 'cancel-browser' &&
+        action.type !== 'reset'
+      ) {
         return { success: false, code: null };
       }
+      const requestId = ++actionRequestIdRef.current;
       loadingRef.current = true;
       setIsLoading(true);
       setErrorCode(null);
@@ -85,20 +101,33 @@ export function useLogin({ autoLoad = true }: { autoLoad?: boolean } = {}): UseL
             window.setTimeout(() => reject(new Error('AUTH_REQUEST_TIMEOUT')), LOGIN_ACTION_TIMEOUT_MS);
           }),
         ]);
+        if (actionRequestIdRef.current !== requestId) {
+          return { success: false, code: 'AUTH_FLOW_SUPERSEDED' };
+        }
         if (!result.success) {
-          setErrorCode(result.code === 'USER_CANCELLED' ? null : result.code);
+          setErrorCode(
+            result.code === 'USER_CANCELLED' || result.code === 'AUTH_FLOW_SUPERSEDED'
+              ? null
+              : result.code,
+          );
           return { success: false, code: result.code };
         }
         return { success: true, code: null };
       } catch (error) {
+        if (actionRequestIdRef.current !== requestId) {
+          return { success: false, code: 'AUTH_FLOW_SUPERSEDED' };
+        }
         const code = error instanceof Error && error.message === 'AUTH_REQUEST_TIMEOUT'
           ? 'AUTH_REQUEST_TIMEOUT'
           : 'AUTH_REQUEST_FAILED';
         setErrorCode(code);
         return { success: false, code };
       } finally {
-        loadingRef.current = false;
-        setIsLoading(false);
+        // reset 可以在旧请求尚未结束时启动；旧请求不能提前清掉新请求的 loading。
+        if (actionRequestIdRef.current === requestId) {
+          loadingRef.current = false;
+          setIsLoading(false);
+        }
       }
     },
     [dispatchLoginAction],

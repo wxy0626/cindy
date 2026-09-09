@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return { ...actual, useNavigate: () => vi.fn() };
+});
+
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
@@ -566,15 +571,9 @@ describe('method-choice(附录 A sso 场景)', () => {
 
 /* ── preparing 伪态 ── */
 describe('preparing 伪态', () => {
-  it('loginState 未就绪 → preparing 面板 + 64 loading 环 @(308,193)', () => {
+  it('loginState 未就绪 → 区域选择器', () => {
     mount(null);
-    expect(screen.getByTestId('login-panel-preparing')).toBeTruthy();
-    expect(screen.getByText('login.preparing')).toBeTruthy();
-    expect(screen.getByText('login.preparingSubtitle')).toBeTruthy();
-    const ring = screen.getByRole('status', { name: 'login.working' });
-    expect(ring.className).toContain('animate-spin');
-    expect(ring.style.left).toBe('308px');
-    expect(ring.style.top).toBe('193px');
+    expect(screen.getByTestId('login-region-selector')).toBeTruthy();
   });
 });
 

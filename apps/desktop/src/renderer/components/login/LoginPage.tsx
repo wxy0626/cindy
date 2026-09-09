@@ -131,6 +131,7 @@ export function LoginPage({
   intent?: 'sign-in' | 'add-account';
   onClose?: () => void;
 }) {
+  const isAddAccount = intent === 'add-account';
   // AddAccountLoginPage owns initialization: a second load would race its flow reset.
   const {
     isLoading,
@@ -146,21 +147,36 @@ export function LoginPage({
     clearError,
     enterLocalMode,
     beginAddAccount,
-  } = useLogin();
+  } = useLogin({ autoLoad: false });
   // 验证码挑战尚未进入 main 状态机时使用的本地错误状态，避免按钮静默无响应。
   const [captchaErrorCode, setCaptchaErrorCode] = useState<string | null>(null);
   const { t } = useTranslation();
   const handoff = useLoginHandoff();
   const navigate = useNavigate();
-  const isAddAccount = intent === 'add-account';
   const accountSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
   const accountListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (loginState?.step !== 'account-selection' || loginState.accounts.length <= 3) return;
+    const list = accountListRef.current;
+    if (list) flashScrollbar(list);
+  }, [loginState]);
   const [accountSwitcherOpen, setAccountSwitcherOpen] = useState(false);
   const [hasSavedAccounts, setHasSavedAccounts] = useState(false);
   const [regionSelecting, setRegionSelecting] = useState(false);
-  // 当前登录页已选择的区域；退出登录后 LoginPage 重挂载并重置为 null。
-  const [selectedLoginRegion, setSelectedLoginRegion] = useState<'cn' | 'global' | null>(null);
-  const regionSelected = selectedLoginRegion !== null;
+  // 普通登录没有主进程登录状态时先打开区域选择；已有状态则沿用当前运行区域。
+  // 返回按钮会显式重新打开选择页，不依赖网络 reset 的返回时序。
+  const [regionSelectorOpen, setRegionSelectorOpen] = useState(
+    () => !isAddAccount && loginState == null,
+  );
+  const [selectedLoginRegion, setSelectedLoginRegion] = useState<'cn' | 'global' | null>(() =>
+    !isAddAccount && loginState &&
+    (window.electronAPI?.currentCindyRegion === 'cn' ||
+      window.electronAPI?.currentCindyRegion === 'global')
+      ? window.electronAPI.currentCindyRegion
+      : null,
+  );
+  const regionSelected = !regionSelectorOpen;
 
   useEffect(() => {
     if (isAddAccount || !listAccounts) {
@@ -397,7 +413,7 @@ export function LoginPage({
   useLayoutEffect(() => {
     return () => reportPanelBottomReserve(null);
   }, [reportPanelBottomReserve]);
-  const selectedRegion = selectedLoginRegion ?? window.electronAPI.currentCindyRegion;
+  const selectedRegion = selectedLoginRegion ?? window.electronAPI?.currentCindyRegion ?? CURRENT_CINDY_REGION;
   const isGlobalBuild = selectedRegion === 'global';
   // 徽标必须跟随登录页当前选择，而不是跟随启动时的构建区域；否则从中国版
   // 切到国际版后仍会错误显示 CN。国际版按 shared 规则不显示区域徽标。
@@ -425,6 +441,12 @@ export function LoginPage({
   const [ssoOrg, setSsoOrg] = useState(() => ssoOrgHistory[0] ?? '');
   const [ssoOrgHistoryOpen, setSsoOrgHistoryOpen] = useState(false);
   const [ssoOrgHistoryActiveIndex, setSsoOrgHistoryActiveIndex] = useState(-1);
+  useEffect(() => {
+    // 多条历史默认折叠且不抢焦点，用户聚焦输入框后才展开列表。
+    if (ssoOrgMode && ssoOrgHistory.length > 1 && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }, [ssoOrgHistory.length, ssoOrgMode]);
   const [verificationCode, setVerificationCode] = useState('');
   const [ssoVerificationCode, setSsoVerificationCode] = useState('');
   const [bindingContact, setBindingContact] = useState('');
@@ -545,9 +567,10 @@ export function LoginPage({
 
   /** 返回版本选择页并清理当前登录流程，允许用户重新选择中国版或国际版。 */
   const returnToRegionSelector = () => {
-    if (localModePendingRef.current || isLoading) return;
+    if (localModePendingRef.current) return;
     clearError();
     setIdentifierFormatError(null);
+    setRegionSelectorOpen(true);
     setSelectedLoginRegion(null);
     void dispatch({ type: 'reset' });
   };
@@ -784,7 +807,7 @@ export function LoginPage({
               不受主题控制),改由下方本地校验渲染设计稿定义的红边+红字错误态。 */}
           <form onSubmit={submitIdentifier} noValidate>
             <LoginBackButton
-              disabled={isLoading}
+              disabled={localModePending}
               label={t('login.back')}
               onClick={returnToRegionSelector}
             />
@@ -1142,28 +1165,41 @@ export function LoginPage({
           title={t('login.chooseAccount')}
           subtitle={t('login.chooseAccountSubtitle')}
         />
-        {/* demo accountPanel 呈现仲裁:行 148/268(step 120),左 icon 统一企业默认形
-            (demo 两行均未传 icon 变体);副行 = 企业 meta / 个人身份 */}
-        {loginState.accounts.map((account, index) => (
-          <LoginMethodRow
-            key={account.id}
-            top={148 + index * 120}
-            disabled={isLoading}
-            title={account.displayName}
-            subtitle={
-              account.kind === 'org'
-                ? account.orgName || account.email || ''
-                : t('login.personalAccount')
-            }
-            logoUrl={account.kind === 'org' ? (account.orgLogoUrl ?? null) : null}
-            onClick={() =>
-              void dispatch({
-                type: 'select-account',
-                accountId: account.id,
-              })
-            }
-          />
-        ))}
+        <div
+          ref={accountListRef}
+          data-testid="login-account-list"
+          className="absolute overflow-x-hidden"
+          style={{
+            left: 0,
+            top: ACCOUNT_LIST.top,
+            width: PANEL.width,
+            height: viewportHeight,
+            overflowY: loginState.accounts.length > 3 ? 'auto' : 'hidden',
+          }}
+        >
+          <div style={{ position: 'relative', width: PANEL.width, height: contentHeight }}>
+            {loginState.accounts.map((account, index) => (
+              <LoginMethodRow
+                key={account.id}
+                top={ACCOUNT_LIST.rowTop + index * ACCOUNT_LIST.rowStep}
+                disabled={isLoading}
+                title={account.displayName}
+                subtitle={
+                  account.kind === 'org'
+                    ? account.orgName || account.email || ''
+                    : t('login.personalAccount')
+                }
+                logoUrl={account.kind === 'org' ? (account.orgLogoUrl ?? null) : null}
+                onClick={() =>
+                  void dispatch({
+                    type: 'select-account',
+                    accountId: account.id,
+                  })
+                }
+              />
+            ))}
+          </div>
+        </div>
       </LoginPanel>
     );
   };
@@ -1397,9 +1433,10 @@ export function LoginPage({
         if (!result.success) throw new Error(result.code ?? 'AUTH_REQUEST_FAILED');
         // 不刷新页面：直接切换当前登录页的区域和登录形态。
         setSelectedLoginRegion(region);
-        setRegionSelecting(false);
+        setRegionSelectorOpen(false);
       } catch (error) {
         log.error('选择登录版本失败', error);
+      } finally {
         setRegionSelecting(false);
       }
     };

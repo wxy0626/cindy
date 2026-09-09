@@ -12,6 +12,9 @@ const auth = vi.hoisted(() => ({
   value: {} as Record<string, unknown>,
   loadLoginState: vi.fn<() => Promise<DesktopLoginActionResult>>(),
   beginAddAccount: vi.fn<() => Promise<DesktopLoginActionResult>>(),
+  selectLoginRegion: vi.fn<
+    (region: 'cn' | 'global') => Promise<DesktopLoginActionResult>
+  >(),
   cancelAddAccount: vi.fn(async () => undefined),
   dispatchLoginAction: vi.fn<(action: DesktopLoginAction) => Promise<DesktopLoginActionResult>>(),
 }));
@@ -40,6 +43,7 @@ function Harness({ addAccount = false }: { addAccount?: boolean }) {
     loginState,
     loadLoginState: auth.loadLoginState,
     beginAddAccount: auth.beginAddAccount,
+    selectLoginRegion: auth.selectLoginRegion,
     cancelAddAccount: auth.cancelAddAccount,
     dispatchLoginAction: auth.dispatchLoginAction,
   };
@@ -80,6 +84,10 @@ beforeEach(async () => {
     publishState(identifierState);
     return { success: true, state: identifierState };
   });
+  auth.selectLoginRegion.mockImplementation(async () => {
+    publishState(identifierState);
+    return { success: true, code: null, state: identifierState };
+  });
 });
 
 afterEach(() => {
@@ -88,10 +96,8 @@ afterEach(() => {
 });
 
 describe('login initialization ownership', () => {
-  it.each([false, true])(
-    'returns from an initialization error to the login entry (addAccount=%s)',
-    async (addAccount) => {
-      const initialize = addAccount ? auth.beginAddAccount : auth.loadLoginState;
+  it('returns from an add-account initialization error to the login entry', async () => {
+      const initialize = auth.beginAddAccount;
       initialize.mockImplementation(async () => {
         const state: AuthFlowState = {
           step: 'error',
@@ -108,7 +114,7 @@ describe('login initialization ownership', () => {
         publishState(identifierState);
         return { success: true, state: identifierState };
       });
-      render(<Harness addAccount={addAccount} />);
+      render(<Harness addAccount />);
 
       await screen.findByTestId('login-panel-error');
       const back = screen.getByRole('button', { name: 'login.back' }) as HTMLButtonElement;
@@ -124,8 +130,7 @@ describe('login initialization ownership', () => {
       expect(screen.queryByTestId('login-error-retry')).toBeNull();
       expect(auth.dispatchLoginAction).toHaveBeenCalledExactlyOnceWith({ type: 'reset' });
       expect(auth.cancelAddAccount).not.toHaveBeenCalled();
-    },
-  );
+  });
 
   it('opens add-account login without an invalidated load or a false failure', async () => {
     render(<Harness addAccount />);
@@ -139,13 +144,18 @@ describe('login initialization ownership', () => {
     );
   });
 
-  it('still initializes ordinary sign-in automatically', async () => {
+  it('opens the region selector before ordinary sign-in initialization', async () => {
     render(<Harness />);
 
-    await screen.findByTestId('login-panel-identifier');
-    expect(auth.loadLoginState).toHaveBeenCalledOnce();
+    expect(screen.getByTestId('login-region-selector')).toBeTruthy();
+    expect(auth.loadLoginState).not.toHaveBeenCalled();
     expect(auth.beginAddAccount).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('login-error-text')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('login-region-cn'));
+
+    await screen.findByTestId('login-panel-identifier');
+    expect(auth.loadLoginState).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('login-region-selector')).toBeNull();
   });
 
   it('preserves the retry screen when add-account initialization actually fails', async () => {
