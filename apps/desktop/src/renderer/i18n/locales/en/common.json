@@ -102,6 +102,7 @@
     "RATE_LIMITED": "Rate limited (429). Try again later",
     "QUOTA_EXCEEDED": "Quota or balance exhausted. Check your provider account",
     "MODEL_NOT_FOUND": "Model not found or not accessible. Check the model ID",
+    "MODEL_UNAVAILABLE": "No available upstream account supports this model. Choose another model or check the gateway accounts",
     "ENDPOINT_NOT_FOUND": "Endpoint not found (404). Check the base URL",
     "CONTEXT_TOO_LONG": "Context exceeds the model's length limit",
     "WIRE_INCOMPATIBLE": "Endpoint is not fully compatible with this protocol (unrecognized request fields)",

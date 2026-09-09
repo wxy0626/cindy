@@ -67,10 +67,9 @@ function AccountMenuAvatar({ account }: { account: DesktopSavedAccount }) {
 }
 
 export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSectionProps) {
-  // 保留基础账号字段的源码契约，扩展本地模式退出能力。
-  // const { user, mode, isCanary, beginAddAccount } = useAuth();
-  const { user, mode, isCanary, beginAddAccount, exitLocalMode } = useAuth();
-  const { handleLogout } = useLogout();
+  const { user, mode, dataOwnerId, isCanary, listAccounts, syncAccounts, switchAccount } =
+    useAuth();
+  const confirmDialog = useOptionalConfirmDialog();
   const navigate = useNavigate();
   const location = useLocation();
   const [avatarError, setAvatarError] = useState(false);
@@ -95,6 +94,7 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
   const { state: betaChannelState } = useBetaChannelSettings();
   const hasPendingUpdate = status === 'ready' || status === 'superseding';
   const isFlameReopen = hasPendingUpdate && dismissed;
+  const showBetaLabel = !betaChannelState.loading && betaChannelState.enableBeta;
 
   // 头像地址变化(设置页改头像 / 服务端资料更新)时重置加载失败标记,
   // 让新地址有机会渲染,而不是永远停在首字母兜底。
@@ -126,12 +126,6 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
   const showNotSignedInGlyph = !user && isLocal;
   const appDisplayVersion = window.electronAPI.appDisplayVersion;
   const appDisplayVersionDetail = window.electronAPI.appDisplayVersionDetail;
-  // 语义版本只用于开发标签；Beta 渠道暂不显示版本号，避免复用开发版版本。
-  const semanticVersion = window.electronAPI.appSemanticVersion?.trim() || '';
-  // 测试夹具和旧版 preload 可能没有新增字段；只有主进程明确返回 false 才判定为开发版。
-  const isDevelopmentBuild = window.electronAPI.appIsPackaged === false;
-  const betaLabel = !betaChannelState.loading && betaChannelState.enableBeta ? 'Beta' : null;
-  const developmentLabel = isDevelopmentBuild ? `开发${semanticVersion ? ` ${semanticVersion}` : ''}` : null;
   // 版本行的区域前缀。「哪些区域要标」只有 CINDY_REGION_CODE 一个事实源(issue
   // 反馈链路同源),口径见 DESIGN.md §16.3 与 region-and-editions.md §2.3:
   // cn → CN、dev → Dev、**global 不标**——Cindy 默认版本不给自己贴标签自证是全球版,
@@ -144,23 +138,13 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
     : CURRENT_CINDY_REGION === 'cn'
       ? t('sidebar.user.regionCodeCn')
       : t('sidebar.user.regionCodeDev');
-  // 开发版展示运行时选择的区域，避免切换到国际版后仍显示编译时的 CN。
-  // 开发版第一行显示账号，正式版继续沿用原有版本展示规则。
   const appVersionLabel = appRegionLabel
     ? `${appRegionLabel} · ${appDisplayVersion}`
     : appDisplayVersion;
-  // Git 版本只作为开发标签的悬停提示，不占用账号第二行。
-  const gitRevision = appDisplayVersion.split(' · ').slice(1).join(' · ').trim();
-  const gitVersionLabel = isDevelopmentBuild && gitRevision ? `Git版本：${gitRevision}` : null;
-  // 账号行只显示登录标识，不再用姓名作为回退，避免把「6666」误当成手机号。
-  const accountIdentifier = user?.accountLabel?.trim() || user?.email?.trim() || '';
-  const developmentAccountLabel =
-    CURRENT_CINDY_REGION === 'cn' && accountIdentifier
-      ? `CN · ${accountIdentifier}`
-      : accountIdentifier;
-  const accountDetailLabel = isDevelopmentBuild ? developmentAccountLabel : appVersionLabel;
+  const appVersionLabelDetail = appRegionLabel
+    ? `${appRegionLabel} · ${appDisplayVersionDetail}`
+    : appDisplayVersionDetail;
   const remoteAvailable = mode === 'cloud';
-  // 中国版与国际版都提供区域切换；开发版和正式包分别走各自的重启实现。
 
   const openSettings = () => {
     if (location.pathname !== '/settings') navigate('/settings');
@@ -173,14 +157,122 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
     });
   };
 
-  /** 退出无账号本地模式，回到登录页重新选择版本或账号。 */
-  const handleExitLocalMode = async () => {
+  const refreshSavedAccounts = async () => {
+    if (mode !== 'cloud') return;
+    const generation = ++accountsLoadGenerationRef.current;
+    setSavedAccountsOwnerKey(null);
+    setSavedAccounts([]);
+    setAccountsMutationAllowed(false);
+    setAccountsSyncing(true);
     try {
-      await exitLocalMode();
-      navigate('/login', { replace: true });
-    } catch (error) {
-      console.error('退出无账号模式失败', error);
+      const initialSnapshot = await listAccounts();
+      if (generation !== accountsLoadGenerationRef.current) return;
+      setSavedAccounts(initialSnapshot.accounts);
+      setAccountsMutationAllowed(initialSnapshot.mutationAllowed);
+      setSavedAccountsOwnerKey(accountsOwnerKey);
+
+      const syncedSnapshot = await syncAccounts();
+      if (generation !== accountsLoadGenerationRef.current) return;
+      setSavedAccounts(syncedSnapshot.accounts);
+      setAccountsMutationAllowed(syncedSnapshot.mutationAllowed);
+      setSavedAccountsOwnerKey(accountsOwnerKey);
+    } catch {
+      if (generation === accountsLoadGenerationRef.current) {
+        toast.error(t('sidebar.accountSwitcher.syncFailed'));
+      }
+    } finally {
+      if (generation === accountsLoadGenerationRef.current) setAccountsSyncing(false);
     }
+  };
+
+  const confirmRunningTaskInterruption = async (): Promise<boolean> => {
+    const { makerChatStore } = await import('@/lib/makerChatStore');
+    const hasRunningTask = [...makerChatStore.getRunningSnapshot().values()].some(
+      (status) => status.isRunning,
+    );
+    if (!hasRunningTask) return true;
+    if (!confirmDialog) return false;
+    return confirmDialog.confirm({
+      title: t('sidebar.accountSwitcher.runningTaskTitle'),
+      description: t('sidebar.accountSwitcher.runningTaskDescription'),
+      confirmText: t('sidebar.accountSwitcher.runningTaskConfirm'),
+      cancelText: t('logic.confirm.cancel'),
+      confirmVariant: 'destructive',
+    });
+  };
+
+  const switchSavedAccount = async (account: DesktopSavedAccount) => {
+    if (
+      account.isCurrent ||
+      switchingAccountKey ||
+      !accountsMutationAllowed ||
+      !accountsReadyForOwner
+    )
+      return;
+    setSwitchingAccountKey(account.accountKey);
+    try {
+      if (!(await confirmRunningTaskInterruption())) return;
+      await switchAccount(account.accountKey);
+    } catch {
+      toast.error(t('sidebar.accountSwitcher.switchFailed'));
+    } finally {
+      setSwitchingAccountKey(null);
+    }
+  };
+
+  const renderSavedAccountItems = () => {
+    const switchableAccounts = savedAccounts.filter((account) => !account.isCurrent);
+    if (mode !== 'cloud' || !accountsReadyForOwner || switchableAccounts.length === 0) return null;
+
+    return (
+      <>
+        {savedAccounts.map((account) => {
+          const hasDistinctOrgName =
+            account.kind === 'org' &&
+            Boolean(account.orgName?.trim()) &&
+            account.orgName !== account.displayName;
+          const primaryLabel = hasDistinctOrgName ? account.orgName : account.displayName;
+          const secondaryLabel =
+            account.kind === 'org' && hasDistinctOrgName ? account.displayName : account.email;
+          const switching = switchingAccountKey === account.accountKey;
+
+          return (
+            <DropdownMenuItem
+              key={account.accountKey}
+              disabled={
+                account.isCurrent || switchingAccountKey !== null || !accountsMutationAllowed
+              }
+              onSelect={() => void switchSavedAccount(account)}
+              // Radix synthesizes a click when a press starts outside this item
+              // and releases over it. Async account rows can move under that
+              // release; require a normal click or keyboard selection instead.
+              onPointerUp={(event) => event.preventDefault()}
+              className="gap-2.5 py-2"
+            >
+              <AccountMenuAvatar account={account} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-13 font-medium">{primaryLabel}</span>
+                {secondaryLabel ? (
+                  <span className="mt-0.5 block truncate text-11 text-[var(--text-secondary)]">
+                    {secondaryLabel}
+                  </span>
+                ) : null}
+              </span>
+              {switching ? (
+                <Spinner size={14} className="shrink-0 text-[var(--text-secondary)]" />
+              ) : account.isCurrent ? (
+                <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
+              ) : null}
+            </DropdownMenuItem>
+          );
+        })}
+        {accountsSyncing ? (
+          <div className="px-2 py-1 text-11 text-[var(--text-secondary)]">
+            {t('sidebar.accountSwitcher.syncing')}
+          </div>
+        ) : null}
+      </>
+    );
   };
 
   const renderMoreMenu = (trigger: ReactNode) => (
@@ -203,24 +295,6 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
           <Settings className="h-4 w-4" aria-hidden="true" />
           {t('sidebar.user.menuSettings')}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => setAccountSwitcherOpen(true)} className="gap-2.5">
-          <UserPlus className="h-4 w-4" aria-hidden="true" />
-          {t('sidebar.user.menuAddAccount')}
-        </DropdownMenuItem>
-        {mode === 'cloud' || mode === 'local' ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={() =>
-                void (mode === 'local' ? handleExitLocalMode() : handleLogout())
-              }
-              className="gap-2.5 text-[var(--error-fg-strong)] focus:text-[var(--error-fg-strong)]"
-            >
-              <LogOut className="h-4 w-4" aria-hidden="true" />
-              {t('sidebar.user.menuLogout')}
-            </DropdownMenuItem>
-          </>
-        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -324,47 +398,16 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
         :has() 把胶囊底色还原,只让当前按钮高亮,避免双层叠色。 */}
       <div
         className={cn(
-          'relative',
-          'flex min-h-10 items-center rounded-full border border-[var(--sidebar-user-card-border)] bg-[var(--sidebar-user-card-bg)] px-[7px] py-1.5',
+          'flex h-10 items-center rounded-full border border-[var(--sidebar-user-card-border)] bg-[var(--sidebar-user-card-bg)] px-[7px]',
           'transition-colors hover:bg-[var(--sidebar-user-card-bg-hover)]',
           'has-[.flame-btn:hover]:bg-[var(--sidebar-user-card-bg)]',
           'has-[.mobile-download-btn:hover]:bg-[var(--sidebar-user-card-bg)]',
         )}
       >
-        <div
-          className="absolute left-2 top-0 z-10 flex -translate-y-1/2 items-center gap-1"
-          aria-hidden="true"
-        >
-          {developmentLabel ? (
-            <Tip text={gitVersionLabel ?? developmentLabel} side="top" delay={0}>
-              <button
-                type="button"
-                className="rounded-[3px] bg-[#c93636] px-1.5 py-0.5 text-[9px] font-semibold leading-none text-white shadow-sm"
-                data-testid="sidebar-development-label"
-                aria-label={gitVersionLabel ?? developmentLabel}
-              >
-                {developmentLabel}
-              </button>
-            </Tip>
-          ) : null}
-          {betaLabel ? (
-            <span
-              className="rounded-[3px] bg-[#3566a8] px-1.5 py-0.5 text-[9px] font-semibold leading-none text-white shadow-sm"
-              data-testid="sidebar-beta-channel-label"
-            >
-              {betaLabel}
-            </span>
-          ) : null}
-        </div>
-        {renderMoreMenu(<button
-          ref={moreButtonRef}
-          aria-label={moreLabel}
-          className={cn('flex min-w-0 flex-1 items-center gap-[10px]', 'text-left')}
-        >
-          {/* Avatar — admin 用户加 1.5px 反色描边 + 右下角盾牌角标 */}
-          <div
-            className="relative h-[27px] w-[27px] shrink-0"
-            title={isCanary ? t('sidebar.user.canaryBadge') : undefined}
+        {renderMoreMenu(
+          <button
+            aria-label={moreLabel}
+            className={cn('flex min-w-0 flex-1 items-center gap-[10px]', 'text-left')}
           >
             {/* Avatar — admin 用户加 1.5px 反色描边 + 右下角盾牌角标 */}
             <div
@@ -410,25 +453,34 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
             {/* Name & plan — fade in/out with collapse。
             折叠 rail（64px）下必须整个移出布局（hidden）——flex-1 占位会把
             头像挤出 64px 可视区（旧 w-0 折叠时代 opacity 即可，rail 时代不行）。 */}
-          <div
-            className={cn(
-              'flex min-w-0 flex-1 flex-col justify-center',
-              'transition-opacity duration-200 ease-in-out',
-              'opacity-100',
-            )}
-          >
-            <p className="truncate text-14 font-semibold leading-[1.286] text-[var(--sidebar-user-card-text)]">
-              {displayName}
-            </p>
-            {/* 2px gap 与同栏 userNameContainer 保持一致。 */}
             <div
-              className="flex min-w-0 flex-col text-10 leading-[1.3] text-[var(--sidebar-user-card-text)]"
-              title={accountDetailLabel}
+              className={cn(
+                'flex min-w-0 flex-1 flex-col justify-center',
+                'transition-opacity duration-200 ease-in-out',
+                'opacity-100',
+              )}
             >
-              <span className="truncate opacity-80">{accountDetailLabel}</span>
+              <p className="truncate text-14 font-semibold leading-[1.286] text-[var(--sidebar-user-card-text)]">
+                {displayName}
+              </p>
+              {/* 2px gap 与同栏 userNameContainer 保持一致。 */}
+              <p
+                className="flex min-w-0 items-center gap-1 text-10 leading-[1.3] text-[var(--sidebar-user-card-text)]"
+                title={appVersionLabelDetail}
+              >
+                <span className="truncate opacity-80">{appVersionLabel}</span>
+                {showBetaLabel ? (
+                  <span
+                    className="shrink-0 select-none opacity-80"
+                    data-testid="sidebar-beta-channel-label"
+                  >
+                    {t('settings.betaChannel.badge')}
+                  </span>
+                ) : null}
+              </p>
             </div>
-          </div>
-        </button>)}
+          </button>,
+        )}
 
         {mobileDownloadEntry}
 

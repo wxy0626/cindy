@@ -29,7 +29,9 @@ import {
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
+  MessagesSquare,
   MonitorSmartphone,
+  SquarePen,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -53,7 +55,10 @@ import { useSidebarMainViewMode } from '@/hooks/useSidebarCardMode';
 import { ProjectNode } from './ProjectNode';
 import { UnclassifiedSection } from './UnclassifiedSection';
 import { getSessionListCollapseView } from '../../lib/sessionListCollapse';
-import { getProjectCollapseLimit } from '../../lib/sidebarCollapseConfig';
+import {
+  getProjectCollapseLimit,
+  getProjectSessionCollapseLimit,
+} from '../../lib/sidebarCollapseConfig';
 import {
   normalizeManualProjectOrder,
   mergeVisibleReorder,
@@ -85,7 +90,7 @@ import { absorbSessionStarting } from '@/lib/sessionStartingStore';
 import type { DialogueDeviceTarget } from '../../lib/dialogueCreateTarget';
 import { MainListScopeHeader } from '../MainListScopeHeader';
 import { SectionCollapse } from '../SectionCollapse';
-import { SessionEntryRows } from '../SessionEntryList';
+import { SessionEntryList, SessionEntryRows } from '../SessionEntryList';
 import { useCollapsibleShowAll } from '../hooks/useCollapsibleShowAll';
 import { useAutomationGroupsCollapsed } from '../../hooks/useAutomationGroupCollapsed';
 import type { SessionAction, SessionClickHandler } from '../SessionItem';
@@ -108,6 +113,99 @@ const MANUAL_PROJECT_SORT_HANDLE = '[data-project-header]';
 
 /** 标题行里的按钮、以及子任务区,都不能当成"拖整个项目"的起点。 */
 const MANUAL_PROJECT_SORT_FILTER = 'button, input, textarea, select, a, [data-no-drag]';
+
+/** 带标题的 Bot/对话分组，复用项目内会话行与折叠策略。 */
+function SessionGroupNode({
+  sessions, collapsed, onToggle, onCreateDialogue, groupIcon, groupTitle, createLabel,
+  isCreateDisabled, parentSectionCollapsed, disableSessionCollapse, activeSessionId,
+  runningSessionIds, attachedSessionIds, notifications, scheduleSessionIndex, selectedSessionIds,
+  onSessionClick, onAction, onRename, onTogglePin, onMoveSession, projectOptions,
+  onScheduleAction, sessionVariant,
+}: {
+  sessions: Session[];
+  collapsed: boolean;
+  onToggle: () => void;
+  onCreateDialogue: () => void;
+  groupIcon?: ReactNode;
+  groupTitle?: string;
+  createLabel?: string;
+  isCreateDisabled: boolean;
+  parentSectionCollapsed: boolean;
+  disableSessionCollapse: boolean;
+  activeSessionId?: string;
+  runningSessionIds: ReadonlySet<string>;
+  attachedSessionIds: ReadonlySet<string>;
+  notifications: ReadonlySet<string>;
+  scheduleSessionIndex: ReadonlyMap<string, AutomationScheduleSessionInfo>;
+  selectedSessionIds?: ReadonlySet<string>;
+  onSessionClick: SessionClickHandler;
+  onAction: (id: string, action: SessionAction) => void;
+  onRename: (id: string, title: string) => void;
+  onTogglePin: (id: string, currentlyPinned: boolean) => void;
+  onMoveSession?: (id: string, target: SessionMoveTarget) => void;
+  projectOptions?: readonly FolderPickerOption[];
+  onScheduleAction: (group: AutomationSessionGroup, action: AutomationScheduleAction) => void;
+  sessionVariant: 'text' | 'list';
+}) {
+  const { t } = useTranslation();
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
+  return (
+    <div className="relative flex w-full select-none flex-col" data-no-drag>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onClick={onToggle}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggle(); }
+        }}
+        className="group flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-full pl-3 pr-1 text-sm font-normal text-[var(--sidebar-list-muted)] transition-colors hover:bg-sidebar-item-hover"
+      >
+        {groupIcon ?? <MessagesSquare size={15} strokeWidth={1.8} className="shrink-0" />}
+        <span className="min-w-0 flex-1 truncate">{groupTitle ?? t('ccAgent.sidebar.dialogues')}</span>
+        <Chevron size={13} className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+        <Tip text={createLabel ?? t('ccAgent.sidebar.newDialogue')}>
+          <button
+            type="button"
+            aria-label={createLabel ?? t('ccAgent.sidebar.newDialogue')}
+            disabled={isCreateDisabled}
+            onClick={(event) => { event.stopPropagation(); onCreateDialogue(); }}
+            onPointerDown={(event) => event.stopPropagation()}
+            className="flex size-5 shrink-0 items-center justify-center rounded-md text-sidebar-action-icon hover:bg-sidebar-item-hover disabled:opacity-50"
+          >
+            <SquarePen size={14} strokeWidth={2} />
+          </button>
+        </Tip>
+      </div>
+      <SectionCollapse collapsed={collapsed} data-no-drag>
+        <div className={cn('flex flex-col gap-0.5 pt-0.5 pb-1.5 pr-0', sessionVariant === 'list' ? 'pl-3' : 'pl-0')}>
+          <SessionEntryList
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            runningSessionIds={runningSessionIds}
+            attachedSessionIds={attachedSessionIds}
+            notifications={notifications}
+            scheduleSessionIndex={scheduleSessionIndex}
+            selectedSessionIds={selectedSessionIds}
+            onSessionClick={onSessionClick}
+            onAction={onAction}
+            onRename={onRename}
+            onTogglePin={onTogglePin}
+            onMoveSession={onMoveSession}
+            projectOptions={projectOptions}
+            onScheduleAction={onScheduleAction}
+            indented
+            collapsible
+            collapseLimit={getProjectSessionCollapseLimit()}
+            disableCollapse={disableSessionCollapse}
+            sectionCollapsed={parentSectionCollapsed || collapsed}
+            sessionVariant={sessionVariant}
+          />
+        </div>
+      </SectionCollapse>
+    </div>
+  );
+}
 
 /** 设备段折叠/对话组折叠共用的段 key:本机段 'local',远程段用 deviceId。 */
 const deviceSectionKey = (deviceId: string | null) => deviceId ?? 'local';

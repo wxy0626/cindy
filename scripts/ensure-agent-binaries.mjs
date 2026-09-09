@@ -57,7 +57,8 @@ const log = (msg) => console.log(`\x1b[36m[ensure-agent-binaries]\x1b[0m ${msg}`
 const warn = (msg) => console.log(`\x1b[33m[ensure-agent-binaries]\x1b[0m ${msg}`);
 
 export function supportsCdnFallback(kind) {
-  return KINDS[kind]?.dirDist !== true;
+  // Codex 由主程序 + code-mode-host 两个文件组成，不能用单文件 CDN 兜底。
+  return KINDS[kind]?.dirDist !== true && kind !== 'codex';
 }
 
 export function updateScriptForKind(kind) {
@@ -82,6 +83,11 @@ export function requiredBinFiles(kind, platformKey) {
   const files = [binFileFor(cfg.base, platformKey)];
   if (cfg.companionBase) files.push(binFileFor(cfg.companionBase, platformKey));
   return files;
+}
+
+/** 返回某个 runtime 的主执行文件相对路径，供安装和启动检查共用。 */
+export function binaryRelativePathFor(kind, platformKey) {
+  return requiredBinFiles(kind, platformKey)[0] ?? null;
 }
 
 /** 读 apps/<binDir>/<platform>/.version 里记录的已安装版本；缺失/读失败返回 null。 */
@@ -216,6 +222,8 @@ export async function ensureBinary(kind, platformKey = currentPlatformKey(), { f
   const binFile = binFileFor(cfg.base, platformKey);
   const requiredFiles = requiredBinFiles(kind, platformKey);
   const binDirPath = path.join(ROOT, 'apps', cfg.binDir, platformKey);
+  const binaryRelativePath = binaryRelativePathFor(kind, platformKey);
+  if (!binaryRelativePath) throw new Error('No primary binary configured for ' + kind);
   const binPath = path.join(binDirPath, binaryRelativePath);
   const markerPath = path.join(binDirPath, '.version');
   const updateScript = updateScriptForKind(kind);

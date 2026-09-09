@@ -3243,7 +3243,7 @@ export class CodexAgent extends BaseAgent {
     const liveUsageSnapshot = () => attachLiveGeneration(usageTracker.snapshot(), {
       // 生成速度只统计主代理输出，子代理输出不能改变父代理的速率。
       outputTokens: usageTracker.getTurnUsageByScope().parent.output,
-      closedDurationMs: translatorRt.generationDurationMs,
+      durationMs: translatorRt.generationOutputDurationMs,
       openStartedAt: translatorRt.generationStartedAt,
       reliable: translatorRt.generationTimingReliable,
     });
@@ -10234,7 +10234,7 @@ export class CodexAgent extends BaseAgent {
             ...attachLiveGeneration(endSnap, {
               // 子代理输出不属于父代理生成速度。
               outputTokens: turnUsageByScope.parent.output,
-              closedDurationMs: translatorRt.generationDurationMs,
+              durationMs: translatorRt.generationOutputDurationMs,
               openStartedAt: null,
               reliable: translatorRt.generationTimingReliable,
             }),

@@ -855,6 +855,9 @@ function darwinEnvPrefix() {
 
 export function devEnvPrefix(env = process.env, platform = process.platform) {
   const envEntries = [
+    // Electron Forge/Vite 在 Windows 新开的 cmd 中不会自动继承启动脚本的
+    // Node 参数；显式透传堆上限，避免大型 renderer 编译回落到默认约 4 GB。
+    ['NODE_OPTIONS', env.NODE_OPTIONS],
     // --region 经 CINDY_AUTH_REGION 注入 dev-remote-env / Forge / Vite，同一个值
     // 同时决定区域身份与 --endpoints-cdn 的自举 CDN 基址。
     ['CINDY_AUTH_REGION', env.CINDY_AUTH_REGION],

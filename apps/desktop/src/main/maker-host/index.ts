@@ -1587,94 +1587,48 @@ export function getMaker(): Maker {
         const endpoint = usesIsolatedProxy
           ? getCodexControlPlaneProxyEndpoint(authInjection)
           : getCodexProxyEndpoint();
-        const storedSubagentModelSettings = readSubagentModelSettings();
-        const mainTaskCredentialMode = ctx.requestedCredentialMode ?? credentialMode;
-        let subagentProviderViews: ProviderView[] | undefined;
-        if (
-          !isReview &&
-          !ctx.remoteHostId &&
-          storedSubagentModelSettings.codexSubagentsEnabled &&
-          storedSubagentModelSettings.codex?.trim()
-        ) {
-          // OAuth 主任务也需要识别固定路由的来源，区分“ChatGPT 路由在两侧都回落默认”
-          // 与“其它路由只在 OAuth 侧临时回落”；读取失败时保留空数组，令显式 OpenAI
-          // 选择仍可按稳定来源 id 识别，其它路由继续 fail-closed。
-          subagentProviderViews = [];
-          try {
-            subagentProviderViews = await getDesktopProviderService().listProviders({
-              allowSideEffects: false,
-            });
-          } catch (err) {
-            desktopMakerLogger.warn('Codex implicit subagent Provider resolution failed', {
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }
+        const codexCustomProviderRoutes =
+          isCustomContext && ready
+            ? customContextProviderRoutes
+            : !usesIsolatedProxy && ready
+              ? deriveCodexCustomProviderRoutes(getActiveCatalog())
+              : [];
+        if (!usesIsolatedProxy) {
+          setCodexAppliedCustomProviderRoutes(codexCustomProviderRoutes);
         }
         const codexCustomProviderSpawn = buildCodexCustomProviderArgs(
           endpoint,
           authInjection,
           codexCustomProviderRoutes,
         );
-        const codexSubagentRoutingProfile =
-          !isReview && !ctx.remoteHostId
-            ? resolveCodexSubagentRoutingProfile(
-                storedSubagentModelSettings,
-                mainTaskCredentialMode,
-                configuredSubagentRoute,
-                subagentProviderViews,
-              )
-            : 'default';
-        const subagentModelFallback = !isReview
-          ? resolveCodexSubagentModelFallback(subagentModelSettings, ctx.remoteHostId)
-          : undefined;
-        let subagentRoute =
-          subagentModelSettings === storedSubagentModelSettings
-            ? configuredSubagentRoute
-            : undefined;
-        let forceDisableSubagents = false;
+        const storedSubagentModelSettings = readSubagentModelSettings();
+        let smartSubagentConfig: CodexSmartSubagentConfig | undefined;
         if (
-          codexSubagentRouteResolutionFailed(subagentModelSettings, subagentRoute, {
-            remoteHostId: ctx.remoteHostId,
-            isReview,
-          })
+          !isControlPlane &&
+          !isReview &&
+          ready &&
+          storedSubagentModelSettings.codexSmartSubagentRouting
         ) {
-          // 未显式保存 Provider 时依赖目录做隐式解析。解析失败不能继承父任务来源继续
-          // 运行，否则默认子代理模型会静默跑到错误上游。
-          desktopMakerLogger.warn(
-            'Codex subagents disabled: configured model Provider route could not be resolved',
-            { catalogModel: subagentModelSettings.codex?.trim() },
-          );
-          forceDisableSubagents = true;
-        } else if (subagentRoute && !ready) {
-          // proxy 未就绪时 fallback 会直连真实 Gateway，无法兑现冻结的 Provider、
-          // upstream、鉴权与模型恢复。fail-closed：本 app-server 关闭子代理，父任务
-          // 仍可沿既有 Gateway fallback 工作；路由快照也不注册。
-          desktopMakerLogger.warn(
-            'Codex subagents disabled: configured Provider route requires unavailable proxy',
-            { providerId: subagentRoute.providerId, catalogModel: subagentRoute.catalogModel },
-          );
-          forceDisableSubagents = true;
-          subagentRoute = undefined;
-        } else if (subagentRoute) {
-          const hasRequiredOAuth = codexSubagentRouteUsesChatGptOAuth(
-            subagentRoute,
-            subagentProviderViews,
-          )
-            ? await desktopCodexAuthAdapter.hasCodexOAuthLogin().catch(() => false)
-            : false;
-          const credentialPlan = resolveCodexSubagentHostCredentialPlan(
-            subagentRoute,
-            subagentProviderViews,
-            credentialMode,
-            hasRequiredOAuth,
-          );
-          if (credentialPlan.forceDisableSubagents) {
+          try {
+            const providerViews: ProviderView[] =
+              await getDesktopProviderService().listProviders({ allowSideEffects: false });
+            smartSubagentConfig = prepareCodexSmartSubagentConfig({
+              codexHome: getCodexHome(),
+              providerViews,
+              allowChatGptOAuth: authInjection === 'oauth-bearer',
+              catalogRevision: getActiveCatalogRevision(),
+            }) ?? undefined;
+          } catch (err) {
             desktopMakerLogger.warn(
               'Codex smart Subagent catalog unavailable; preserving native routing',
               { error: err instanceof Error ? err.message : String(err) },
             );
           }
         }
+        const codexSubagentRoutingProfile = resolveCodexSubagentRoutingProfile(
+          storedSubagentModelSettings,
+          smartSubagentConfig,
+        );
         let customContextCatalogArgs: string[] = [];
         if (isCustomContext) {
           const modelId = ctx.customContextModel?.trim();
@@ -1712,10 +1666,6 @@ export function getMaker(): Maker {
             throw fatal;
           }
         }
-        const codexSubagentRoutingProfile = resolveCodexSubagentRoutingProfile(
-          storedSubagentModelSettings,
-          smartSubagentConfig,
-        );
         return {
           // 默认不碰 Codex 原生 Sol/Terra 调配。用户开启智能调配后才为这个本地
           // app-server 冻结扩展目录与逐模型 Provider 路由。
@@ -1802,7 +1752,13 @@ export function getMaker(): Maker {
       },
       unregisterCodexMcpThreadContext,
       prepareCodexResumeSession: prepareExternalCodexSessionForResume,
-      registerCodexSystemPromptForThread: ({ sessionId, threadId, text, subagentRoute }) =>
+      registerCodexSystemPromptForThread: ({
+        sessionId,
+        threadId,
+        text,
+        subagentRoute,
+        smartSubagentRoutes,
+      }) =>
         registerCodexProxyComposed(sessionId, threadId, text, {
           ...(subagentRoute ? { subagentRoute } : {}),
           ...(smartSubagentRoutes ? { smartSubagentRoutes } : {}),

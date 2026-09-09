@@ -24,7 +24,6 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  CatalogSourceSwitcher,
   PLUGIN_MANAGEMENT_CARD_GRID_CLASS,
   PluginManagementLayout,
   PluginManagementPage,
@@ -79,7 +78,6 @@ export function SkillhubHomeView({
   const navigate = useNavigate();
   const { skills, projects, bootstrapped, syncResults } = useSkillhub();
   const [query, setQuery] = useState('');
-  const [catalogSource, setCatalogSource] = useState<'external' | 'internal'>('external');
   const normalizedQuery = query.trim().toLocaleLowerCase();
 
   // 未登录也请求公开 Skill 目录；登录身份只扩大服务端可见范围。
@@ -114,43 +112,37 @@ export function SkillhubHomeView({
   const categoryScope = marketRequest.scope === 'team' ? 'team' : 'market';
   const { categories } = useCategoryList(categoryScope);
   useEffect(() => {
-    setSortBy('trending');
-  }, [setSortBy]);
-  const recommended = useMemo(
-    () => {
-      if (catalogSource === 'internal') return [];
-      return marketItems
+    setCatalogScope(marketRequest.scope);
+    setVisibility(marketRequest.visibility);
+    setSortBy(marketRequest.sort);
+    setCategoryFilter(CATEGORY_ALL);
+  }, [marketRequest, setCatalogScope, setCategoryFilter, setSortBy, setVisibility]);
+  useEffect(() => {
+    setSearchQuery(query);
+  }, [query, setSearchQuery]);
+  useEffect(() => {
+    if (!showOrganization && catalogTab === 'organization') setCatalogTab('public');
+  }, [catalogTab, showOrganization]);
+  const marketResponseCurrent = isHomeMarketResponseCurrent(marketRequest, {
+    scope: resolvedScope,
+    mine: resolvedMine,
+  });
+  const catalogItems = useMemo(
+    () =>
+      (marketResponseCurrent ? marketItems : [])
         .filter((skill) =>
           includesSkillQuery(
             [skill.displayName, skill.name, skill.description, skill.authorName, skill.publisherName],
             normalizedQuery,
           ),
-        )
-        .slice(0, RECOMMENDED_LIMIT);
-    },
-    [catalogSource, marketItems, normalizedQuery],
+        ),
+    [marketFilter, marketItems, marketResponseCurrent, normalizedQuery],
   );
-
-  // 复用 SkillHub 已有来源推断:外部 = SkillHub 安装来源,内部 = 本地来源。
-  const visibleSkills = useMemo(() => {
-    const expectedSource = catalogSource === 'external' ? 'external' : 'internal';
-    return skills.filter((skill) => {
-      const sync = syncResults.get(skill.name);
-      const isMine = sync?.exists === true ? sync.isMine : null;
-      return (
-        deriveSkillSource(
-          skill.registryEntry?.origin,
-          skill.registryEntry !== null,
-          isMine,
-        ) === expectedSource
-      );
-    });
-  }, [catalogSource, skills, syncResults]);
 
   // 本地技能:global 一组 + 每个 project 一组(displayName 取自 store.projects,兜底 basename)。
   const globalSkills = useMemo(
     () =>
-      visibleSkills.filter(
+      skills.filter(
         (skill) =>
           skill.scope === 'global' &&
           includesSkillQuery(
@@ -158,11 +150,11 @@ export function SkillhubHomeView({
             normalizedQuery,
           ),
       ),
-    [normalizedQuery, visibleSkills],
+    [normalizedQuery, skills],
   );
   const projectGroups = useMemo(() => {
     const byRoot = new Map<string, SkillhubSkill[]>();
-    for (const s of visibleSkills) {
+    for (const s of skills) {
       if (s.scope !== 'project' || !s.projectRoot) continue;
       const arr = byRoot.get(s.projectRoot);
       if (arr) arr.push(s);
@@ -184,15 +176,15 @@ export function SkillhubHomeView({
         };
       })
       .filter((group) => group.skills.length > 0);
-  }, [normalizedQuery, projects, visibleSkills]);
+  }, [normalizedQuery, skills, projects]);
   const visibleLocalCount = useMemo(
     () =>
       globalSkills.length + projectGroups.reduce((count, group) => count + group.skills.length, 0),
     [globalSkills.length, projectGroups],
   );
-  const hasSearchResults =
-    (catalogSource === 'external' && marketAllowed && recommended.length > 0) ||
-    visibleLocalCount > 0;
+  const hasSearchResults = catalogTab === 'local'
+    ? visibleLocalCount > 0
+    : catalogItems.length > 0;
 
   // 推荐技能的预览浮层 + 安装选择器(复用 Market 那套):点推荐卡 = 下一步直接
   // 进入该技能的预览;关闭 = 回退到首页。
@@ -296,110 +288,23 @@ export function SkillhubHomeView({
           embedded ? 'bg-transparent' : 'bg-[var(--surface)]',
         )}
       >
-        <PluginManagementPage className="gap-10">
-          <header className="plugin-motion-page-header flex items-start justify-between gap-4">
-            <div className="min-w-0 pt-1">
-              <h1 className="text-28 font-medium leading-tight text-[var(--text-primary)]">
-                {t('skillhub.home.title')}
-              </h1>
-              <p className="mt-2 max-w-2xl text-14 leading-6 text-[var(--text-secondary)]">
-                {t(
-                  marketAllowed
-                    ? 'skillhub.home.description'
-                    : 'skillhub.home.descriptionLocalOnly',
-                )}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleImportSkill()}
-              disabled={importBusy}
-              className={cn(
-                'mt-1 inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[var(--border-default)]',
-                'bg-[var(--surface-elevated)] px-3.5 text-12 font-medium text-[var(--text-primary)] shadow-[var(--plugin-card-shadow)]',
-                'transition-[background-color,border-color,transform] duration-150 ease-out',
-                'hover:border-[var(--text-tertiary)] hover:bg-[var(--surface-hover-soft)] active:scale-[0.98]',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
-                'disabled:cursor-not-allowed disabled:opacity-50',
-              )}
-              aria-label={t('skillhub.home.importAria')}
-            >
-              <Upload size={14} strokeWidth={1.8} aria-hidden="true" />
-              <span>{t('skillhub.home.import')}</span>
-            </button>
-          </header>
-
-          <CatalogSourceSwitcher
-            activeSource={catalogSource}
-            externalLabel={t('skillhub.home.externalTab')}
-            internalLabel={t('skillhub.home.builtinTab')}
-            ariaLabel={t('skillhub.home.sourceTabsAria')}
-            onChange={setCatalogSource}
-          />
-
-          {/* ① Skill Hub 入口 → 完整 Market 浏览页(仅市场可见账号) */}
-          {catalogSource === 'external' && marketAllowed && !normalizedQuery ? (
-            <button
-              type="button"
-              onClick={openMarket}
-              className={cn(
-                'plugin-motion-page-section',
-                'group flex items-center gap-4 rounded-[12px] border-[0.5px] border-[var(--border-default)]',
-                'bg-[var(--surface-elevated)] px-5 py-4 text-left shadow-[var(--plugin-card-shadow)]',
-                'transition-[background-color,border-color,transform] duration-150 ease-out',
-                'hover:-translate-y-0.5 hover:border-[var(--text-tertiary)]',
-                'active:translate-y-0 active:scale-[0.992]',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
-              )}
-            >
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-[22%] border-[0.5px] border-[var(--border-default)] bg-[var(--surface-elevated)] shadow-[var(--plugin-card-shadow)]">
-                <Store size={20} className="text-[var(--msg-assistant-text)]" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-[var(--msg-assistant-text)]">
-                  {t('skillhub.home.browseTitle')}
-                </span>
-                <span className="block text-xs text-[var(--cmd-palette-item-meta)]">
-                  {t('skillhub.home.browseDesc')}
-                </span>
-              </span>
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] transition-[background-color,color,transform] group-hover:translate-x-0.5 group-hover:bg-[var(--surface-chip)] group-hover:text-[var(--text-primary)] group-active:translate-x-0 group-active:scale-95">
-                <ChevronRight size={16} strokeWidth={1.8} />
-              </span>
-            </button>
-          ) : null}
-
-          {/* ② 推荐安装(仅市场可见账号) */}
-          {catalogSource === 'external' &&
-          marketAllowed &&
-          (!normalizedQuery || recommended.length > 0 || marketLoading) ? (
-            <section className="plugin-motion-page-section min-w-0">
-              <SkillSectionHeading
-                title={t('skillhub.home.recommended')}
-                count={recommended.length}
-              />
-              {marketLoading && recommended.length === 0 ? (
-                // 占位骨架:与真实卡片同栅格、同行数、同高度,内容到位后原地替换不跳动。
-                <div className={PLUGIN_MANAGEMENT_CARD_GRID_CLASS} aria-hidden>
-                  {Array.from({ length: RECOMMENDED_LIMIT }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="flex h-[100px] flex-col gap-2 rounded-[12px] border-[0.5px] border-[var(--border-default)] bg-[var(--surface-elevated)] p-3 shadow-[var(--plugin-card-shadow)]"
-                    >
-                      <div className="h-3.5 w-2/3 animate-pulse rounded bg-[var(--cmd-palette-item-hover)] opacity-60" />
-                      <div className="h-3 w-full animate-pulse rounded bg-[var(--cmd-palette-item-hover)] opacity-40" />
-                      <div className="h-3 w-4/5 animate-pulse rounded bg-[var(--cmd-palette-item-hover)] opacity-40" />
-                      <div className="mt-auto h-3 w-1/3 animate-pulse rounded bg-[var(--cmd-palette-item-hover)] opacity-40" />
-                    </div>
-                  ))}
-                </div>
-              ) : recommended.length === 0 ? (
-                <div className="rounded-[12px] border-[0.5px] border-[var(--border-default)] px-4 py-5 text-13 leading-5 text-[var(--text-secondary)]">
-                  {t('skillhub.home.recommendedEmpty')}
-                </div>
-              ) : (
-                <div className={cn('plugin-motion-stagger', PLUGIN_MANAGEMENT_CARD_GRID_CLASS)}>
-                  {recommended.map((s) => (
+        <main className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges]">
+          <PluginManagementPage className="gap-8">
+            <header className="plugin-motion-page-header flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0 pt-1">
+                <h1 className="text-28 font-medium leading-tight text-[var(--text-primary)]">
+                  {t('skillhub.home.title')}
+                </h1>
+                <p className="mt-2 max-w-2xl text-14 leading-6 text-[var(--text-secondary)]">
+                  {t('skillhub.home.description')}
+                </p>
+              </div>
+              <div
+                className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1"
+                role="group"
+                aria-label={t('skillhub.home.catalogFiltersAria')}
+              >
+                  {homeCatalogTabs.map((tab) => (
                     <button
                       key={tab}
                       type="button"
@@ -691,9 +596,9 @@ function LocalGroup({
                     {s.name}
                   </span>
                   <span className="shrink-0 text-10 text-[var(--text-tertiary)]">
-                    {source === 'internal'
-                      ? t('skillhub.home.sourceBuiltin')
-                      : t('skillhub.home.sourceExternal')}
+                    {source === 'external'
+                      ? t('skillhub.home.sourceSkillhub')
+                      : t('skillhub.home.sourceLocal')}
                   </span>
                 </span>
                 {s.description && (

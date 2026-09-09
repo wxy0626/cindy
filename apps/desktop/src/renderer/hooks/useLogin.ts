@@ -37,7 +37,7 @@ interface UseLoginReturn {
 /** Coordinates presentation state while all credentials and tickets stay in main. */
 const LOGIN_ACTION_TIMEOUT_MS = 20_000;
 
-export function useLogin(): UseLoginReturn {
+export function useLogin({ autoLoad = true }: { autoLoad?: boolean } = {}): UseLoginReturn {
   const {
     loginState,
     loadLoginState,

@@ -1,5 +1,17 @@
 import { registerSessionSetModelHandler } from './sessionSetModelHandler.js';
 import { projectRemoteBotDelegations } from './remoteBotDelegations.js';
+import { backgroundTurnPredatesSessionClear } from '../messagePersistBroadcaster.js';
+import { consumeClaudeOpusPlanMismatch } from '../maker-host/claude-gateway-error-observer.js';
+import { markSessionTurnStarted } from '../localDb/sessionActiveTurn.js';
+import {
+  refreshSessionListPreview,
+  maybeGenerateSessionTaskSummary,
+} from '../sessionTaskSummary.js';
+import { readClaudeSessionRoute } from '../maker-host/claude-session-route-registry.js';
+import { broadcastSchedulerChanged } from './schedule.js';
+import { isUserProviderSession } from '../maker-host/provider-route.js';
+import { getCodexProxyAuthInjection } from '../maker-host/codex-proxy-host.js';
+import { buildTurnUsageDetails } from '../../shared/turnUsageDetails.js';
 /**
  * registerMakerIpc — 把 Maker Core 的能力暴露为 maker:* IPC channel。
  *
@@ -79,6 +91,7 @@ import { upsertRecentWorkdir } from '../localDb/ipc/recentWorkdirs.js';
 import type { AgentMeta, Session as RendererSession } from '../../renderer/lib/ccAgent.types';
 import {
   deriveAutoTitleSeed,
+  parseAgentInputToolLoopDetails,
   normalizeAgentInputClearBoundaryMs,
   serializeSessionReferencePayload,
   type AgentInputClearBoundaryOpts,
@@ -297,8 +310,14 @@ import {
   tryAcquireReviewSourceLease,
 } from '../reviewer/reviewSourceLease.js';
 
+import { persistSubagentTaskUpdate } from '../localDb/subagentRuns.js';
 import { broadcastSubagentRunsChanged } from '../localDb/ipc/subagentRuns.js';
-import { clearSubagentObservationRewindState } from '../subagentObservationRewindFence.js';
+import {
+  captureSubagentObservationGeneration,
+  clearSubagentObservationRewindState,
+  enqueueSubagentObservationWrite,
+  noteSubagentObservationTurnStarted,
+} from '../subagentObservationRewindFence.js';
 import {
   applyAgentSwitchToSessionRow,
   applyAgentSwitchResumeFallbackAtomically,
@@ -487,16 +506,31 @@ import {
   flushOrphanToolResults,
   getLastAssistantTranscriptUuid,
   getSessionDbAgentKind,
+  isSuccessfulCodexDoneEventData,
+  markAssistantTurnCompleted,
   getSessionTextSnapshot,
   markAssistantTurnFailed,
+  noteAgentMeta,
   noteSessionAgentKind,
   noteSessionClearBoundary,
+  noteTurnStarted,
+  onAssistantTextEvent,
+  onAgentTaskUpdateEvent,
   onInteractionMessage,
   onInteractionResolved,
   clearCodexPlanRowsForSession,
+  persistCodexPlanOnDone,
+  persistCodexPlanOnTerminalError,
+  onThinkingEvent,
+  onToolResultEvent,
+  onToolResultFullEvent,
+  onToolUseEvent,
+  preserveTurnPersistStateForBackground,
   sealAssistantBlockForLateFinal,
   markAutoResumeOutcome,
   onTurnErrorEvent,
+  releaseReservedTurnErrorPersistId,
+  reserveTurnErrorPersistId,
   prepareSyntheticToolEventForBroadcast,
   redactToolInputForUntrustedBoundary,
   resetTurnPersistState,
@@ -516,20 +550,79 @@ import {
   ensureRemoteAgentInstalledOrInstall,
   ensureRemoteHostReady,
   getRemoteSshPool,
+  isCcMgrUpgradeInFlight,
   broadcastSilentInstallStatus,
 } from '../remote-ssh/index.js';
-import { recordSessionContextSnapshot } from '../sessionSpendBroadcaster.js';
+import {
+  recordSessionContextSnapshot,
+  recordSessionTurnSpend,
+  recordSessionTurnTokens,
+} from '../sessionSpendBroadcaster.js';
+import {
+  codexUsageToTokens,
+  piUsageToTokens,
+  recordSchedulerTurnCost,
+  recordTurnCostOnMessage,
+  recordTurnUsageOnMessage,
+} from '../turnCostBroadcaster.js';
+import { recordModelMismatchOnMessage } from '../modelMismatchBroadcaster.js';
+import { detectClaudeModelMismatch } from '../../shared/modelMismatch.js';
+import { triggerClaudeAccountUsageRefresh } from '../usage/claudeAccountUsage.js';
+import {
+  getGatewayAccountCurrency,
+  getGatewayModelPricingForModel,
+  getModelPriceQuote,
+} from '../usage/modelPricing.js';
 
-import { broadcastReferenceModelPricing } from '../usage/referenceModelPricing.js';
+import {
+  broadcastReferenceModelPricing,
+  getCodexProviderSubscriptionValuePrice,
+  getReferenceModelPricing,
+  getSubscriptionDirectValuePrice,
+} from '../usage/referenceModelPricing.js';
 import {
   clearModelPriceOverride,
   stageProviderModelPriceOverridesClear,
   readModelPriceOverrideView,
   setModelPriceOverride,
 } from '../usage/modelPriceOverrideStore.js';
-import { ClaudeOutputLagTimingGuard, type ModelUsageCumulative } from '../usage/modelUsageDelta.js';
+import {
+  ClaudeOutputLagTimingGuard,
+  computeModelUsageDeltas,
+  type ModelUsageCumulative,
+  type ModelUsageDeltaEntry,
+} from '../usage/modelUsageDelta.js';
+import {
+  claudeSubscriptionUsageModelKey,
+  codexApiUsageModelKey,
+  codexSubscriptionUsageModelKey,
+  getSubscriptionValuePriceFor,
+  piSubscriptionUsageModelKey,
+} from '../usage/usageHistory.js';
+import {
+  billingRouteForExplicitProvider,
+  buildClaudeTurnUsageDetails,
+  computePriceQuoteTurnMoney,
+  isAnthropicModel,
+  normalizeTurnUsageSegments,
+  normalizeModelIdForPricing,
+  resolveTurnCost,
+  resolveClaudeTurnCostSinks,
+  sumTurnUsageSegments,
+  type BillingRoute,
+} from '../usage/turnCostCalculator.js';
+import {
+  CHATGPT_MODEL_PREFIX,
+  XAI_MODEL_PREFIX,
+  isExclusiveXaiModelId,
+  isSubscriptionDirectRoute,
+} from '../../shared/subscriptionModels.js';
 
-import { type RegionalMoney } from '../../shared/regionalMoney.js';
+import {
+  addRegionalMoney,
+  usdToLedgerCurrency,
+  type RegionalMoney,
+} from '../../shared/regionalMoney.js';
 import { currentLedgerCurrency } from '../usage/ledgerCurrency.js';
 import {
   mergePiPackageCommands,
@@ -553,6 +646,20 @@ import {
   issuePiPackageMutationGrant,
   piPackageMutationNeedsGrant,
 } from '../maker-host/pi-package-mutation-grant.js';
+import { CURRENT_CINDY_REGION } from '../../shared/brandRegion.js';
+import {
+  triggerClaudeSubscriptionUsageRefresh,
+  triggerCodexAccountUsageRefresh,
+  triggerXaiSubscriptionUsageRefresh,
+} from './usage.js';
+import {
+  rebroadcastCodexTodayUsage,
+  rebroadcastTodaySpend,
+  recordCodexAccountUsageSnapshot,
+  recordCodexTurnUsage,
+  recordModelTurnUsage,
+  recordTurnSpend,
+} from '../usageBroadcaster.js';
 
 import { requireEnum, requireObject, throwIpcError } from '../utils/ipcValidate.js';
 import { isIpcError, type IpcErrorCode } from '../../shared/ipc-errors.js';
@@ -563,7 +670,10 @@ import {
 import { dbToMakerAgentKind, makerToDbAgentKind } from '../../shared/agentKindConversion.js';
 import { readWorkflowProgressForSession } from '../workflow-progress/reader.js';
 import { AgentInputCoordinator } from './agent-input-coordinator.js';
-import { notePromptPredictionSessionStopped } from './promptPredictionStopLedger.js';
+import {
+  clearPromptPredictionSessionStopped,
+  notePromptPredictionSessionStopped,
+} from './promptPredictionStopLedger.js';
 import {
   estimateReferenceTokens,
   MAX_REFERENCE_MESSAGES,
@@ -1009,6 +1119,7 @@ import {
 import { readSilentStopAutoResumeSettings } from '../maker-host/silent-stop-auto-resume-store.js';
 import {
   AutoResumeBookkeeping,
+  shouldSkipOrcaWorkerTerminal,
   type SuppressedTurnError,
   type SuppressedTurnErrorOwner,
 } from './autoResumeBookkeeping.js';
@@ -1016,15 +1127,19 @@ import {
   InterruptedTurnAutoResumeGuard,
   isAutoResumeUserMessage,
   isInterruptedTurnError,
+  isSubstantiveProgressEvent,
   type InterruptedTurnErrorSignals,
 } from './interruptedTurnAutoResume.js';
 import { readInterruptedTurnAutoResumeSettings } from '../maker-host/interrupted-turn-auto-resume-store.js';
+import { isSuccessfulAssistantReplyDoneData } from '../cindy-brain/assistantReplyHook.js';
 
 import {
   broadcastGhostMessageBlocked,
   broadcastGhostMessageRewritten,
   createGhostSessionTap,
   getGhostFsSlot,
+  hasEnabledGhostAssistantHook,
+  runGhostAssistantReplyHook,
   hasEnabledUserMessageHookGhost,
   screenGhostUserMessage,
   setGhostAgentTurnRunner,
@@ -1044,6 +1159,7 @@ import {
 import { isGhostPickedDir } from '../cindy-brain/pickGrantsStore.js';
 import {
   resolveGhostUserHookModel,
+  withGhostAssistantHookModel,
   withGhostUserHookModel,
 } from '../cindy-brain/subscriptionGateway.js';
 import { createGhostErrandRunner } from './ghostErrandRunner.js';
@@ -2698,6 +2814,14 @@ export function takePendingInteractionsForSession(sessionId: string): Array<{
 }
 
 type WiredSession = NonNullable<ReturnType<Maker['getSession']>>;
+
+interface WiredSessionRegistration {
+  session: WiredSession;
+  disposers: Array<() => void>;
+}
+
+/** 记录已挂载 IPC 监听的会话实例，避免切换实例后重复订阅或遗留旧监听。 */
+const wiredSessionsById = new Map<string, WiredSessionRegistration>();
 
 /**
  * Monotonic logical-turn generation used by direct abort reconciliation.

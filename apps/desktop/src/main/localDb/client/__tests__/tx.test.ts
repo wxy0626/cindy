@@ -10,7 +10,10 @@ import { buildDbWorkerBundle } from '../../__tests__/dbWorkerTestUtils.js';
 import { computeForkSourceMessagesDigest, type ForkSourceMessage } from '../../forkRecoverySnapshot.js';
 import type { DbClient } from '../DbClient.js';
 import { createDbClient } from '../DbClient.js';
-import type { AccountImportLocalProjectsArgs } from '../tx/types.js';
+import type {
+  AccountImportLocalProjectsArgs,
+  SkillUsageApplyMutationArgs,
+} from '../tx/types.js';
 
 const INIT_SQL = `
 CREATE TABLE migration_meta (key TEXT PRIMARY KEY, value TEXT);

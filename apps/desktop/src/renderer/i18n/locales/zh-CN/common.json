@@ -102,6 +102,7 @@
     "RATE_LIMITED": "请求被限流（429），请稍后重试",
     "QUOTA_EXCEEDED": "配额或余额不足，请检查供应商账户",
     "MODEL_NOT_FOUND": "模型不存在或无权使用，请检查模型 ID",
+    "MODEL_UNAVAILABLE": "当前没有可用的上游账号支持此模型，请更换模型或检查网关账号配置",
     "ENDPOINT_NOT_FOUND": "端点不存在（404），请检查基础 URL",
     "CONTEXT_TOO_LONG": "上下文超过模型长度限制",
     "WIRE_INCOMPATIBLE": "端点与该协议不完全兼容（存在无法识别的请求字段）",

@@ -1116,6 +1116,10 @@ function ModelSelectorContentView({
   const agentKind = agentSwitch
     ? vendorKeyToAgentKind(browseVendor)
     : vendorKeyToAgentKind(vendorKey);
+  // 仅存模型的入口不能跨引擎选择，调用方显式限制时则以调用方为准。
+  const unifiedAgents =
+    requestedUnifiedAgents ??
+    (vendorKey && agentKind && !onUnifiedSelect && !sessionEngineFilter ? [agentKind] : undefined);
   const enqueueAgentSwitch = (
     targetAgentKind: 'claude-code' | 'codex' | 'pi',
     targetModelId: string,
@@ -3206,9 +3210,6 @@ export function ModelSelector({
   agentSwitch,
 }: ModelSelectorProps) {
   const { t, i18n } = useTranslation();
-  // 列表样式开关(历史:badge 曾决定 pill 首位图标形态;2026-09-06 起 mark 打头不再
-  // 分形态,见 engineLeadsTrigger)。
-  const pickerLayout = useModelPickerLayout();
   const [open, setOpen] = useState(false);
   const openRef = useRef(false);
   const [keepOpenForAgentConfirmation, setKeepOpenForAgentConfirmation] = useState(false);
@@ -3673,7 +3674,7 @@ export function ModelSelector({
         isFieldTrigger
           ? cn(
               // pill 而非 8px:DESIGN.md §4 Select & Dropdown 规定单行 select trigger 同单行输入,胶囊形。
-              'settings-dropdown-trigger w-full rounded-full bg-[var(--settings-input-bg)] px-3',
+              'settings-dropdown-trigger w-full rounded-full border border-[var(--border-default)] bg-[var(--settings-input-bg)] px-3',
               dense ? 'h-9' : 'h-10',
               'hover:bg-[var(--surface-hover-soft)]',
             )
@@ -3797,6 +3798,7 @@ export function ModelSelector({
           {engineLeadsTrigger && engineMarkOption ? (
             <span
               data-composer-engine-lead={engineMarkVendorEffective}
+              data-composer-engine-mark={isUltraCompactToolbar ? undefined : engineMarkVendorEffective}
               className="mr-1.5 flex shrink-0 items-center"
               aria-hidden="true"
             >

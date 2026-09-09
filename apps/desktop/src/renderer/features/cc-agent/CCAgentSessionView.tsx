@@ -5905,6 +5905,8 @@ function getModelContextWindow(
 
 function ContextCapacityRing({
   sessionId,
+  providerId,
+  isRunning,
   contextTokens,
   model,
   vendorKey,
@@ -5915,6 +5917,8 @@ function ContextCapacityRing({
   latestTurnDetails,
   onCompact,
 }: {
+  providerId?: string | null;
+  isRunning?: boolean;
   /** 当前会话 id，用于切换会话时清空悬浮详情快照。 */
   sessionId?: string;
   contextTokens: number;

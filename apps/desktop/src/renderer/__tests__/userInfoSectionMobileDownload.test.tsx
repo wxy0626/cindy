@@ -4,7 +4,24 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { navigate } = vi.hoisted(() => ({
+const {
+  authState,
+  confirm,
+  runningSnapshot,
+  listAccounts,
+  navigate,
+  syncAccounts,
+  switchAccount,
+} = vi.hoisted(() => ({
+  authState: {
+    user: { name: 'Cindy user', avatar: null } as { name: string; avatar: string | null } | null,
+    mode: 'cloud' as 'cloud' | 'local',
+    dataOwnerId: 'owner-a' as string | null,
+    isCanary: false,
+  },
+  confirm: vi.fn(),
+  runningSnapshot: new Map<string, { isRunning: boolean }>(),
+  listAccounts: vi.fn(),
   navigate: vi.fn(),
   syncAccounts: vi.fn(),
   switchAccount: vi.fn(),

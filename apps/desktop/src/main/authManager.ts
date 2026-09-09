@@ -113,6 +113,7 @@ import { CURRENT_CINDY_REGION } from '../shared/brandRegion.js';
 import { clearSelectedRuntimeRegion, setSelectedRuntimeRegion } from './devRegionSwitchIpc.js';
 import {
   parseDesktopLoginAction,
+  parseDesktopAccountKey,
   parseDesktopAccountSwitchRequest,
   type DesktopAccountDeletionChallenge,
   type DesktopAccountSwitcherSnapshot,
@@ -919,8 +920,27 @@ function isStoredAccountMetadata(value: unknown): value is StoredAccountMetadata
 }
 
 function readAuthAccountVault(
-  options: { allowUnreadable?: boolean; recoverInvalid?: boolean; userDataDir?: string } = {},
+  options: {
+    allowUnreadable?: boolean;
+    recoverInvalid?: boolean;
+    allowUnreadableLogoutTombstones?: boolean;
+    userDataDir?: string;
+  } = {},
 ): AuthAccountVault {
+  let persistedLogoutKeys: string[];
+  try {
+    persistedLogoutKeys = readAuthAccountLogoutTombstones({
+      recoverInvalid: options.recoverInvalid,
+    });
+  } catch (error) {
+    if (options.allowUnreadableLogoutTombstones) {
+      persistedLogoutKeys = [];
+    } else if (options.allowUnreadable) {
+      return emptyAuthAccountVault();
+    } else {
+      throw error;
+    }
+  }
   const raw = readAtomicSafe(AUTH_ACCOUNT_VAULT_KEY, options.userDataDir);
   if (raw === null) {
     if (isAtomicPersistedSecretAbsent(AUTH_ACCOUNT_VAULT_KEY)) {
@@ -1097,7 +1117,13 @@ function writeAuthAccountVaultOrThrow(
   vault: AuthAccountVault,
   options: { replaceUnreadableLogoutTombstones?: boolean } = {},
 ): void {
-  if (writeAuthAccountVault(vault, options)) return;
+  // 清理 vault 自带 signed-out owner；即使旧 tombstone 损坏，也必须先把
+  // 这个 fail-closed 状态落盘，不能让显式退出被旧凭据阻塞。
+  const effectiveOptions =
+    options.replaceUnreadableLogoutTombstones === undefined && vault.signedOutAt !== undefined
+      ? { replaceUnreadableLogoutTombstones: true }
+      : options;
+  if (writeAuthAccountVault(vault, effectiveOptions)) return;
   throw new AuthApiError(
     'CREDENTIAL_STORE_UNAVAILABLE',
     503,
@@ -1253,7 +1279,10 @@ async function clearAuthAccountVault(
       vault.passports = {};
       vault.signedOutAt = Date.now();
       customize(vault);
-      writeAuthAccountVaultOrThrow(vault, { replaceUnreadableLogoutTombstones: true });
+      // 显式退出必须替换损坏的独立 tombstone，避免旧凭据阻塞 fail-closed 状态。
+      // writeAuthAccountVaultOrThrow(vault, { replaceUnreadableLogoutTombstones: true });
+      // helper 会依据 signedOutAt 自动启用上述等价策略，确保只写入一次。
+      writeAuthAccountVaultOrThrow(vault);
       await afterPersist();
     },
   );
@@ -1379,9 +1408,15 @@ function writeResourceSessionToVault(
   pair: AuthTokenPair,
   realm: AuthRegion,
   passportId: string,
-  options: { markActive?: boolean; lastUsedAt?: number; accountLabel?: string | null } = {},
+  options: {
+    markActive?: boolean;
+    lastUsedAt?: number;
+    accountLabel?: string | null;
+    restoreLoggedOutAccount?: boolean;
+  } = {},
 ): void {
   const key = accountVaultKey(realm, pair.membership.id);
+  if (options.restoreLoggedOutAccount) restoreLoggedOutVaultAccount(vault, key);
   const previousAccountLabel = vault.resources[key]?.metadata.accountLabel;
   // 刷新 token 时服务端不会返回手机号，必须保留首次登录保存的脱敏账号。
   const accountLabel = options.accountLabel ?? previousAccountLabel;
@@ -1481,6 +1516,7 @@ async function commitDesktopLoginSessions(
       }
       writeResourceSessionToVault(vault, input.pair, input.realm, input.passportId, {
         accountLabel: pendingLoginAccountLabel,
+        restoreLoggedOutAccount: input.restoreLoggedOutAccount,
       });
       if (input.accountRefreshToken) {
         writePassportSessionToVault(vault, {
@@ -4113,8 +4149,34 @@ function accountSummaryFromMetadata(
   };
 }
 
+function savedAccountSummaries(
+  vault: AuthAccountVault,
+  activeAccountKey: string | null,
+): DesktopSavedAccount[] {
+  const loggedOutKeys = loggedOutAccountKeySet(vault);
+  const byKey = new Map<string, StoredAccountMetadata>();
+  for (const [key, resource] of Object.entries(vault.resources)) {
+    if (!loggedOutKeys.has(key)) byKey.set(key, resource.metadata);
+  }
+  for (const passport of Object.values(vault.passports)) {
+    for (const membership of passport.memberships) {
+      const key = accountVaultKey(passport.realm, membership.membershipId);
+      if (!loggedOutKeys.has(key) && !byKey.has(key)) byKey.set(key, membership);
+    }
+  }
+  return [...byKey.entries()]
+    .map(([key, metadata]) => accountSummaryFromMetadata(key, metadata, activeAccountKey))
+    .sort((left, right) => {
+      if (left.isCurrent !== right.isCurrent) return left.isCurrent ? -1 : 1;
+      const leftUsed = vault.resources[left.accountKey]?.lastUsedAt ?? 0;
+      const rightUsed = vault.resources[right.accountKey]?.lastUsedAt ?? 0;
+      return rightUsed - leftUsed || left.displayName.localeCompare(right.displayName);
+    });
+}
+
 export function listSavedAccounts(): DesktopAccountSwitcherSnapshot {
   const vault = readAuthAccountVault({ allowUnreadable: true });
+  const activeKey = currentUser ? accountVaultKey(activeAuthRealm, currentUser.id) : null;
   // 中国版与国际版使用不同 userData，但安全存储仍可由同一 Windows 用户解密；
   // 登录页必须合并两边的已保存账号，才能真正跨版本切换。
   const siblingVaults = Object.values(BRAND_IDENTITY.userDataDirNameByRegion)
@@ -4137,21 +4199,16 @@ export function listSavedAccounts(): DesktopAccountSwitcherSnapshot {
       }
     }
   }
-  return [...byKey.entries()]
-    .map(([key, metadata]) => accountSummaryFromMetadata(key, metadata, activeAccountKey))
+  const accounts = [...byKey.entries()]
+    .map(([key, metadata]) => accountSummaryFromMetadata(key, metadata, activeKey))
     .sort((left, right) => {
       if (left.isCurrent !== right.isCurrent) return left.isCurrent ? -1 : 1;
       const leftUsed = allVaults.reduce((value, item) => Math.max(value, item.resources[left.accountKey]?.lastUsedAt ?? 0), 0);
       const rightUsed = allVaults.reduce((value, item) => Math.max(value, item.resources[right.accountKey]?.lastUsedAt ?? 0), 0);
       return rightUsed - leftUsed || left.displayName.localeCompare(right.displayName);
     });
-}
-
-export function listSavedAccounts(): DesktopAccountSwitcherSnapshot {
-  const vault = readAuthAccountVault({ allowUnreadable: true });
-  const activeKey = currentUser ? accountVaultKey(activeAuthRealm, currentUser.id) : null;
   return {
-    accounts: savedAccountSummaries(vault, activeKey),
+    accounts,
     mutationAllowed: !isPassiveSharedUserDataInstance(),
   };
 }
@@ -4191,6 +4248,11 @@ export async function syncSavedAccounts(): Promise<DesktopAccountSwitcherSnapsho
 async function switchSavedAccountInternal(
   rawAccountKey: unknown,
   expectedLoginFlowEpoch: number,
+  options: {
+    accountToLogOut?: LoggedOutAccountIdentity;
+    onLoggedOutPassportRemoved?: (session: StoredPassportSession) => void;
+    validateBeforeCommit?: (loginEpoch: number) => void;
+  } = {},
 ): Promise<void> {
   const switchLoginFlowEpoch = expectedLoginFlowEpoch;
   const switchRequest = parseDesktopAccountSwitchRequest(rawAccountKey);
@@ -4287,7 +4349,13 @@ async function switchSavedAccountInternal(
     await completeLogin(
       { status: 'ok', ...pair },
       switchLoginFlowEpoch,
-      switchRequest.localProjectSync ? { ...switchRequest.localProjectSync } : null,
+      {
+        localProjectSyncPolicy: switchRequest.localProjectSync ? { ...switchRequest.localProjectSync } : null,
+        restoreLoggedOutAccount: true,
+        accountToLogOut: options.accountToLogOut,
+        onLoggedOutPassportRemoved: options.onLoggedOutPassportRemoved,
+        validateBeforeCommit: options.validateBeforeCommit,
+      },
     );
     // completeLogin 只负责提交账号状态；数据库 ready 由 renderer 后续触发，
     // 因此侧栏队列还要等待本次目标账号的同步导入完成，防止下一次切号覆盖 pending。
@@ -4302,11 +4370,18 @@ async function switchSavedAccountInternal(
  * 侧栏账号切换必须按用户确认顺序完成；队列中的每个请求保留自己的策略，
  * 不依赖全局 pendingLocalProjectSyncPolicy，因此快速连续点击不会串用开关。
  */
-export function switchSavedAccount(rawAccountKey: unknown): Promise<void> {
+export function switchSavedAccount(
+  rawAccountKey: unknown,
+  options: {
+    accountToLogOut?: LoggedOutAccountIdentity;
+    onLoggedOutPassportRemoved?: (session: StoredPassportSession) => void;
+    validateBeforeCommit?: (loginEpoch: number) => void;
+  } = {},
+): Promise<void> {
   // 在入队时固定 epoch；队列等待期间若登录流程已被用户重置，立即拒绝旧点击。
   const requestedLoginFlowEpoch = loginFlowEpoch;
   const run = savedAccountSwitchQueue.then(() =>
-    switchSavedAccountInternal(rawAccountKey, requestedLoginFlowEpoch),
+    switchSavedAccountInternal(rawAccountKey, requestedLoginFlowEpoch, options),
   );
   savedAccountSwitchQueue = run.catch(() => undefined);
   return run;
@@ -5320,7 +5395,13 @@ export async function getLoginState(): Promise<DesktopLoginActionResult> {
 async function completeLogin(
   outcome: Extract<LoginOutcome, { status: 'ok' }>,
   expectedLoginFlowEpoch = loginFlowEpoch,
-  explicitLocalProjectSyncPolicy?: LocalProjectSyncOptions | null,
+  options: {
+    localProjectSyncPolicy?: LocalProjectSyncOptions | null;
+    restoreLoggedOutAccount?: boolean;
+    accountToLogOut?: LoggedOutAccountIdentity;
+    onLoggedOutPassportRemoved?: (session: StoredPassportSession) => void;
+    validateBeforeCommit?: (loginEpoch: number) => void;
+  } = {},
 ): Promise<AuthFlowState> {
   assertLoginFlowCurrent(expectedLoginFlowEpoch);
   const loginEpoch = ++authStateEpoch;
@@ -5335,9 +5416,9 @@ async function completeLogin(
   // 在旧账号 teardown 前固定一次同步请求；没有旧 owner（例如全新冷启动登录）
   // 时不创建请求，避免把后续账号的 DbClient 误当成来源库。
   const localProjectSyncPolicy =
-    explicitLocalProjectSyncPolicy === undefined
+    options.localProjectSyncPolicy === undefined
       ? pendingLocalProjectSyncPolicy
-      : explicitLocalProjectSyncPolicy;
+      : options.localProjectSyncPolicy;
   // 当前账号边界已经等待完仍在执行的导入；此处清掉旧目标的未消费请求，
   // 防止新登录流程复用错误的来源账号或策略。
   clearSupersededLocalProjectSyncRequests();
@@ -6293,25 +6374,127 @@ export async function logout(): Promise<void> {
     );
   }
   const currentAccessToken = accessToken;
-  const currentAuthBaseUrl = authServerUrl(activeAuthRealm);
-  // Logout remains available even if the vault cannot be decrypted: local
-  // credential files are removed directly and remote revocation is best effort.
-  const savedVault = readAuthAccountVault({ allowUnreadable: true });
-  const currentAccountKey = currentUser
-    ? accountVaultKey(activeAuthRealm, currentUser.id)
-    : savedVault.activeAccountKey;
-  // 普通 logout 不调用全量清理；全量路径仍保留 `await clearAuthAccountVault(() => {`
-  // 的崩溃一致性守卫。区域清理是它的收窄版本，只清当前区域，保留另一地区的已保存凭据。
-  // 的收窄版本，只清当前区域，保留另一地区的已保存凭据。
-  await clearAuthRealmVault(activeAuthRealm, () => {
-    // Publish the durable signed-out owner before clearing compatibility
-    // records. The vault lock remains held across both writes, and startup
-    // reconciliation completes this cleanup if the process dies in between.
-    removeSafe(AUTH_SESSION_KEY);
-    removeSafe(LEGACY_RESOURCE_REFRESH_TOKEN_KEY);
-    removeSafe(LEGACY_ACCOUNT_REFRESH_TOKEN_KEY);
-    removeSafe(LEGACY_REFRESH_TOKEN_KEY);
-  });
+  const currentAuthRealm = activeAuthRealm;
+  const currentAuthBaseUrl = authServerUrl(currentAuthRealm);
+  const activeUser = currentUser;
+  if (!activeUser) {
+    throw new AuthApiError('UNAUTHENTICATED', 401, 'No current account to log out');
+  }
+  const logoutAuthEpoch = authStateEpoch;
+  const isLogoutStillCurrent = (expectedAuthEpoch = logoutAuthEpoch): boolean =>
+    authStateEpoch === expectedAuthEpoch &&
+    currentUser?.id === activeUser.id &&
+    activeAuthRealm === currentAuthRealm;
+  const assertLogoutStillCurrent = (expectedAuthEpoch = logoutAuthEpoch): void => {
+    if (isLogoutStillCurrent(expectedAuthEpoch)) return;
+    throw new AuthApiError(
+      'AUTH_FLOW_SUPERSEDED',
+      409,
+      'Logout was superseded by a newer auth action',
+    );
+  };
+  const assertLogoutTransitionStillCurrent = (expectedAuthEpoch: number): void => {
+    if (authStateEpoch === expectedAuthEpoch) return;
+    throw new AuthApiError(
+      'AUTH_FLOW_SUPERSEDED',
+      409,
+      'Logout was superseded by a newer auth action',
+    );
+  };
+
+  let savedVault: AuthAccountVault;
+  let savedVaultWasUnreadable = false;
+  let savedVaultHasUnreadableLogoutTombstones = false;
+  try {
+    savedVault = readAuthAccountVault();
+  } catch (error) {
+    if (!(error instanceof AuthApiError && error.code === 'CREDENTIAL_STORE_UNAVAILABLE')) {
+      throw error;
+    }
+    try {
+      // 独立 tombstone 损坏时仍保留可读取的其他账号，显式退出时再替换它。
+      savedVault = readAuthAccountVault({ allowUnreadableLogoutTombstones: true });
+      savedVaultHasUnreadableLogoutTombstones = true;
+    } catch {
+      // 当前内存会话仍是显式退出的权威来源；不可解密的旧 vault 不阻塞本地退出。
+      savedVault = emptyAuthAccountVault();
+      savedVaultWasUnreadable = true;
+    }
+  }
+  const currentAccountKey = accountVaultKey(currentAuthRealm, activeUser.id);
+  const currentIdentity: LoggedOutAccountIdentity = {
+    accountKey: currentAccountKey,
+    realm: currentAuthRealm,
+    passportId:
+      activeUser.passportId || savedVault.resources[currentAccountKey]?.metadata.passportId || '',
+  };
+  const candidateAccountKeys = savedVaultHasUnreadableLogoutTombstones
+    ? []
+    : savedAccountSummaries(savedVault, currentAccountKey)
+        .filter((account) => account.accountKey !== currentAccountKey)
+        .map((account) => account.accountKey);
+  let removedPassport: StoredPassportSession | null = null;
+
+  for (const candidateAccountKey of candidateAccountKeys) {
+    assertLogoutStillCurrent();
+    let candidateRemovedPassport: StoredPassportSession | null = null;
+    let candidateTransitionEpoch: number | null = null;
+    try {
+      await switchSavedAccount(candidateAccountKey, {
+        accountToLogOut: currentIdentity,
+        onLoggedOutPassportRemoved: (session) => {
+          candidateRemovedPassport = session;
+        },
+        validateBeforeCommit: (loginEpoch) => {
+          assertLogoutStillCurrent(loginEpoch);
+          candidateTransitionEpoch = loginEpoch;
+        },
+      });
+      if (candidateTransitionEpoch === null) {
+        throw new AuthApiError(
+          'AUTH_FLOW_SUPERSEDED',
+          409,
+          'Logout was superseded by a newer auth action',
+        );
+      }
+      assertLogoutTransitionStillCurrent(candidateTransitionEpoch);
+      removedPassport = candidateRemovedPassport;
+      revokeLoggedOutAccountBestEffort({
+        accessToken: currentAccessToken,
+        authBaseUrl: currentAuthBaseUrl,
+        passport: removedPassport,
+      });
+      return;
+    } catch (error) {
+      if (isUnavailableSavedAccountError(error)) continue;
+      if (isRetryableSavedAccountSwitchError(error)) continue;
+      throw error;
+    }
+  }
+
+  // 切号期间若 renderer 已经完成另一条认证流程，不能再清理新 owner。
+  assertLogoutStillCurrent();
+
+  if (savedVaultWasUnreadable) {
+    await persistLogoutTombstoneOnly(currentIdentity.accountKey);
+  } else {
+    await mutateAuthAccountVault(
+      (vault) => {
+        assertLogoutStillCurrent();
+        removedPassport = removeLoggedOutVaultAccount(vault, currentIdentity);
+        vault.signedOutAt = Date.now();
+      },
+      {
+        allowUnreadableLogoutTombstones: savedVaultHasUnreadableLogoutTombstones,
+        replaceUnreadableLogoutTombstones: savedVaultHasUnreadableLogoutTombstones,
+      },
+    );
+  }
+  assertLogoutStillCurrent();
+  removeSafe(AUTH_SESSION_KEY);
+  removeSafe(LEGACY_RESOURCE_REFRESH_TOKEN_KEY);
+  removeSafe(LEGACY_ACCOUNT_REFRESH_TOKEN_KEY);
+  removeSafe(LEGACY_REFRESH_TOKEN_KEY);
   // The shared projection state machine owns the full teardown and only then
   // publishes the signed-out owner. The bootstrap IPC handler must not wrap a
   // second independent boundary around this transition.

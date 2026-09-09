@@ -66,6 +66,18 @@ export function existingReadyInstance(report = null) {
   )) ?? null;
 }
 
+/** 为 Cindy 开发链补足堆上限，同时保留调用方已有的 Node 参数。 */
+export function desktopDevChildEnv(env = process.env) {
+  const existing = env.NODE_OPTIONS?.trim();
+  const heapOption = '--max-old-space-size=8192';
+  return {
+    ...env,
+    NODE_OPTIONS: existing
+      ? (existing.includes(heapOption) ? existing : existing + ' ' + heapOption)
+      : heapOption,
+  };
+}
+
 /** 委托官方 restart 启动链,等待窗口/auth/database ready。 */
 /** 启动官方链；clean 模式会强制清理 Vite 产物，作为快速路径的回退。 */
 function launchOfficialRestart({ clean = false } = {}) {
@@ -82,7 +94,7 @@ function launchOfficialRestart({ clean = false } = {}) {
   const startedAt = Date.now();
   const result = spawnSync(process.execPath, args, {
     cwd: rootDir,
-    env: process.env,
+    env: desktopDevChildEnv(),
     stdio: 'inherit',
   });
   recordStartupTiming(clean ? 'full_restart' : 'fast_restart', startedAt, `exit=${result.status ?? 1}`);

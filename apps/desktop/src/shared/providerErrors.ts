@@ -28,6 +28,8 @@ export type ProviderErrorCode =
   | 'QUOTA_EXCEEDED'
   /** 模型 id 不存在 / 无权使用该模型。 */
   | 'MODEL_NOT_FOUND'
+  /** 网关可识别模型，但当前没有可用的上游账号支持它。 */
+  | 'MODEL_UNAVAILABLE'
   /** 404 且非模型问题：baseUrl 路径不对（端点不存在）。 */
   | 'ENDPOINT_NOT_FOUND'
   /** 上下文 / prompt 超长。 */
@@ -80,6 +82,8 @@ const TIMEOUT_CODES = new Set(['ETIMEDOUT', 'ABORT_ERR', 'TimeoutError', 'AbortE
  *  litellm "Invalid model name"、通用 "model_not_found"。 */
 const MODEL_NOT_FOUND_RE =
   /model[^\n]{0,80}(not.{0,4}(found|exist)|does not exist|invalid|unknown|unsupported)|model_not_found|invalid model/i;
+/** 网关没有可为该模型选择的上游账号（仅匹配已观察到的错误措辞）。 */
+const MODEL_UNAVAILABLE_RE = /no available (?:OpenAI )?accounts? supporting model/i;
 /** 上下文超长：Anthropic "prompt is too long"、OpenAI "maximum context length"、通用 token limit 措辞。 */
 const CONTEXT_TOO_LONG_RE =
   /prompt is too long|maximum (?:context|prompt) length|context.{0,20}(length|window).{0,40}(exceed|too)|context_length_exceeded/i;
@@ -144,7 +148,12 @@ export function classifyProviderError(input: ProviderErrorInput): ProviderErrorC
     if (WIRE_RE.test(body)) return { code: 'WIRE_INCOMPATIBLE', retryable: false, detail };
     return { code: 'UNKNOWN', retryable: false, detail };
   }
-  if (status >= 500) return { code: 'UPSTREAM_ERROR', retryable: true, detail };
+  if (status >= 500) {
+    if (MODEL_UNAVAILABLE_RE.test(body)) {
+      return { code: 'MODEL_UNAVAILABLE', retryable: false, detail };
+    }
+    return { code: 'UPSTREAM_ERROR', retryable: true, detail };
+  }
 
   return { code: 'UNKNOWN', retryable: false, detail };
 }

@@ -38,6 +38,7 @@ import {
 } from "../restart-desktop-remote.mjs";
 import {
 	existingReadyInstance,
+	desktopDevChildEnv,
 } from "../start-desktop-dev.mjs";
 import {
 	DESKTOP_DEV_VERDICT_PREFIX,
@@ -104,6 +105,21 @@ test("start-desktop-dev derives the same dev sandbox as the restart pipeline", (
 	assert.equal(
 		path.basename(defaultIsolatedUserDataDir("dev", "cn")),
 		"Cindy-dev2-dev",
+	);
+});
+
+test("start-desktop-dev adds the Cindy heap limit without dropping inherited Node options", () => {
+	assert.equal(
+		desktopDevChildEnv({ PATH: "test" }).NODE_OPTIONS,
+		"--max-old-space-size=8192",
+	);
+	assert.equal(
+		desktopDevChildEnv({ NODE_OPTIONS: "--trace-warnings" }).NODE_OPTIONS,
+		"--trace-warnings --max-old-space-size=8192",
+	);
+	assert.equal(
+		desktopDevChildEnv({ NODE_OPTIONS: "--max-old-space-size=8192" }).NODE_OPTIONS,
+		"--max-old-space-size=8192",
 	);
 });
 
@@ -1008,6 +1024,14 @@ test("devEnvPrefix passes harness envs through on Windows cmd with quote strippi
 	assert.equal(
 		prefix,
 		'set "XDT_LOGIN_SCENARIO=providers:both" && set "VITE_SPLASH_PHASE_FIXTURE=updating" && set "CINDY_CUA_SMOKE=0" && ',
+	);
+});
+
+test("devEnvPrefix forwards NODE_OPTIONS to the Windows dev terminal", () => {
+	const prefix = devEnvPrefix({ NODE_OPTIONS: "--max-old-space-size=8192" }, "win32");
+	assert.equal(
+		prefix,
+		'set "NODE_OPTIONS=--max-old-space-size=8192" && set "CINDY_CUA_SMOKE=0" && ',
 	);
 });
 

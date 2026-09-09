@@ -46,6 +46,15 @@ describe('classifyProviderError', () => {
       code: 'UPSTREAM_ERROR',
       retryable: true,
     });
+    expect(
+      classifyProviderError({
+        status: 503,
+        bodyText: 'no available OpenAI accounts supporting model: flash',
+      }),
+    ).toMatchObject({
+      code: 'MODEL_UNAVAILABLE',
+      retryable: false,
+    });
   });
 
   it('404：模型措辞 → MODEL_NOT_FOUND，否则 ENDPOINT_NOT_FOUND', () => {

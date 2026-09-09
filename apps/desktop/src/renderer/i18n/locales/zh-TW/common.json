@@ -102,6 +102,7 @@
     "RATE_LIMITED": "請求被限流（429），請稍後重試",
     "QUOTA_EXCEEDED": "配額或餘額不足，請檢查供應商帳戶",
     "MODEL_NOT_FOUND": "模型不存在或無權使用，請檢查模型 ID",
+    "MODEL_UNAVAILABLE": "目前沒有可用的上游帳戶支援此模型，請更換模型或檢查閘道帳戶設定",
     "ENDPOINT_NOT_FOUND": "端點不存在（404），請檢查基礎 URL",
     "CONTEXT_TOO_LONG": "上下文超過模型長度限制",
     "WIRE_INCOMPATIBLE": "端點與該協議不完全相容（存在無法識別的請求欄位）",

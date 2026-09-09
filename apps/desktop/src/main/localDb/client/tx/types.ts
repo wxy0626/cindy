@@ -63,6 +63,7 @@ export type DbTxName =
   | 'wechatPromoteTaskAttachments'
   | 'wechatRefreshOutboxContexts'
   | 'wechatUnbindCleanup'
+  | 'skillUsage.applyMutation'
   | 'session.importShare'
   | 'account.importLocalProjects'
   | 'account.syncSiblingSessions';

@@ -699,6 +699,12 @@ export function GhostPluginPage({
     const detail = await window.electronAPI.pluginMarket.detail(pluginId).catch(() => null);
     if (detail) setMarketDetail(detail);
   }, []);
+  const handleMarketBack = useCallback(() => {
+    cancelPendingPluginSuggestion(recommendationNonce ?? undefined);
+    requestPluginCatalogScrollRestore();
+    marketDetailRequestRef.current += 1;
+    setMarketDetail(null);
+  }, [recommendationNonce, requestPluginCatalogScrollRestore]);
   // 当前目录中的自带插件直接属于内置插件列表，不显示为外部插件。
   const builtinCatalogItems = useMemo(
     () =>

@@ -5,7 +5,6 @@ import {
   popUpWindowsTrayMenu,
   requestWindowsTrayQuit,
   shouldCreateWindowsTrayAtStartup,
-  type WindowsClosePromptWindow,
   type WindowsTrayMenuHost,
   type WindowsTrayPopupMenu,
   type WindowsTrayWindow,

@@ -369,6 +369,7 @@ import { cindyGhostSchemePrivilege } from './cindy-brain/runtime/electronSandbox
 import { fetchReleaseNotes, fetchReleaseNotesIndex } from './releaseNotesService';
 import { resolveWorkspacePathCached, resolveWorkspacePathBatchCached } from './pathResolver';
 import { registerLocalDbIpc } from './localDb/ipc/registerAll';
+import { resolveSessionContextWindow } from '../shared/sessionContextWindow';
 import { syncLocalSessionsOnce } from './localDb/crossOwnerSessionSync';
 import {
   getSessionRowSnapshot,
@@ -599,7 +600,7 @@ import {
   refreshCustomProvidersIntoCatalog,
 } from './maker-host/createDesktopProviderService.js';
 import { isCindyEmbeddingModelAvailable } from './maker-host/provider-access-policy.js';
-import { setCustomProviders } from './maker-host/active-catalog.js';
+import { getActiveCatalog, setCustomProviders } from './maker-host/active-catalog.js';
 import { clearModelVisibilityMirror } from './maker-host/model-visibility-mirror.js';
 import { setClaudeSupportedModelsListener } from '@cindy/maker-core';
 import {

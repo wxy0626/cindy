@@ -1,10 +1,14 @@
 /** Exact one-shot catalog pins rendered through the shared model picker. */
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Check, ChevronDown, ChevronLeft, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { AgentKind, ProviderView } from '@cindy/model-providers';
 import { ModelSelector } from '@/components/new-chat/ModelSelector';
 import { PROVIDER_TITLE_KEY } from '@/lib/providerDisplayName';
 import { decodeCatalogModelPin } from '../../shared/catalogModelPin';
+import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ModelIconMark } from '@/components/new-chat/ModelSelector';
 
 /** 主侧 cindy-prefs 下发的目录钉条目(与 TextOneshotPinOption 同形)。 */
 export interface OneshotPinOption {
@@ -30,6 +34,10 @@ export interface OneshotPinOption {
 
 function knownAgent(value: string): value is AgentKind {
   return value === 'claude-code' || value === 'codex' || value === 'pi';
+}
+
+function agentKindLabel(agentKind: string): string {
+  return agentKind === 'claude-code' ? 'Claude Code' : agentKind === 'codex' ? 'Codex' : agentKind;
 }
 
 /** This projection only contains host-approved pins; it never expands the allowlist. */
@@ -67,6 +75,7 @@ export function oneshotPickerProviders(options: readonly OneshotPinOption[]): Pr
 export function OneshotModelPinPicker({
   value, defaultLabel, declaredLabel, legacyPinLabel, options, onChange, ariaLabel,
   dense, defaultOptionLabel, disabled, groupByProvider = false,
+  searchPlaceholder, noResultsLabel, unavailableLabel, budgetLabel, subscriptionLabel,
 }: {
   /** 当前钉值;undefined = 跟随默认。 */
   value?: string;
