@@ -25,6 +25,7 @@ import { captchaRequiredActionForVerificationKind, isValidEmail } from '@cindy/a
 import { cn } from '@/lib/utils';
 import { createLogger } from '@/lib/logger';
 import { setLoginEmailCaptchaGate } from '@/lib/loginCaptchaGate';
+import { flashScrollbar } from '@/lib/scrollbarAutoHide';
 import { WindowControls } from '@/components/title-bar/WindowControls';
 import { ChromeIconButton } from '@/components/title-bar/ChromeIconButton';
 import { useLogin } from '@/hooks/useLogin';
@@ -66,11 +67,14 @@ import { shouldLabelRegion } from '../../../shared/regionCode';
 import { LEGAL_LINKS } from '../../../shared/legalLinks';
 import { resolveIdentifierMethod } from '../../../shared/loginIdentifierMethod';
 import {
+  ACCOUNT_LIST,
   DRAG_BAR_HEIGHT,
   LOADING_RING,
   LOGIN_COLORS,
   LOGIN_DELETION_BUBBLE,
   LOGIN_LOCAL_MODE,
+  METHOD_ROW,
+  PANEL,
   SSO_ORG_HINT,
 } from './loginDesignTokens';
 import { PANEL_FIXED_SCALE } from './loginScale';
@@ -150,6 +154,7 @@ export function LoginPage({
   const navigate = useNavigate();
   const isAddAccount = intent === 'add-account';
   const accountSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
+  const accountListRef = useRef<HTMLDivElement>(null);
   const [accountSwitcherOpen, setAccountSwitcherOpen] = useState(false);
   const [hasSavedAccounts, setHasSavedAccounts] = useState(false);
   const [regionSelecting, setRegionSelecting] = useState(false);
@@ -1122,6 +1127,14 @@ export function LoginPage({
   /* ── account-selection(行样式复用方式行) ── */
   const renderAccountSelection = () => {
     if (loginState?.step !== 'account-selection') return null;
+    const viewportHeight = PANEL.height - ACCOUNT_LIST.top - ACCOUNT_LIST.bottom;
+    const contentHeight = Math.max(
+      viewportHeight,
+      ACCOUNT_LIST.rowTop +
+        (loginState.accounts.length - 1) * ACCOUNT_LIST.rowStep +
+        METHOD_ROW.height +
+        ACCOUNT_LIST.bottomPadding,
+    );
     return (
       <LoginPanel testId="login-panel-account-selection">
         <LoginBackButton disabled={isLoading} label={t('login.back')} onClick={reset} />

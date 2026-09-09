@@ -17,7 +17,9 @@ export const DESKTOP_USER_DATA_DIR_NAME_BY_REGION = Object.freeze({
 /** 共享 Desktop profile 的区域目录名；省略区域时遵循产品规则默认 Global。 */
 export function desktopUserDataDirNameForRegion(region = "global") {
   if (!DESKTOP_DEV_REGIONS.includes(region)) {
-    throw new Error(`invalid desktop dev region: ${region}; expected cn, global or dev`);
+    throw new Error(
+      `invalid desktop dev region: ${region}; expected cn, global or dev`,
+    );
   }
   return DESKTOP_USER_DATA_DIR_NAME_BY_REGION[region];
 }
@@ -67,7 +69,8 @@ export function resolveDesktopDevRegion(argv, env = process.env) {
       index += 1;
     } else if (arg.startsWith("--region=")) {
       value = arg.slice("--region=".length);
-      if (!value) throw new Error("--region requires a value: cn, global or dev");
+      if (!value)
+        throw new Error("--region requires a value: cn, global or dev");
     } else {
       continue;
     }
@@ -141,6 +144,8 @@ export function applyDesktopDevStartupConfig(options) {
   if (config.endpointsCdn) env.XDT_ENDPOINTS_CDN = "1";
   if (config.endpointManifestFile) {
     env.XDT_ENDPOINT_MANIFEST_FILE = config.endpointManifestFile;
+  } else if (options.mode !== "local") {
+    delete env.XDT_ENDPOINT_MANIFEST_FILE;
   }
   return config;
 }

@@ -44,6 +44,7 @@ import { CollaborationSection } from './CollaborationSection';
 import { ToolsSection } from './ToolsSection';
 import { ContactsSection } from './contacts/ContactsSection';
 import { ComputerUseSection } from './ComputerUseSection';
+import { CindyMakeSection } from './CindyMakeSection';
 import { useAuth } from '@/contexts/AuthContext';
 import { SettingsCatalogPanel } from './SettingsCatalogPanel';
 import { getLastWorkingDir, subscribeToLastWorkingDir } from '@/state/lastWorkingDir';
@@ -614,6 +615,16 @@ export function SettingsView() {
                 <section aria-label={t('settings.sections.imBot')}>
                   <ImBotSection targetGroup={imBotTargetGroup} />
                 </section>
+              </div>
+            )}
+
+            {activeTab === 'cindy-make' && (
+              <div
+                role="tabpanel"
+                id="settings-panel-cindy-make"
+                aria-labelledby="settings-tab-cindy-make"
+              >
+                <CindyMakeSection key={`cindy-make:${mode}:${dataOwnerId ?? 'none'}`} />
               </div>
             )}
 
