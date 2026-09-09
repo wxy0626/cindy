@@ -60,6 +60,12 @@ export function supportsCdnFallback(kind) {
   return KINDS[kind]?.dirDist !== true;
 }
 
+export function updateScriptForKind(kind) {
+  const cfg = KINDS[kind];
+  if (!cfg) throw new Error(`Unknown kind: ${kind} (known: ${Object.keys(KINDS).join(', ')})`);
+  return cfg.updateScript ?? kind;
+}
+
 export function currentPlatformKey() {
   return `${process.platform}-${process.arch}`;
 }
@@ -210,16 +216,17 @@ export async function ensureBinary(kind, platformKey = currentPlatformKey(), { f
   const binFile = binFileFor(cfg.base, platformKey);
   const requiredFiles = requiredBinFiles(kind, platformKey);
   const binDirPath = path.join(ROOT, 'apps', cfg.binDir, platformKey);
-  const binPath = path.join(binDirPath, binFile);
+  const binPath = path.join(binDirPath, binaryRelativePath);
   const markerPath = path.join(binDirPath, '.version');
+  const updateScript = updateScriptForKind(kind);
 
   // 先解析 pin 版本——skip 判定必须同时比对版本，否则旧的合法二进制会让 pin 升级被静默跳过。
   const mod = await import(cfg.module);
   const version = mod.readPinnedVersion();
   if (!version) {
     throw new Error(
-      `No pinned version found for ${kind} (tools/${kind}/latest.json). ` +
-        `Run "pnpm update:${kind}" first to pin a version.`,
+      `No pinned version found for ${kind} (tools/${cfg.pinDir ?? kind}/latest.json). ` +
+        `Run "pnpm update:${updateScript}" first to pin a version.`,
     );
   }
 
@@ -262,10 +269,11 @@ export async function ensureBinary(kind, platformKey = currentPlatformKey(), { f
       if (!supportsCdnFallback(kind)) {
         throw new Error(
           `Failed to download ${kind} ${platformKey}@${version} from upstream: ${upstreamErr.message}. ` +
-            'This runtime is a directory distribution, so the single-binary CDN fallback is unsafe.',
+            `This runtime is a directory distribution, so the single-binary CDN fallback is unsafe. ` +
+            `Run "pnpm update:${updateScript}" manually or check network availability.`,
         );
       }
-      // claude / codex / ripgrep：上游慢/失败（含 fetch-with-timeout 的 connect/stall/total/throughput 超时）→
+      // claude / ripgrep：上游慢/失败（含 fetch-with-timeout 的 connect/stall/total/throughput 超时）→
       // 回退公司 CDN（国内快，.gz gunzip 后与上游裸二进制字节一致）。
       warn(`${kind} ${platformKey}: upstream failed/slow (${upstreamErr.message}); falling back to CDN...`);
       try {
@@ -278,7 +286,7 @@ export async function ensureBinary(kind, platformKey = currentPlatformKey(), { f
           `Failed to download ${kind} ${platformKey}@${version} from both upstream and CDN fallback:\n` +
             `  upstream: ${upstreamErr.message}\n` +
             `  CDN:      ${cdnErr.message}\n` +
-            `  Fix: run "pnpm update:${kind}" manually, or check network / CDN availability.`,
+            `  Fix: run "pnpm update:${updateScript}" manually, or check network / CDN availability.`,
         );
       }
     }
@@ -294,7 +302,7 @@ export async function ensureBinary(kind, platformKey = currentPlatformKey(), { f
   if (!finalValid || installed !== version) {
     throw new Error(
       `${kind} ${platformKey}: ensure failed — expected ${version} at ${binPath} but installed marker is ${installed ?? '(none)'}. ` +
-        `The previous binary may be locked (app running); close it and retry, or run "pnpm update:${kind}".`,
+        `The previous binary may be locked (app running); close it and retry, or run "pnpm update:${updateScript}".`,
     );
   }
   return binPath;

@@ -11,6 +11,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 import {
+  binaryRelativePathFor,
   binFileFor,
   isValidBinary,
   isValidDirDist,
@@ -20,12 +21,13 @@ import {
   SUPPORTED_BINARY_KINDS,
   supportsCdnFallback,
   tryReuseFromSiblingWorktree,
+  updateScriptForKind,
 } from '../ensure-agent-binaries.mjs';
 import { verifyDirDistManifest, writeDirDistManifest } from '../../tools/shared/dir-dist-manifest.mjs';
 
 test('directory distributions never use the single-binary CDN fallback', () => {
   assert.equal(supportsCdnFallback('pi'), false);
-  assert.equal(supportsCdnFallback('codex'), true);
+  assert.equal(supportsCdnFallback('codex'), false);
 });
 
 test('dev startup prepares every supported runtime, including Pi', () => {

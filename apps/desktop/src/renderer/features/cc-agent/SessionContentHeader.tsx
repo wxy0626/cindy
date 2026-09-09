@@ -100,9 +100,11 @@ const log = createLogger('SessionContentHeader');
 export function SessionContentHeaderRegistration({
   session,
   remoteSessionUnavailable = false,
+  readOnly = false,
 }: {
   session: Session;
   remoteSessionUnavailable?: boolean;
+  readOnly?: boolean;
 }) {
   useRegisterContentHeader(
     useMemo(
@@ -110,9 +112,10 @@ export function SessionContentHeaderRegistration({
         <SessionContentHeader
           session={session}
           remoteSessionUnavailable={remoteSessionUnavailable}
+          readOnly={readOnly}
         />
       ),
-      [session, remoteSessionUnavailable],
+      [readOnly, session, remoteSessionUnavailable],
     ),
   );
   return null;
@@ -121,11 +124,13 @@ export function SessionContentHeaderRegistration({
 interface SessionContentHeaderProps {
   session: Session;
   remoteSessionUnavailable?: boolean;
+  readOnly?: boolean;
 }
 
 export function SessionContentHeader({
   session: sessionProp,
   remoteSessionUnavailable = false,
+  readOnly = false,
 }: SessionContentHeaderProps) {
   const { t } = useTranslation();
   const { sessions, patchLocal } = useCCSessions();
@@ -152,7 +157,8 @@ export function SessionContentHeader({
   const isArchived = session.status === 'archived';
   // Draft 判定与 SessionItem 同口径:标题仍是默认哨兵且无消息。
   const isEmpty = isEmptyDraftSession(session);
-  const remoteWritesBlocked = remoteSessionUnavailable || isRemoteSessionWriteBlocked(session);
+  const remoteWritesBlocked =
+    readOnly || remoteSessionUnavailable || isRemoteSessionWriteBlocked(session);
   // 「移动到项目」/「导出会话…」可见性与 SessionItem 同条件。
   const canMoveToProject =
     !isEmpty && !session.remoteHostId && !session.deviceLinkDeviceId && !isArchived;

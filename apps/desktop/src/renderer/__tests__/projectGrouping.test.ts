@@ -204,6 +204,7 @@ describe('groupSessions', () => {
     expect(groupSessions([])).toEqual({
       pinned: [],
       dialogues: [],
+      bots: [],
       unclassified: [],
       projects: [],
     });

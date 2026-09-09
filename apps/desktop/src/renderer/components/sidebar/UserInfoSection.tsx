@@ -1,14 +1,25 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Flame, LogOut, Settings, Shield, Smartphone, UserPlus, UserRound } from 'lucide-react';
+import {
+  Building2,
+  Check,
+  Flame,
+  Settings,
+  Shield,
+  Smartphone,
+  UserPlus,
+  UserRound,
+} from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOptionalConfirmDialog } from '@/components/ui/confirm-dialog-provider';
 import { useUpdateStatus } from '@/hooks/useUpdateStatus';
 import { useUpdateBannerDismiss } from '@/hooks/useUpdateBannerDismiss';
 import { useBetaChannelSettings } from '@/hooks/useBetaChannelSettings';
 import { Tip } from '@/components/ui/tooltip';
+import { Spinner } from '@/components/ui/spinner';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,15 +27,43 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useLogout } from '@/hooks/useLogout';
+import { toast } from '@/lib/toast';
+import type { DesktopSavedAccount } from '@/lib/authService';
 import { CURRENT_CINDY_REGION } from '../../../shared/brandRegion';
 import { shouldLabelRegion } from '../../../shared/regionCode';
 import { MobileDownloadDialog } from './MobileDownloadDialog';
-import { AccountSwitcherDialog } from './AccountSwitcherDialog';
 
 interface UserInfoSectionProps {
   isCollapsed: boolean;
   onOpenUpdateNotice?: () => void;
+}
+
+function AccountMenuAvatar({ account }: { account: DesktopSavedAccount }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const imageUrl = account.kind === 'org' ? account.orgLogoUrl : account.avatarUrl;
+
+  useEffect(() => setImageFailed(false), [imageUrl]);
+
+  if (imageUrl && !imageFailed) {
+    return (
+      <img
+        src={imageUrl}
+        alt=""
+        className="h-7 w-7 shrink-0 rounded-full object-cover"
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--border-default)] bg-[var(--surface-hover)] text-[var(--text-secondary)]">
+      {account.kind === 'org' ? (
+        <Building2 className="h-3.5 w-3.5" aria-hidden="true" />
+      ) : (
+        <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
+      )}
+    </span>
+  );
 }
 
 export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSectionProps) {
@@ -36,10 +75,16 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
   const location = useLocation();
   const [avatarError, setAvatarError] = useState(false);
   const [mobileDownloadOpen, setMobileDownloadOpen] = useState(false);
-  const [accountSwitcherOpen, setAccountSwitcherOpen] = useState(false);
+  const [savedAccounts, setSavedAccounts] = useState<DesktopSavedAccount[]>([]);
+  const [savedAccountsOwnerKey, setSavedAccountsOwnerKey] = useState<string | null>(null);
+  const [accountsMutationAllowed, setAccountsMutationAllowed] = useState(true);
+  const [accountsSyncing, setAccountsSyncing] = useState(false);
+  const [switchingAccountKey, setSwitchingAccountKey] = useState<string | null>(null);
   const mobileDownloadButtonRef = useRef<HTMLButtonElement>(null);
-  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const accountsLoadGenerationRef = useRef(0);
   const { t } = useTranslation();
+  const accountsOwnerKey = mode === 'cloud' ? dataOwnerId : null;
+  const accountsReadyForOwner = savedAccountsOwnerKey === accountsOwnerKey;
 
   // 火焰按钮双职责:
   // - 正常情况(无 pending update 或 banner 未 dismiss)→ 弹更新历史 Dialog。
@@ -60,6 +105,18 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
   useEffect(() => {
     setAvatarError(false);
   }, [avatarUrl]);
+
+  // Account snapshots belong to the active data owner. Invalidate them as
+  // soon as ownership changes so a reopened menu can never act on the prior
+  // account while the fresh list is loading.
+  useEffect(() => {
+    accountsLoadGenerationRef.current += 1;
+    setSavedAccountsOwnerKey(null);
+    setSavedAccounts([]);
+    setAccountsMutationAllowed(false);
+    setAccountsSyncing(false);
+    setSwitchingAccountKey(null);
+  }, [accountsOwnerKey]);
 
   if (!user && !isLocal) return null;
 
@@ -110,9 +167,7 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
   };
 
   const openAddAccount = async () => {
-    const result = await beginAddAccount();
-    if (!result.success) return;
-    setAccountSwitcherOpen(false);
+    if (!(await confirmRunningTaskInterruption())) return;
     navigate('/add-account', {
       state: { returnTo: `${location.pathname}${location.search}` },
     });
@@ -129,9 +184,21 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
   };
 
   const renderMoreMenu = (trigger: ReactNode) => (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => open && void refreshSavedAccounts()}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" sideOffset={8} className="min-w-[190px]">
+        {renderSavedAccountItems()}
+        {mode === 'cloud' &&
+        accountsReadyForOwner &&
+        savedAccounts.some((account) => !account.isCurrent) ? (
+          <DropdownMenuSeparator />
+        ) : null}
+        {mode === 'local' ? (
+          <DropdownMenuItem onSelect={() => void openAddAccount()} className="gap-2.5">
+            <UserPlus className="h-4 w-4" aria-hidden="true" />
+            {t('login.signIn')}
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onSelect={openSettings} className="gap-2.5">
           <Settings className="h-4 w-4" aria-hidden="true" />
           {t('sidebar.user.menuSettings')}
@@ -194,47 +261,48 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
       <>
         <div className="mt-auto flex h-[66px] flex-col items-center justify-center gap-1 px-3">
           <Tip text={moreLabel} side="right">
-            {renderMoreMenu(<button
-              ref={moreButtonRef}
-              aria-label={moreLabel}
-              className="flex min-w-0 items-center justify-center text-left"
-            >
-              <div className="relative h-9 w-9 shrink-0">
-                {user?.avatar && !avatarError ? (
-                  <img
-                    src={user.avatar}
-                    alt={displayName}
-                    className="h-9 w-9 rounded-full object-cover"
-                    onError={() => setAvatarError(true)}
-                  />
-                ) : (
-                  <div
-                    className={cn(
-                      'flex h-9 w-9 items-center justify-center rounded-full',
-                      'border border-sidebar-border bg-sidebar-item-hover text-base font-medium text-foreground',
-                    )}
-                  >
-                    {showNotSignedInGlyph ? (
-                      <UserRound aria-hidden="true" size={18} strokeWidth={1.75} />
-                    ) : (
-                      initial
-                    )}
-                  </div>
-                )}
-                {isCanary && (
-                  <span
-                    aria-label={t('sidebar.user.canaryBadge')}
-                    className={cn(
-                      'absolute -bottom-0.5 -right-0.5',
-                      'flex h-3 w-3 items-center justify-center rounded-full',
-                      'bg-foreground text-background ring-2 ring-sidebar',
-                    )}
-                  >
-                    <Shield size={8} strokeWidth={2.5} />
-                  </span>
-                )}
-              </div>
-            </button>)}
+            {renderMoreMenu(
+              <button
+                aria-label={moreLabel}
+                className="flex min-w-0 items-center justify-center text-left"
+              >
+                <div className="relative h-9 w-9 shrink-0">
+                  {user?.avatar && !avatarError ? (
+                    <img
+                      src={user.avatar}
+                      alt={displayName}
+                      className="h-9 w-9 rounded-full object-cover"
+                      onError={() => setAvatarError(true)}
+                    />
+                  ) : (
+                    <div
+                      className={cn(
+                        'flex h-9 w-9 items-center justify-center rounded-full',
+                        'border border-sidebar-border bg-sidebar-item-hover text-base font-medium text-foreground',
+                      )}
+                    >
+                      {showNotSignedInGlyph ? (
+                        <UserRound aria-hidden="true" size={18} strokeWidth={1.75} />
+                      ) : (
+                        initial
+                      )}
+                    </div>
+                  )}
+                  {isCanary && (
+                    <span
+                      aria-label={t('sidebar.user.canaryBadge')}
+                      className={cn(
+                        'absolute -bottom-0.5 -right-0.5',
+                        'flex h-3 w-3 items-center justify-center rounded-full',
+                        'bg-foreground text-background ring-2 ring-sidebar',
+                      )}
+                    >
+                      <Shield size={8} strokeWidth={2.5} />
+                    </span>
+                  )}
+                </div>
+              </button>,
+            )}
           </Tip>
           {mobileDownloadEntry}
         </div>
@@ -245,12 +313,6 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
           onOpenRemoteSettings={openRemoteSettings}
           onOpenDevices={openLinkedDevices}
           triggerRef={mobileDownloadButtonRef}
-        />
-        <AccountSwitcherDialog
-          open={accountSwitcherOpen}
-          onOpenChange={setAccountSwitcherOpen}
-          onAddAccount={() => void openAddAccount()}
-          triggerRef={moreButtonRef}
         />
       </>
     );
@@ -304,43 +366,48 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
             className="relative h-[27px] w-[27px] shrink-0"
             title={isCanary ? t('sidebar.user.canaryBadge') : undefined}
           >
-            {user?.avatar && !avatarError ? (
-              <img
-                src={user.avatar}
-                alt={displayName}
-                className={cn('h-[27px] w-[27px] rounded-full object-cover')}
-                onError={() => setAvatarError(true)}
-              />
-            ) : (
-              <div
-                className={cn(
-                  'flex h-[27px] w-[27px] items-center justify-center rounded-full',
-                  'border border-[var(--sidebar-user-card-border)] bg-[var(--sidebar-user-card-bg)] text-14 font-medium text-[var(--sidebar-user-card-text)]',
-                )}
-              >
-                {showNotSignedInGlyph ? (
-                  <UserRound aria-hidden="true" size={15} strokeWidth={1.75} />
-                ) : (
-                  initial
-                )}
-              </div>
-            )}
-            {isCanary && (
-              // ring-2 ring-sidebar 用 sidebar 背景色作为分隔环，避免角标和头像糊在一起
-              <span
-                aria-label={t('sidebar.user.canaryBadge')}
-                className={cn(
-                  'absolute -bottom-0.5 -right-0.5',
-                  'flex h-3 w-3 items-center justify-center rounded-full',
-                  'bg-[var(--sidebar-user-card-text)] text-background ring-2 ring-sidebar',
-                )}
-              >
-                <Shield size={8} strokeWidth={2.5} />
-              </span>
-            )}
-          </div>
+            {/* Avatar — admin 用户加 1.5px 反色描边 + 右下角盾牌角标 */}
+            <div
+              className="relative h-[27px] w-[27px] shrink-0"
+              title={isCanary ? t('sidebar.user.canaryBadge') : undefined}
+            >
+              {user?.avatar && !avatarError ? (
+                <img
+                  src={user.avatar}
+                  alt={displayName}
+                  className={cn('h-[27px] w-[27px] rounded-full object-cover')}
+                  onError={() => setAvatarError(true)}
+                />
+              ) : (
+                <div
+                  className={cn(
+                    'flex h-[27px] w-[27px] items-center justify-center rounded-full',
+                    'border border-[var(--sidebar-user-card-border)] bg-[var(--sidebar-user-card-bg)] text-14 font-medium text-[var(--sidebar-user-card-text)]',
+                  )}
+                >
+                  {showNotSignedInGlyph ? (
+                    <UserRound aria-hidden="true" size={15} strokeWidth={1.75} />
+                  ) : (
+                    initial
+                  )}
+                </div>
+              )}
+              {isCanary && (
+                // ring-2 ring-sidebar 用 sidebar 背景色作为分隔环，避免角标和头像糊在一起
+                <span
+                  aria-label={t('sidebar.user.canaryBadge')}
+                  className={cn(
+                    'absolute -bottom-0.5 -right-0.5',
+                    'flex h-3 w-3 items-center justify-center rounded-full',
+                    'bg-[var(--sidebar-user-card-text)] text-background ring-2 ring-sidebar',
+                  )}
+                >
+                  <Shield size={8} strokeWidth={2.5} />
+                </span>
+              )}
+            </div>
 
-          {/* Name & plan — fade in/out with collapse。
+            {/* Name & plan — fade in/out with collapse。
             折叠 rail（64px）下必须整个移出布局（hidden）——flex-1 占位会把
             头像挤出 64px 可视区（旧 w-0 折叠时代 opacity 即可，rail 时代不行）。 */}
           <div
@@ -421,12 +488,6 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
         onOpenRemoteSettings={openRemoteSettings}
         onOpenDevices={openLinkedDevices}
         triggerRef={mobileDownloadButtonRef}
-      />
-      <AccountSwitcherDialog
-        open={accountSwitcherOpen}
-        onOpenChange={setAccountSwitcherOpen}
-        onAddAccount={() => void openAddAccount()}
-        triggerRef={moreButtonRef}
       />
     </div>
   );

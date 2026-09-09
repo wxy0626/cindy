@@ -1,21 +1,9 @@
-/**
- * OneshotModelPinPicker — 快问快答(text.oneshot)钉档选择器。
- *
- * 钉值是目录钉(cat: 编码的 供应商×agent×模型),清单 = 当前供应商目录的全部
- * 文本模型(主侧 cindy-prefs 同步下发)。选择器先让用户选择 Agent，再只展示该
- * Agent 可用的模型；选中模型后才一次性写回完整钉值。模型层视觉与信息层级对齐
- * 新建对话 / 开协同的模型选择器(ModelSelector):厂牌图标 + 模型名 + 折扣/订阅
- * 徽标 + 供应商分组标题 + 搜索过滤。第一层首行恒为「跟随默认」(身份卡声明了
- * 偏好模型时如实显示声明)。
- */
-
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, ChevronDown, ChevronLeft, Search } from 'lucide-react';
+/** Exact one-shot catalog pins rendered through the shared model picker. */
+import { useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-
-import { cn } from '@/lib/utils';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ModelIconMark } from '@/components/new-chat/ModelSelector';
+import type { AgentKind, ProviderView } from '@cindy/model-providers';
+import { ModelSelector } from '@/components/new-chat/ModelSelector';
+import { PROVIDER_TITLE_KEY } from '@/lib/providerDisplayName';
 import { decodeCatalogModelPin } from '../../shared/catalogModelPin';
 
 /** 主侧 cindy-prefs 下发的目录钉条目(与 TextOneshotPinOption 同形)。 */
@@ -39,26 +27,46 @@ export interface OneshotPinOption {
   available?: boolean;
 }
 
-function agentKindLabel(agentKind: string): string {
-  return agentKind === 'claude-code' ? 'Claude Code' : agentKind === 'codex' ? 'Codex' : agentKind;
+
+function knownAgent(value: string): value is AgentKind {
+  return value === 'claude-code' || value === 'codex' || value === 'pi';
+}
+
+/** This projection only contains host-approved pins; it never expands the allowlist. */
+export function oneshotPickerProviders(options: readonly OneshotPinOption[]): ProviderView[] {
+  const providers = new Map<string, ProviderView>();
+  for (const option of options) {
+    if (option.available === false || !knownAgent(option.agentKind)) continue;
+    let provider = providers.get(option.providerId);
+    if (!provider) {
+      provider = {
+        id: option.providerId, name: option.group, source: 'builtin',
+        auth: { method: 'none' }, connected: true, agents: [], routing: {}, models: {},
+      };
+      providers.set(option.providerId, provider);
+    }
+    const agent = option.agentKind;
+    if (!provider.agents.includes(agent)) provider.agents.push(agent);
+    provider.routing[agent] = option.routing?.[agent] ?? provider.routing[agent] ?? {
+      // A display-only catalog projection; execution resolves this exact pin again in main.
+      upstream: '', authStrategy: 'none',
+    };
+    const models = provider.models[agent] ??= [];
+    if (!models.some((model) => model.id === option.modelId)) {
+      models.push({ id: option.modelId, name: option.modelName, icon: option.icon,
+        contextWindow: 0, efforts: [], defaultEffort: null, mode: 'chat', defaultEnabled: true });
+    }
+  }
+  return [...providers.values()].map((provider) => ({
+    ...provider,
+    ...(options.filter((option) => option.providerId === provider.id && option.available !== false)
+      .every((option) => option.subscription) ? { access: { kind: 'subscription' as const, product: provider.name } } : {}),
+  }));
 }
 
 export function OneshotModelPinPicker({
-  value,
-  defaultLabel,
-  declaredLabel,
-  legacyPinLabel,
-  options,
-  onChange,
-  ariaLabel,
-  dense,
-  defaultOptionLabel,
-  searchPlaceholder,
-  noResultsLabel,
-  unavailableLabel,
-  budgetLabel,
-  subscriptionLabel,
-  disabled,
+  value, defaultLabel, declaredLabel, legacyPinLabel, options, onChange, ariaLabel,
+  dense, defaultOptionLabel, disabled, groupByProvider = false,
 }: {
   /** 当前钉值;undefined = 跟随默认。 */
   value?: string;
@@ -70,7 +78,7 @@ export function OneshotModelPinPicker({
   legacyPinLabel?: string | null;
   options: readonly OneshotPinOption[];
   /** null = 清除钉档(恢复跟随默认)。 */
-  onChange: (pin: string | null) => void;
+  onChange: (pin: string | null) => void | boolean | Promise<void | boolean>;
   ariaLabel: string;
   /** 紧凑字号(设置页 12px;插件详情页 13px)。 */
   dense?: boolean;
@@ -82,6 +90,8 @@ export function OneshotModelPinPicker({
   budgetLabel?: string;
   subscriptionLabel?: string;
   disabled?: boolean;
+  /** Show all routable models in provider groups without exposing the Agent rail. */
+  groupByProvider?: boolean;
 }): ReactNode {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);

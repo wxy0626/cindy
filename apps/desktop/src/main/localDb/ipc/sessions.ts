@@ -23,6 +23,7 @@ import { getDbClient } from '../client/current';
 import * as currentDb from '../client/current';
 import type { DbClient } from '../client/DbClient';
 import { sessions, messages } from '../schema';
+import { commitBotProfileDeletion } from '../botProfileDeletionStore.js';
 import {
   LIST_PREVIEW_EXTRACT_SQL,
   LATEST_VISIBLE_PREVIEW_FILTER_SQL,
@@ -35,7 +36,12 @@ import { bindDeletedPiSubagentCleanupCancel } from './piSubagentDeletion';
 import { resolveBusinessSessionId } from '../../sessionIds';
 import { normalizeDbAgentKind } from '../../../shared/agentKindConversion';
 import {
+  projectSessionContextWindow,
+  type ContextWindowSession,
+} from '../../../shared/sessionContextWindow';
+import {
   sessionToCamel,
+  sessionUsageToCamel,
   sessionCreateToRow,
   sessionPatchToRow,
   persistableSessionEffort,
@@ -124,6 +130,8 @@ export interface SessionRecycleScope {
 }
 
 export interface RegisterSessionIpcOpts {
+  /** Use the same live catalog as runtime usage, without writing during reads. */
+  resolveContextWindow?: (session: ContextWindowSession) => number | null;
   /** Close a local Pi/Codex runtime only if its current turn is idle. */
   closeIdleSessionForMove?: (sessionId: string) => Promise<boolean>;
 }
@@ -1078,8 +1086,14 @@ export function registerSessionIpc(
   );
   ipcMain.handle(
     'local-db:sessions:list',
-    async (_e, limit: unknown, status: unknown, options: unknown) => {
+    async (event, limit: unknown, status: unknown, options: unknown) => {
       const startedAt = performance.now();
+      const usageHistory = shouldUseUsageHistoryQuery(options);
+      // The usage-history branch is an unbounded privileged read. Keep the
+      // legacy capped list available to device-link's synthetic event, but do
+      // not let an untrusted renderer turn the new branch into a full-table
+      // session disclosure.
+      if (usageHistory) assertTrustedAppRendererEvent(event);
       const snapshot = readCurrentDbClientSnapshot();
       const db = snapshot?.client.drizzle ?? getDbClient().drizzle;
       const userId = snapshot?.userId ?? readCurrentDbClientUserId();
@@ -1118,18 +1132,34 @@ export function registerSessionIpc(
 
         scheduleSessionListProjectionBackfill(mergedRows);
         return mergedRows.map((r) =>
-          sessionToCamel({
-            ...r.session,
-            messageCount: r.messageCount,
-            latestMessageExtract: r.latestMessageExtract,
-            latestMessageRole: r.latestMessageRole,
-          }),
+          projectSessionContextWindow(
+            sessionToCamel({
+              ...r.session,
+              messageCount: r.messageCount,
+              latestMessageExtract: r.latestMessageExtract,
+              latestMessageRole: r.latestMessageRole,
+            }),
+            opts.resolveContextWindow,
+          ),
+        );
+      };
+      const loadUsageHistoryRows = async () => {
+        // 用量历史的“最耗任务”必须覆盖整个会话表，再由 renderer 按所选日历范围
+        // 精确筛选；不能复用侧栏按 updatedAt 截断的 1000 行列表。这里刻意不算
+        // messageCount / preview，避免为统计页引入整库 messages 扫描。
+        const sourceFilter = inArray(sessions.source, DESKTOP_VISIBLE_SESSION_SOURCES);
+        const statusWhere = () =>
+          statusFilter ? eq(sessions.status, statusFilter) : ne(sessions.status, 'deleted');
+        const rows = await selectSessionUsageRows(db, and(sourceFilter, statusWhere()));
+        return rows.map((row) =>
+          sessionUsageToCamel(projectSessionContextWindow(row, opts.resolveContextWindow)),
         );
       };
       // key 用同一快照上的 userId + clientEpoch + 归一化参数。
       // forceRefresh / status 重拉带 fresh，不并入写前那次查询。
-      const result =
-        userId && !fresh
+      const result = usageHistory
+        ? await loadUsageHistoryRows()
+        : userId && !fresh
           ? await runSessionListSingleFlight(
               buildSessionListFlightKey({
                 userId,
@@ -1147,7 +1177,8 @@ export function registerSessionIpc(
       const fields = JSON.stringify({
         event: 'localDb.sessions.list.done',
         filter,
-        cap,
+        cap: usageHistory ? 'all' : cap,
+        usageHistory,
         includePinned,
         rows: result.length,
         queryElapsedMs: elapsedMs,
@@ -1192,6 +1223,12 @@ export function registerSessionIpc(
       !ALLOWED_ORCA_ROLES.has(bodyObj.orcaRole as string)
     ) {
       throwIpcError('INVALID_PARAMS', `invalid orcaRole: ${String(bodyObj.orcaRole)}`);
+    }
+    if (bodyObj.source !== undefined) {
+      throwIpcError(
+        'UNSUPPORTED_CAPABILITY',
+        'Bot task creation is only available through the Bot lifecycle service',
+      );
     }
     const workspaceKind =
       (createBody?.workspaceKind as 'project' | 'dialogue' | undefined) ?? 'project';
@@ -1380,7 +1417,7 @@ export function registerSessionIpc(
     const db = getDbClient().drizzle;
     const row = await selectSessionWithCount(db, sid);
     if (!row) throwIpcError('NOT_FOUND', 'Session 不存在');
-    return sessionToCamel(row);
+    return projectSessionContextWindow(sessionToCamel(row), opts.resolveContextWindow);
   });
 
   /**
@@ -1449,6 +1486,7 @@ export function registerSessionIpc(
       const db = getDbClient().drizzle;
       const updated = await withSessionRouteLock(sid, async () => {
         if (!isOwnerScopeCurrent(ownerScope)) return null;
+        await assertGenericSessionLifecycleAllowed(db, sid);
         // 显式 .run() 才能从生产 DbClient.drizzle proxy 拿到 changes；隐式 await
         // 会丢弃写结果。CAS 是否命中必须以该原子 UPDATE 的 changes 判定。
         const writeResult = await db
@@ -1905,6 +1943,7 @@ export async function patchSessionMetaInDb(
   // 控制端远程改名走这条,与本机改名同口径(同样先记号后写库)。
   if (patch.title !== undefined) noteUserTitleWritten(sessionId);
   const updated = await withStatusWriteLock(sessionId, patch.status, async () => {
+    if (patch.status !== undefined) await assertGenericSessionLifecycleAllowed(db, sessionId);
     await writeSessionPatch(db, sessionId, setObj, patch.status);
     const row = await selectSessionWithCount(db, sessionId);
     if (!row) throwIpcError('NOT_FOUND', 'Session 不存在');
@@ -1954,6 +1993,28 @@ export async function patchSessionMetaInDb(
   }
   compactTerminalSessionToolResults(dbClient, sessionId, patch.status);
   return updated;
+}
+
+/**
+ * Bot tasks are absent from the ordinary task pool, so their active/history/
+ * route transitions must go through the Bot lifecycle service. That service
+ * updates the Profile pointer and Session projection atomically.
+ */
+async function assertGenericSessionLifecycleAllowed(
+  db: DbClient['drizzle'],
+  sessionId: string,
+): Promise<void> {
+  const [target] = await db
+    .select({ source: sessions.source })
+    .from(sessions)
+    .where(eq(sessions.id, sessionId))
+    .limit(1);
+  if (target?.source === 'bot') {
+    throwIpcError(
+      'PRECONDITION_FAILED',
+      'Bot task lifecycle is managed by teammate recovery and history controls',
+    );
+  }
 }
 
 export interface RenameSessionMetaChange {
@@ -2131,6 +2192,75 @@ function cancelDeletedPiSubagentCleanupImpl(sessionId: string): void {
 }
 
 bindDeletedPiSubagentCleanupCancel(cancelDeletedPiSubagentCleanupImpl);
+
+/**
+ * Detach Bot-owned tasks before the owning Profile is permanently removed.
+ * Kept transcripts become ordinary archived tasks; discarded transcripts
+ * become ordinary deleted tombstones so no inaccessible source=bot orphan is
+ * left after the Bot FK graph is cascaded away.
+ */
+export async function deleteBotProfileAndDetachSessionsInDb(
+  botId: string,
+  sessionIds: string[],
+  keepTaskHistory: boolean,
+): Promise<void> {
+  const ids = [...new Set(sessionIds)];
+  const ownerScope = captureOwnerScope();
+  const db = getDbClient().drizzle;
+  const commitDeletion = () => commitBotProfileDeletion({
+    botId,
+    sessionIds: ids,
+    keepTaskHistory,
+  });
+  const committed = ids.length > 0
+    ? await withSessionRouteLocks(ids, commitDeletion)
+    : await commitDeletion();
+  const status = committed.status;
+  const committedSessionIds = [...new Set(committed.sessionIds)];
+
+  for (const id of committedSessionIds) {
+    notifyAgentIslandSessionPatch(id, { status });
+    broadcastSessionPatched(id, { status, source: 'desktop' }, ownerScope);
+    notifyGhostSessionStatusChange(id, status, null);
+    removeHookAttachmentDir(id, status);
+    if (status === 'deleted') {
+      void imageCacheStore.removeSession(id).catch((error) => {
+        log.warn('Bot task image cleanup failed', { sessionId: id, error: String(error) });
+      });
+      void removeWechatSessionAttachmentDir(id).catch((error) => {
+        log.warn('Bot task attachment cleanup failed', { sessionId: id, error: String(error) });
+      });
+      void removeDeletedSessionMediaRefs(id, db).catch((error) => {
+        log.warn('Bot task media cleanup failed', { sessionId: id, error: String(error) });
+      });
+    }
+  }
+}
+
+/**
+ * hook 入站附件目录回收(fire-and-forget): deleted/archived 都是终态,
+ * 文件在 turn 送出后即无用。所有把 session 置为终态的路径都应调用。
+ */
+function removeHookAttachmentDir(sessionId: string, status: unknown): void {
+  if (status !== 'deleted' && status !== 'archived') return;
+  if (status === 'deleted') {
+    void removeTurnChangeSetsForSession(sessionId).catch((err) => {
+      log.warn('turn change-set cleanup failed', {
+        sessionId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+  const attachRoot = path.join(app.getPath('userData'), 'hook-attachments');
+  const attachDir = path.join(attachRoot, sessionId);
+  if (!attachDir.startsWith(attachRoot + path.sep)) return;
+  void fs.rm(attachDir, { recursive: true, force: true }).catch((err) => {
+    log.warn('hook attachment dir cleanup failed', {
+      sessionId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  });
+}
 
 /**
  * Can this parent task still start a durable Subagent?
@@ -2404,6 +2534,46 @@ interface SessionListRow {
   latestMessageRole: string | null;
 }
 
+/** 用量历史专用行查询：全量读取 sessions，但跳过 sidebar 的消息预览子查询。 */
+function selectSessionUsageRows(
+  db: DbClient['drizzle'],
+  where: SQL | undefined,
+): Promise<
+  Array<
+    Pick<
+      typeof sessions.$inferSelect,
+      | 'id'
+      | 'title'
+      | 'model'
+      | 'providerId'
+      | 'totalTokenUsage'
+      | 'contextTokens'
+      | 'contextWindow'
+      | 'agentKind'
+      | 'userSendAt'
+      | 'updatedAt'
+    >
+  >
+> {
+  return db
+    .select({
+      id: sessions.id,
+      title: sessions.title,
+      model: sessions.model,
+      providerId: sessions.providerId,
+      totalTokenUsage: sessions.totalTokenUsage,
+      contextTokens: sessions.contextTokens,
+      contextWindow: sessions.contextWindow,
+      agentKind: sessions.agentKind,
+      userSendAt: sessions.userSendAt,
+      updatedAt: sessions.updatedAt,
+    })
+    .from(sessions)
+    .where(where)
+    .orderBy(desc(sessions.updatedAt))
+    .then((rows) => rows);
+}
+
 /**
  * sessions:list 的行查询——**两段式**：CTE 先按排序取够 `cap` 个 id，主查询只对这批行算
  * messageCount 与 preview。
@@ -2496,6 +2666,14 @@ function shouldBypassSessionListSingleFlight(options: unknown): boolean {
     options &&
     typeof options === 'object' &&
     (options as { fresh?: unknown }).fresh === true
+  );
+}
+
+function shouldUseUsageHistoryQuery(options: unknown): boolean {
+  return !!(
+    options &&
+    typeof options === 'object' &&
+    (options as { usageHistory?: unknown }).usageHistory === true
   );
 }
 

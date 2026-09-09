@@ -31,6 +31,7 @@ import fs from 'node:fs';
 import { BRAND_IDENTITY } from '@cindy/maker-shared/brand-identity';
 
 import { createBetterSqliteDatabase } from './betterSqliteFactory';
+import { ensureCjkFtsTempTriggersInstalled } from './registerCjkSeg';
 import {
   getDrizzleDir,
   prepareBackupDiskSpace,
@@ -477,6 +478,12 @@ export async function ensureReady(userId: string): Promise<EnsureReadyResult> {
   // 见 orcaStrandedLeadReconcile.ts。同样必须在 migration / drift-repair 之后跑(依赖 orca_teams)。
   reconcileStrandedOrcaLeads(db);
 
+  // #3841：openWithPragmas 时三表可能还不存在（全新库），ensure 会早退。
+  // migration / drift-repair 建完表后必须再收口一次，否则 in-proc 回退走这条
+  // 主连接写 messages 时，持久触发器因 cjk_seg 已注册而跳过、TEMP 又不在，
+  // 增量消息继续漏 FTS。已挂则是 no-op。
+  ensureCjkFtsTempTriggersInstalled(db);
+
   // 启动 optimize: 0x10002 mask 会强制对从未 ANALYZE 过的表跑一次,
   // 之后挂 24h 周期任务按需更新统计。详见 runOptimize 注释。
   runOptimize(0x10002);
@@ -491,21 +498,32 @@ function openWithPragmas(filePath: string): Database.Database {
   // 不会自动创建——打开前先确保父目录存在，否则 better-sqlite3 直接抛错。
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const db = createBetterSqliteDatabase(filePath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  // 性能/并发相关 (社区生产推荐组合):
-  //   synchronous=NORMAL  WAL 下安全; fsync 大幅减少, 仅掉电时可能丢最近一笔事务,
-  //                       进程崩溃不丢
-  //   temp_store=MEMORY   临时表/排序/中间结果走 RAM
-  //   mmap_size=256MB     读热数据零拷贝, 降低系统调用开销
-  //   cache_size=-65536   page cache 64MB (负值=KB)
-  //   busy_timeout=5000   多 writer 时自动重试而非立刻抛 SQLITE_BUSY
-  db.pragma('synchronous = NORMAL');
-  db.pragma('temp_store = MEMORY');
-  db.pragma('mmap_size = 268435456');
-  db.pragma('cache_size = -65536');
-  db.pragma('busy_timeout = 5000');
-  return db;
+  try {
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    // 性能/并发相关 (社区生产推荐组合):
+    //   synchronous=NORMAL  WAL 下安全; fsync 大幅减少, 仅掉电时可能丢最近一笔事务,
+    //                       进程崩溃不丢
+    //   temp_store=MEMORY   临时表/排序/中间结果走 RAM
+    //   mmap_size=256MB     读热数据零拷贝, 降低系统调用开销
+    //   cache_size=-65536   page cache 64MB (负值=KB)
+    //   busy_timeout=5000   多 writer 时自动重试而非立刻抛 SQLITE_BUSY
+    db.pragma('synchronous = NORMAL');
+    db.pragma('temp_store = MEMORY');
+    db.pragma('mmap_size = 268435456');
+    db.pragma('cache_size = -65536');
+    db.pragma('busy_timeout = 5000');
+    // temp_store 切换刚清掉了工厂挂的 TEMP 触发器；收口重挂（#3841）。
+    ensureCjkFtsTempTriggersInstalled(db);
+    return db;
+  } catch (err) {
+    try {
+      db.close();
+    } catch {
+      // 初始化失败后关闭连接是 best-effort，原始错误更重要。
+    }
+    throw err;
+  }
 }
 
 /**
