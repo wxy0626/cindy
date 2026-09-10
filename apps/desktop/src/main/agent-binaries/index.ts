@@ -19,7 +19,7 @@ import { installPiBinaryUpdate } from './pi-self-update.js';
  *     行为逻辑全部共享。新增 agent (e.g. gemini) 时, 一行加 CONFIG 即可。
  *   - 基础 BinaryProvisioner 实例懒加载 + 缓存 (createBinaryProvisioner 是工厂, 复用同一份 cached manifest)。
  *   - prepare(kind) 内部:
- *       dev: findDevBinary 短路, 缺失硬错 (开发者必须 pnpm update:codex-package)
+ *       dev: findDevBinary 短路, 缺失硬错 (开发者必须 pnpm update:codex)
  *       Linux packaged: CDN manifest 段优先 (与 mac/win 同链, 国内可达); 资产缺失 /
  *         拉取 / 下载失败时静默回落 runtime fallback (PC 已装 CLI / 旧缓存 / userData
  *         私有安装 / 带上游 SHA-256 的官方 pin 资产, 不依赖系统 npm/curl/tar)
@@ -168,8 +168,9 @@ import type {
 // 硬约定, 不改)。
 //
 // 目录分发运行时:
-//   - codex-package:完整目录包含 bin/codex、code-mode host、rg 与 resources；生产入口
-//     与 dev 一致指向 bin/codex，CDN 资产读取 manifest.codexPackage。
+//   - codex-package:正式版完整目录包含 bin/codex、code-mode host、rg 与 resources；
+//     生产入口指向 bin/codex，CDN 资产读取 manifest.codexPackage。开发版沿用本地
+//     ensure-agent-binaries 链准备的 apps/codex-bin/codex.exe。
 //   - pi:完整目录包含主二进制与 theme/ 等运行时资产；同时它是可选实验 agent，
 //     manifest 缺 pi 字段 / 下载失败都不阻塞启动。
 
@@ -204,8 +205,10 @@ const CONFIG: Record<AgentBinaryKind, AgentBinaryConfig> = {
     manifestField: 'codexPackage',
     installSubdir: 'codex-package',
     binaryName: path.join('bin', process.platform === 'win32' ? 'codex.exe' : 'codex'),
-    devBinDir: 'codex-package-bin',
-    devBinaryName: path.join('bin', process.platform === 'win32' ? 'codex.exe' : 'codex'),
+    // 本地开发链由 scripts/ensure-agent-binaries.mjs 准备到 codex-bin；正式版
+    // 仍使用上面的 codex-package 目录与完整包入口，不共用这条 dev 路径。
+    devBinDir: 'codex-bin',
+    devBinaryName: process.platform === 'win32' ? 'codex.exe' : 'codex',
     vendorTag: 'codex',
     artifactKind: 'tar-gz-dir',
     preserveLocalVersion: true,

@@ -10,9 +10,9 @@ import { app } from 'electron';
 import { getPlatformKey } from '../manifestService.js';
 
 export interface DevBinaryConfig {
-  /** monorepo apps/ 下的子目录名，例如 'claude-code-bin' / 'codex-package-bin' */
+  /** monorepo apps/ 下的子目录名，例如 'claude-code-bin' / 'codex-bin' */
   vendorBinDir: string;
-  /** 平台目录下的入口相对路径，例如 'claude.exe' / 'bin/codex.exe' */
+  /** 平台目录下的入口相对路径，例如 'claude.exe' / 'codex.exe' */
   binaryName: string;
 }
 

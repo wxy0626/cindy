@@ -73,7 +73,7 @@ test('ensureBinary(claude): 上游失败 → 回退 CDN，落地正确二进制 
 test('ensureBinary(codex): 完整目录包拒绝单二进制 CDN 回退', async () => {
   await assert.rejects(
     ensureBinary('codex', PLATFORM, { force: true }),
-    /directory distribution.*pnpm update:codex-package/s,
+    /directory distribution.*pnpm update:codex/s,
   );
   assert.equal(fs.existsSync(path.join('apps', 'codex-package-bin', PLATFORM)), false);
 });

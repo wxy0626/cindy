@@ -181,10 +181,10 @@ describe('startup binary update policy forwarding', () => {
   });
 });
 
-describe('dev Codex package selection', () => {
-  it('starts Codex from the complete local package entrypoint', async () => {
+describe('dev Codex binary selection', () => {
+  it('starts Codex from the local binary prepared by the dev asset chain', async () => {
     appMock.isPackaged = false;
-    const expectedPath = '/repo/apps/codex-package-bin/linux-x64/bin/codex';
+    const expectedPath = '/repo/apps/codex-bin/linux-x64/codex';
     findDevBinary.mockReturnValue(expectedPath);
 
     await expect(binaries.prepare('codex')).resolves.toEqual({
@@ -193,8 +193,8 @@ describe('dev Codex package selection', () => {
       downloaded: false,
     });
     expect(findDevBinary).toHaveBeenCalledWith({
-      vendorBinDir: 'codex-package-bin',
-      binaryName: path.join('bin', 'codex'),
+      vendorBinDir: 'codex-bin',
+      binaryName: 'codex',
     });
     expect(createBinaryProvisioner).not.toHaveBeenCalled();
   });
