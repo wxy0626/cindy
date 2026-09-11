@@ -35,6 +35,12 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { Tip } from '@/components/ui/tooltip';
+import { providerDisplayName } from '@/lib/providerDisplayName';
+import type {
+  CustomProviderUpdateOptions,
+  CustomProviderUpdateResult,
+} from '../../../shared/customProviderUpdate';
 import { useProviders } from '@/hooks/useProviders';
 import { isChatGptConnectionConnected, useCodexAuth } from '@/hooks/useCodexAuth';
 import { codexRecoveryActionKey, codexRecoveryDescriptionKey } from '@/hooks/codexAuthRecovery';
@@ -289,6 +295,119 @@ function RowIconButton({
 // (重构前的 ProviderCell 去掉展开逻辑;模型列表由详情容器统一渲染。)
 // ---------------------------------------------------------------------------
 
+/** 该内置供应商是否支持连接管理(上游移植):可重命名/可从详情移除。 */
+function supportsBuiltinConnectionManagement(provider: ProviderView): boolean {
+  return provider.source === 'builtin' && provider.id !== 'xd' && (
+    ['openai', 'anthropic', 'xai'].includes(provider.id) ||
+    (provider.auth.method === 'oauth' && !!provider.auth.oauth)
+  );
+}
+/** 重命名/删除内置供应商时的图片生成重启确认(上游 #4270 体系,移植)。 */
+function useProviderChangeConfirmation() {
+  const { t } = useTranslation();
+  const { confirm } = useConfirmDialog();
+  return useCallback(async (change: (options: CustomProviderUpdateOptions) => Promise<CustomProviderUpdateResult | void>) => {
+    const result = await change({ source: 'manual-settings' });
+    if (!result || result.ok) return true;
+    if (!(await confirm({
+      title: t('settings.providers.custom.imageGenerationReload.title'),
+      description: t('settings.providers.custom.imageGenerationReload.description'),
+      confirmText: t('settings.providers.custom.imageGenerationReload.interrupt'),
+      cancelText: t('settings.providers.custom.imageGenerationReload.cancel'),
+    }))) return false;
+    const retry = await change({ source: 'manual-settings', codexImageGenerationRestartPolicy: 'interrupt' });
+    return !retry || retry.ok;
+  }, [confirm, t]);
+}
+
+/** 内置供应商重命名/移除动作(上游移植;本地版菜单此前只有停用入口)。 */
+function useProviderManagement(provider?: ProviderView) {
+  const { t } = useTranslation();
+  const { confirm } = useConfirmDialog();
+  const confirmProviderChange = useProviderChangeConfirmation();
+  const { refetch } = useProviders();
+  const [busy, setBusy] = useState(false);
+  const rename = async () => {
+    if (!provider || busy) return;
+    try {
+      const scope = await window.electronAPI.maker.listProviders();
+      let name = provider.name;
+      if (
+        !(await confirm({
+          title: t('settings.providers.pill.rename'),
+          content: (
+            <LocalProviderNameInput
+              initialName={name}
+              onChange={(next) => {
+                name = next;
+              }}
+            />
+          ),
+          confirmText: t('settings.providers.custom.save'),
+          cancelText: t('settings.providers.custom.cancel'),
+        }))
+      )
+        return;
+      setBusy(true);
+      await window.electronAPI.maker.setProviderPresentation({
+        providerId: provider.id,
+        action: 'rename',
+        name,
+        dataOwnerId: scope.dataOwnerId,
+        ownerGeneration: scope.ownerGeneration,
+      });
+      refetch();
+    } catch {
+      toast.error(t('settings.providers.custom.toast.saveFailed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const removeBuiltin = async () => {
+    if (!provider || busy) return;
+    setBusy(true);
+    try {
+      const scope = await window.electronAPI.maker.listProviders();
+      await window.electronAPI.maker.setProviderPresentation({
+        providerId: provider.id,
+        action: 'remove',
+        dataOwnerId: scope.dataOwnerId,
+        ownerGeneration: scope.ownerGeneration,
+      });
+      refetch();
+    } catch {
+      toast.error(t('settings.providers.custom.toast.saveFailed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { busy, rename, removeBuiltin };
+}
+
+/** 重命名弹窗里的名称输入框(上游移植)。 */
+function LocalProviderNameInput({
+  initialName,
+  onChange,
+}: {
+  initialName: string;
+  onChange: (name: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState(initialName);
+  return (
+    <SettingsTextInput
+      aria-label={t('settings.providers.pill.rename')}
+      value={name}
+      maxLength={128}
+      autoFocus
+      onChange={(value) => {
+        setName(value);
+        onChange(value);
+      }}
+    />
+  );
+}
+
 function DetailHeader({
   icon,
   title,
@@ -300,6 +419,7 @@ function DetailHeader({
   badge,
   menuItems,
   menuFooter,
+  deleteAction,
   assetModule,
 }: {
   icon: ReactNode;
@@ -315,6 +435,8 @@ function DetailHeader({
   menuItems?: ReactNode;
   /** 菜单末尾的只读信息行（如脱敏 key），自带一条分隔线。 */
   menuFooter?: ReactNode;
+  /** 删除入口（上游移植）：不传时内置可管理供应商兜底走 presentation remove。 */
+  deleteAction?: { label: string; onClick: () => void; disabled?: boolean };
   /**
    * 账户资产模块 —— 标题行下方的固定槽位，用一条 1px 发丝线分隔（不做框中框，
    * 见 DESIGN §2 layer rule）。判定见 providerAssetModule.ts。
@@ -322,6 +444,17 @@ function DetailHeader({
   assetModule?: ReactNode;
 }) {
   const { t } = useTranslation();
+  // 上游移植:内置供应商重命名/移除管理 + 菜单兜底删除入口
+  const management = useProviderManagement(provider);
+  const canRename = !!provider && provider.id !== 'xd';
+  const resolvedDelete =
+    deleteAction ??
+    (provider && supportsBuiltinConnectionManagement(provider)
+      ? {
+          label: t('settings.providers.custom.deleteAria'),
+          onClick: () => void management.removeBuiltin(),
+        }
+      : undefined);
   const hasModels = !!provider && providerHasModels(provider);
   const modelCount = useMemo(
     () => (hasModels && provider ? buildUnionRows(provider).length : null),
@@ -372,7 +505,7 @@ function DetailHeader({
                   className="min-w-0 truncate text-14 font-medium leading-tight"
                   style={{ color: 'var(--settings-section-title)' }}
                 >
-                  {title}
+                  {provider ? providerDisplayName(provider, t) : title}
                 </span>
                 {modelCount !== null && <ModelCountChip count={modelCount} />}
                 {modelCountSuffix}
@@ -404,16 +537,27 @@ function DetailHeader({
           {provider && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={t('settings.providers.detail.moreActionsAria')}
-                  className="settings-dropdown-trigger flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--surface-hover)]"
-                  style={{ color: 'var(--text-tertiary)' }}
-                >
-                  <MoreHorizontal size={15} />
-                </button>
+                <Tip text={t('settings.providers.detail.moreActionsAria')}>
+                  <button
+                    type="button"
+                    aria-label={t('settings.providers.detail.moreActionsAria')}
+                    className="settings-dropdown-trigger flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--surface-hover)]"
+                    style={{ color: 'var(--text-tertiary)' }}
+                  >
+                    <MoreHorizontal size={15} />
+                  </button>
+                </Tip>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {canRename && (
+                  <DropdownMenuItem
+                    onClick={() => void management.rename()}
+                    disabled={management.busy}
+                  >
+                    <Pencil size={18} className="mr-2.5" />
+                    {t('settings.providers.pill.rename')}
+                  </DropdownMenuItem>
+                )}
                 {menuItems}
                 <DropdownMenuItem
                   onClick={() =>
@@ -431,6 +575,15 @@ function DetailHeader({
                   )}
                 </DropdownMenuItem>
                 {menuFooter}
+                {resolvedDelete && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={resolvedDelete.onClick} disabled={management.busy}>
+                      <Trash2 size={18} className="mr-2.5" />
+                      {resolvedDelete.label}
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
