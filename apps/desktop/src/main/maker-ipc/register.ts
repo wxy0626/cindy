@@ -3013,6 +3013,8 @@ async function persistContextUsageSnapshotAfterTurn(
  * 只在第一次 isRunning:true 时写入,避免后续 progress status 在用户切模型后覆盖本轮归因。
  */
 const turnModelPromiseBySession = new Map<string, Promise<string>>();
+/** Pi request pricing variant captured at product-turn start. */
+const turnPiFastModeBySession = new Map<string, boolean>();
 /** Billing identity and Pi tariff captured at product-turn start. */
 const turnUsageContextBySession = new Map<string, TurnUsageContext>();
 

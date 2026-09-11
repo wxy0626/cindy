@@ -71,25 +71,25 @@
           "$value": "{reference.defaults.surface-chip-alt.dark}"
         }
       },
-      "dark": {
-        "$type": "color",
-        "$value": "{hex-2c2c2a}"
-      }
-    },
-    "surface-hover": {
-      "light": {
-        "$type": "color",
-        "$value": "{hex-e5e5e0}"
+      "surface-hover": {
+        "light": {
+          "$type": "color",
+          "$value": "{reference.defaults.surface-hover.light}"
+        },
+        "dark": {
+          "$type": "color",
+          "$value": "{reference.defaults.surface-hover.dark}"
+        }
       },
-      "dark": {
-        "$type": "color",
-        "$value": "{hex-2a2a2a}"
-      }
-    },
-    "surface-hover-soft": {
-      "light": {
-        "$type": "color",
-        "$value": "{hex-f8f8f6}"
+      "surface-hover-soft": {
+        "light": {
+          "$type": "color",
+          "$value": "{reference.defaults.surface-hover-soft.light}"
+        },
+        "dark": {
+          "$type": "color",
+          "$value": "{reference.defaults.surface-hover-soft.dark}"
+        }
       },
       "surface-hover-hsl": {
         "light": {
