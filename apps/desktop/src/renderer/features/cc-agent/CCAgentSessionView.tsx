@@ -18,6 +18,7 @@ import { useCodexContextWindow } from '@/hooks/useCodexContextWindow';
 import {
   Profiler,
   useCallback,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -4441,35 +4442,78 @@ export function CCAgentSessionView({
 
   // MessageStream 提成变量:perf/session-switch 的 <Profiler> 是纯诊断,只在 DEV
   // 包裹(见下方渲染处),生产直接渲染此 el,不引入多余 Profiler fiber。
+
+  // ── 切换会话的并发化(2026-09-11 性能修复)─────────────────────────────────
+  // MessageStream 挂 key={sessionId},切换 = 旧树卸载 + 全新树挂载;合并上游后
+  // 该 mount 在 dev 下同步阻塞主线程 2-6.6 秒(LoAF/Profiler 实测),用户感知为
+  // 「切换伙伴对话很卡」。修法:把消息流的**会话身份 + 数据**打包成单一一致性
+  // 快照走 useDeferredValue —— 点击切换后侧栏/标题/输入框立即响应(紧急路径),
+  // 消息流树由 React 在后台**可中断地**并发重建,完成后一次性原子提交。期间
+  // 继续显示上一个会话的流(不是白屏),体感为即时切换 + 内容短暂跟进。
+  // 快照必须整体一致(sessionId 与 messages 同代),避免「新会话 + 旧消息」错配;
+  // 流式输出的高频 messages 更新同样走 deferred,延迟约一帧,无感知。
+  const streamSnapshot = useMemo(
+    () => ({
+      streamSessionId: sessionId,
+      sessionTitle: session?.title ?? null,
+      agentKind: session?.agentKind,
+      remoteHostId: session?.remoteHostId ?? null,
+      workingDir: session?.workingDir ?? '',
+      messages,
+      historyLoaded,
+      taskUpdates,
+      isSessionStreaming: isStreaming,
+      continuationTurnClientId,
+      continuationInFlightProjectionCapability,
+      hasMoreMessages,
+      historyWindowHasIsland,
+    }),
+    [
+      sessionId,
+      session?.title,
+      session?.agentKind,
+      session?.remoteHostId,
+      session?.workingDir,
+      messages,
+      historyLoaded,
+      taskUpdates,
+      isStreaming,
+      continuationTurnClientId,
+      continuationInFlightProjectionCapability,
+      hasMoreMessages,
+      historyWindowHasIsland,
+    ],
+  );
+  const deferredStream = useDeferredValue(streamSnapshot);
+
   const messageStreamEl = (
     <MessageStream
-      key={sessionId}
-      sessionId={sessionId}
-      sessionTitle={session?.title ?? null}
+      key={deferredStream.streamSessionId}
+      sessionId={deferredStream.streamSessionId}
       // 透传 agentKind 让 UserMessage 能按 capabilities.fork / rewind 决定
       // 消息下方 Fork / Rewind icon 的显示 (Codex rewind=false → 隐藏)。
-      agentKind={session?.agentKind}
-      remoteHostId={session?.remoteHostId ?? null}
+      agentKind={deferredStream.agentKind}
+      remoteHostId={deferredStream.remoteHostId ?? null}
       // text-lightbox-trigger-extension F1/F2: cwd flows from session
       // owner down through MessageStream → AssistantMessage / UserMessage.
       // The spec guarantees `session.workingDir` is set; `?? ''` is purely
       // a TS-narrowing fallback, never expected to fire at runtime.
-      workingDir={session?.workingDir ?? ''}
+      workingDir={deferredStream.workingDir ?? ''}
       // 伙伴对话:assistant 气泡挂 TA 的头像(普通任务传 null,渲染完全不变)。
       assistantAvatar={botAssistantAvatar}
       simplifiedBotConversation={Boolean(botChatIdentity)}
       botUnreadBoundaryAt={botChatIdentity ? botUnreadBoundaryAt : null}
-      messages={messages}
-      historyLoaded={historyLoaded}
+      messages={deferredStream.messages}
+      historyLoaded={deferredStream.historyLoaded}
       historyCleared={Boolean(session?.clearedAt)}
-      taskUpdates={taskUpdates}
-      isSessionStreaming={isStreaming}
-      continuationTurnClientId={continuationTurnClientId}
-      continuationInFlightProjectionCapability={continuationInFlightProjectionCapability}
+      taskUpdates={deferredStream.taskUpdates}
+      isSessionStreaming={deferredStream.isSessionStreaming}
+      continuationTurnClientId={deferredStream.continuationTurnClientId}
+      continuationInFlightProjectionCapability={deferredStream.continuationInFlightProjectionCapability}
       onLoadMore={loadOlderMessages}
       isLoadingMore={isLoadingMore}
-      hasMoreMessages={hasMoreMessages}
-      historyWindowHasIsland={historyWindowHasIsland}
+      hasMoreMessages={deferredStream.hasMoreMessages}
+      historyWindowHasIsland={deferredStream.historyWindowHasIsland}
       bottomPadding={overlayHeight}
       bottomCenterClearanceOffset={bottomCenterClearanceOffset}
       contentWidth={messageWidth}
