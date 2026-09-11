@@ -70,6 +70,7 @@ import { shouldShowNativeFatalDialog, type EnsureReadyErrorCode } from './fatalD
 import { runPendingDbSlimmingAtStartup } from './dbSlimmingStartup';
 import { deferReleaseUntilDbSlimmingWorkerTermination } from './dbSlimmingWorkerClient';
 import { migrateToSharedConversationDb } from './sharedConversationDbMigration';
+import { ownerDatabasePath, prepareModelDefaultsProfile } from './modelDefaultsProfile';
 
 import { createLogger } from '../logger';
 import { recordDesktopDevLocalDbStartupResult } from '../devStartupStatus';
@@ -272,6 +273,11 @@ export async function ensureReady(userId: string): Promise<EnsureReadyResult> {
   }
 
   try {
+    // 模型默认值资格按账号隔离；会话数据仍使用上面的跨区域共享库。
+    // 两者不能共用 filePath，否则不同账号会共享初始化标记，或让 claim IPC 永远读不到标记。
+    if (startupLease.kind === 'writer') {
+      prepareModelDefaultsProfile(ownerDatabasePath(app.getPath('userData'), userId));
+    }
     _db = openWithPragmas(filePath);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

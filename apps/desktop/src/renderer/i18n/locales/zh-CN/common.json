@@ -179,6 +179,7 @@
       "restoreFailed": "恢复默认设置失败"
     },
     "tabs": {
+      "storage": "存储空间",
       "general": "通用",
       "billing": "用量和计费",
       "usage": "用量历史",
@@ -921,10 +922,25 @@
         "unknown": "未知"
       },
       "storage": {
+        "mediaSectionTitle": "媒体文件",
+        "databaseSectionTitle": "数据库",
+        "overviewTitle": "本地存储空间",
+        "overviewDescription": "数据库和媒体缓存保存在这台电脑上，Cindy 不会自动删除历史记录。",
+        "mediaSectionHint": "单独管理；清理前请先确认内容",
+        "databaseUsage": "占用 {{size}}",
+        "databaseWarningNote": "请先扫描，再选择要清理的内容。扫描不会立即删除文件。",
+        "dbSizeWarningThresholdLabel": "数据库提醒阈值",
+        "dbSizeWarningThresholdDescription": "当数据库超过此大小（G）时提醒我清理",
+        "dbSizeWarningThresholdInvalid": "请输入 1 到 1024 G 之间的提醒阈值。",
+        "dbSizeWarningSaveFailed": "数据库提醒设置保存失败，请重试。",
+        "dbSizeWarningDisableLabel": "不再提醒",
+        "dbSizeWarningDisableDescription": "开启后将隐藏数据库空间提醒。",
+        "unknown": "未知",
         "title": "存储空间",
         "usageLabel": "媒体文件占用",
-        "usageValue": "{{size}}({{count}} 个文件，含缓存 {{cacheSize}})",
-        "statsFailed": "统计暂不可用",
+        "usageValue": "{{size}}（{{count}} 个文件，缓存 {{cacheSize}}）",
+        "statsFailed": "统计暂时不可用",
+        "refreshStatsButton": "刷新存储占用",
         "legacyUsage": "旧版本数据(只读，不参与清理)：{{size}}",
         "legacyImagesLabel": "图片缓存目录",
         "legacyImagesDescription": "Cindy 不会自动扫描或清理此目录。删除文件后，历史消息中的图片可能无法显示，请自行确认后操作。",
@@ -1278,7 +1294,7 @@
             "manual": "手动"
           },
           "toast": {
-            "title": "已自动加入词典",
+            "title": "已加入词典",
             "titleMultiple": "已自动加入 {{count}} 个词",
             "termsSummary": "{{terms}} 等 {{count}} 个词",
             "automaticAdded": "已自动加入词典：{{term}}",
@@ -1604,6 +1620,7 @@
           "modelIdPlaceholder": "model-id",
           "modelNamePlaceholder": "显示名称",
           "modelContextWindowPlaceholder": "上下文(tokens)",
+          "modelType": "模型类型",
           "modelContextWindowTitle": "上下文窗口(tokens)。留空按 200K 保守默认；影响窗口显示与压缩阈值。",
           "modelSupportsImageInput": "支持图片输入",
           "modelSupportsImageInputHelp": "仅在该模型确实支持视觉输入时开启。保存后新建 Pi 任务生效。",
@@ -3149,12 +3166,29 @@
       "runtimeUnknown": "{{packageName}} 要求 Pi {{range}}，但 Cindy 无法确定当前 Pi 版本是否满足。",
       "warning": {
         "no-resources": "这个扩展没有发现 Pi 资源。",
+        "analysisIncomplete": "Pi 已完成操作，但 Cindy 的后续分析或辅助构建未完成",
         "inspection-failed": "Cindy 无法检查已安装内容，但不会因此停用；仍由 Pi 原生处理。",
         "inspection-limit": "Cindy 已达到详情分析上限并停止展示更多结果；包仍通过 Pi 原生加载。",
         "unsupported-filter": "Cindy 暂时无法展示这个 Pi 资源筛选配置；包和筛选仍由 Pi 原生处理。",
         "unsafe-source": "保存的来源包含凭证或私密 URL 参数。Cindy 仅在此处隐藏敏感字段，不会阻断 Pi 的包行为。"
       },
+      "recovery": {
+        "check-credentials": "请检查来源的凭证",
+        "check-permissions": "请检查文件和目录权限",
+        "check-network": "请检查网络连接",
+        "check-source": "请检查包名或仓库地址",
+        "check-version": "请检查请求的包版本",
+        "check-runtime": "请检查 Pi 运行环境是否可用",
+        "free-disk-space": "请释放磁盘空间",
+        "check-build-dependencies": "请检查扩展的构建依赖",
+        "refresh-package-state": "请刷新扩展列表，检查当前状态",
+        "inspect-state-before-retry": "请先检查扩展当前状态，再重试未完成的步骤"
+      },
       "failure": {
+        "commandFailed": "Pi 原生包命令失败",
+        "commandNotStarted": "Pi 原生包命令未能启动",
+        "commandTimedOut": "Pi 原生包命令已超时",
+        "commandUnknown": "尚无法确认 Pi 原生包命令的结果",
         "sourceUnavailable": "无法访问这个来源。请检查网络或地址，也可以换一个来源重试。",
         "packageNotFound": "没有找到这个包。请检查包名或仓库地址。",
         "versionNotFound": "没有找到这个版本。请选择可用版本后重试。",
@@ -5690,7 +5724,7 @@
       "items": {
         "projectConversation": {
           "title": "项目对话",
-          "description": "项目会话、消息、标题、会话状态"
+          "description": "项目任务、消息、标题、任务状态"
         },
         "projectFiles": {
           "title": "项目文件访问",
@@ -5706,7 +5740,7 @@
         },
         "independentConversations": {
           "title": "独立对话",
-          "description": "没有绑定项目的普通聊天"
+          "description": "没有绑定项目的普通对话"
         },
         "nonSensitivePreferences": {
           "title": "非敏感应用偏好",
@@ -7059,6 +7093,12 @@
       "binary-missing": "组件不可用"
     },
     "ariaLabel": "侧边栏导航",
+    "databaseSizeWarning": {
+      "title": "数据库占用空间较大",
+      "description": "数据库约占 {{size}}，已超过 {{threshold}} G。建议前往存储空间进行清理。",
+      "openSettings": "打开存储空间",
+      "disable": "不再提醒"
+    },
     "horizontalTabbarAria": "主区域视图切换",
     "tabs": {
       "projects": "项目",
@@ -7075,7 +7115,6 @@
       "menuSwitchGlobalDev": "切换国际版",
       "menuSwitchCnDev": "切换中国版",
       "menuAddAccount": "登录更多账号",
-      "menuLogout": "退出登录",
       "canaryBadge": "灰度用户",
       "regionCodeCn": "CN",
       "regionCodeDev": "Dev",
@@ -7358,6 +7397,16 @@
       "thisDevice": "这台电脑",
       "offlineDescription": "{{name}} 暂时离线，{{device}} 重新联网后就能继续聊。",
       "preparing": "正在等伙伴准备好…"
+    },
+    "capabilities": {
+      "title": "能力",
+      "search": "搜索能力",
+      "loading": "加载中…",
+      "skill": "技能",
+      "mcp": "MCP",
+      "toolset": "内置工具",
+      "unavailable": "不可用",
+      "empty": "没有匹配的能力"
     }
   },
   "common": {
@@ -7729,6 +7778,7 @@
         "china": "中国",
         "image": "图像",
         "video": "视频",
+        "audio": "音频生成",
         "tts": "语音合成",
         "stt": "语音转写",
         "realtime": "实时语音",
@@ -8740,6 +8790,7 @@
         "title": "上下文用量",
         "loading": "正在加载…",
         "noLiveSession": "暂无可用的上下文数据。Claude Code 会话启动后再试一次。",
+        "noCachedDetails": "暂无缓存详情",
         "unsupportedAgent": "{{agent}} 暂不支持上下文用量展示。",
         "percentFull": "已使用 {{pct}}%",
         "tokensSummary": "{{used}} / {{total}} ({{pct}}%)",
@@ -8780,7 +8831,7 @@
           "skillsSource": "技能",
           "messages": "消息",
           "conversationSource": "对话",
-          "subagentsSource": "子智能体",
+          "subagentsSource": "Subagent",
           "autocompactBuffer": "自动压缩缓冲",
           "compactBuffer": "压缩缓冲",
           "freeSpace": "剩余可用"
@@ -9223,6 +9274,7 @@
       "contextRing": {
         "compactHint": "点击压缩上下文",
         "codexAutoHint": "Codex 由服务端自动压缩，不支持手动触发",
+        "codexPendingHint": "配置将在下次发送时应用，当前用量尚未读取。",
         "piApproximateHint": "来源拆分为近似值；总量以 Pi 当前上下文用量为准",
         "tokenSplitTitle": "本轮 token 拆分",
         "tokenSplitAria": "本轮 token 拆分进度",
@@ -9230,12 +9282,12 @@
         "tokenSplitCacheRead": "缓存读取",
         "tokenSplitCacheCreate": "缓存写入",
         "tokenSplitOutput": "输出",
-        "agentUsageTitle": "代理用量",
-        "agentUsageAgent": "代理",
+        "agentUsageTitle": "Agent 用量",
+        "agentUsageAgent": "Agent",
         "agentUsageTokens": "tokens",
         "agentUsageShare": "占比",
-        "mainAgent": "主代理",
-        "subAgent": "子代理",
+        "mainAgent": "主 Agent",
+        "subAgent": "Subagent",
         "speedLabel": "速度",
         "suggestionLabel": "建议",
         "hintLabel": "提示",
@@ -10842,6 +10894,8 @@
       "sourceExternal": "外部",
       "sourceInternal": "内置",
       "sourceBuiltin": "内置",
+      "sourceSkillhub": "SkillHub",
+      "sourceLocal": "本地",
       "import": "导入技能",
       "importAria": "从本地压缩包或 SKILL.md 导入技能",
       "importPickerTitle": "选择导入位置",

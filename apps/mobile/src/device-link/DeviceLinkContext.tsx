@@ -77,8 +77,7 @@ import {
   clearSessionScheduleIndexCache,
   invalidateOfflineScheduleIndexFailureFor,
   invalidateScheduleIndexForDevice,
-  invalidateTransientScheduleIndexFailureFor,
-  invalidateTransientScheduleIndexFailures,
+  invalidateScheduleIndexesAfterLinkRecovery,
 } from '@/session/scheduleIndex';
 import { isTransientRemoteError } from '@/device-link/remoteRetry';
 import {
@@ -588,8 +587,8 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
     );
     if (!plan) return { retry: false };
 
-    // 只清当前 peer 在断线窗口留下的瞬时负缓存，避免 A 的恢复改变 B 的节流状态。
-    invalidateTransientScheduleIndexFailureFor(targetDeviceId);
+    // 只失效当前 peer 的旧成功快照和瞬时链路失败，避免 A 的恢复改变 B 的节流状态。
+    invalidateScheduleIndexesAfterLinkRecovery(targetDeviceId);
     const result = await rehydrateDeviceLinkPeer(plan, {
       isCancelled: () => (
         backgroundReleaseInFlightRef.current
@@ -740,10 +739,9 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
     if (targetDeviceId) {
       scheduler?.request(targetDeviceId);
     } else {
-      // Relay 重连 / App 回前台是共享生命周期事件：即使某设备此刻没有持有
-      // topic，它此前因 WSS 掉线留下的 NOT_CONNECTED 负缓存也已经失效。
-      // 单 peer 恢复不会走这里，仍只清自己的缓存。
-      invalidateTransientScheduleIndexFailures();
+      // Relay 重连 / App 回前台可能漏过日程推送:在通知页面恢复前统一失效
+      // 旧成功快照和本机断线负缓存。单 peer 恢复仍只清自己的缓存。
+      invalidateScheduleIndexesAfterLinkRecovery();
       const deviceIds = new Set(registryRef.current.deviceIds());
       for (const deviceId of forcedPeerRecoveryIntentRef.current.deviceIds()) {
         deviceIds.add(deviceId);
@@ -841,6 +839,12 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
       },
     });
     clientRef.current = client;
+    mobileDebugLog('debug', 'device-link', 'runtime identity', {
+      commit: /^[a-f0-9]{7,40}$/i.test(process.env.EXPO_PUBLIC_XDT_GIT_COMMIT ?? '')
+        ? process.env.EXPO_PUBLIC_XDT_GIT_COMMIT : 'unknown',
+      version: Constants.nativeAppVersion ?? 'unknown',
+      build: Constants.nativeBuildVersion ?? 'unknown',
+    });
     const diagnostics = createRecoveryDiagnostics(
       (event) => mobileDeviceLinkLogger.info('recovery phase', event),
       () => connectionEpochRef.current,
@@ -1112,6 +1116,7 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
       ));
       clearOnePresenceWipeTimer(presenceWipeTimersRef.current, deviceId);
       if (shouldRecover) void rehydrateWithClient(client, deviceId);
+      return shouldRecover;
     });
     client.start();
 
@@ -1180,6 +1185,7 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
       graceMs: BACKGROUND_STOP_GRACE_MS,
       releaseWaitMs: BACKGROUND_FINAL_UNSUBSCRIBE_WAIT_MS,
       suspendMs: BACKGROUND_SUSPEND_SUSPECT_MS,
+      report: (event) => mobileDebugLog('debug', 'device-link', 'background lifecycle', event),
     });
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') {
