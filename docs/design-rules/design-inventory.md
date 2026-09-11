@@ -11,7 +11,7 @@
 
 计数快照日期：2026-09-10。生成命令：`pnpm design:inventory`。裸颜色匹配与 `scripts/hardcoded-color-audit.mjs` 共用 `scripts/shared/hardcoded-color-match.mjs`（HEX / rgb() / rgba() / hsl() / hsla()），台账统计层额外剔除 `var()` 包装与注释（TS/TSX 剥块注释与整行注释）——语义 token 消费与注释引用不是迁移债务；裸圆角为粗粒度（`rounded*` class、`border-radius:` 与 React style 对象的 `borderRadius:`）。Token 计数为样式源里 `var(--token)` / `hsl(var(--token)` 的去重 ID 数。
 
-登记 surface 数：35。平台本轮仅 Desktop。
+登记 surface 数：49。平台包含 Desktop 与 Mobile；静态入口发现不表示已迁移或已实机验证。
 
 | ID | 平台 | 标题 | 生产入口 | 可达组件 | 样式来源 | Token 数 | 裸颜色 | 裸圆角 |
 | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |
@@ -32,7 +32,7 @@
 | `desktop.overlay.confirm` | desktop | 确认弹窗 | ConfirmDialogProvider 及插件确认宿主 | ConfirmDialogProvider, ForgeOidcInstallConfirmHost, GhostConfirmDialogHost, PluginPublisherConfirmHost | apps/desktop/src/renderer/cindy-brain/ForgeOidcInstallConfirmHost.tsx, apps/desktop/src/renderer/cindy-brain/GhostConfirmDialogHost.tsx, apps/desktop/src/renderer/components/ui/confirm-dialog-provider.tsx, apps/desktop/src/renderer/components/ui/confirm-dialog.tsx, apps/desktop/src/renderer/features/plugin/PluginPublisherConfirmHost.tsx | 21 | 0 | 6 |
 | `desktop.overlay.find-in-page` | desktop | 页内查找条 | App → FindInPageBar | FindInPageBar | apps/desktop/src/renderer/components/find-in-page/FindInPageBar.tsx, apps/desktop/src/renderer/components/find-in-page/findInPageOwnership.ts | 2 | 0 | 4 |
 | `desktop.overlay.interaction-portal` | desktop | 交互提问卡片 | components/interaction-portal（AskUser / 权限类卡片出口） | InteractionPromptCardShell, InteractionPromptHost | apps/desktop/src/renderer/components/interaction-portal/InteractionPromptCardShell.tsx, apps/desktop/src/renderer/components/interaction-portal/InteractionPromptHost.tsx, apps/desktop/src/renderer/components/interaction-portal/InteractionPromptSlot.tsx, apps/desktop/src/renderer/components/interaction-portal/index.ts, apps/desktop/src/renderer/components/interaction-portal/store.ts | 10 | 0 | 4 |
-| `desktop.overlay.permission-prompt` | desktop | 权限询问 | PermissionPrompt（会话内权限卡；DS-11 迁移前置） | AskUserQuestionPrompt, PermissionPrompt, PermissionSelector | apps/desktop/src/renderer/components/new-chat/AskUserQuestionPrompt.tsx, apps/desktop/src/renderer/components/new-chat/PermissionPrompt.tsx, apps/desktop/src/renderer/components/new-chat/PermissionSelector.tsx | 51 | 4 | 27 |
+| `desktop.overlay.permission-prompt` | desktop | 权限询问 | PermissionPrompt（会话内权限卡；DS-11 迁移前置） | AskUserQuestionPrompt, PermissionPrompt, PermissionSelector | apps/desktop/src/renderer/components/new-chat/AskUserQuestionPrompt.tsx, apps/desktop/src/renderer/components/new-chat/PermissionPrompt.tsx, apps/desktop/src/renderer/components/new-chat/PermissionSelector.tsx | 51 | 2 | 27 |
 | `desktop.overlay.route-error` | desktop | 路由错误页 | router errorElement → RouteErrorFallback / TopLevelErrorBoundary | AppCrashScreen, RouteErrorFallback, TopLevelErrorBoundary | apps/desktop/src/renderer/components/error/AppCrashScreen.tsx, apps/desktop/src/renderer/components/error/LocalDbFatalScreen.tsx, apps/desktop/src/renderer/components/error/RouteErrorFallback.tsx, apps/desktop/src/renderer/components/error/TopLevelErrorBoundary.tsx, apps/desktop/src/renderer/components/error/localDbFatalView.ts | 11 | 0 | 6 |
 | `desktop.overlay.splash` | desktop | 启动遮罩 | App → SplashScreen；同源 gating 下并挂 LoginBrandStage（z-9980 品牌画布，启动期即可见、Splash(z-9999) 之下） | LoginBrandStage, SplashScreen | apps/desktop/src/renderer/components/login/LoginBrandStage.tsx, apps/desktop/src/renderer/components/splash/SplashScreen.tsx | 3 | 0 | 5 |
 | `desktop.overlay.toast` | desktop | Toast | App 常驻 ToastContainer（用户可见出口，不展开业务逻辑） | Toast, ToastContainer | apps/desktop/src/renderer/components/ui/toast/Toast.tsx, apps/desktop/src/renderer/components/ui/toast/ToastContainer.tsx, apps/desktop/src/renderer/components/ui/toast/index.ts | 7 | 4 | 3 |
@@ -99,13 +99,49 @@
 | `/skillhub/market/:name` | /skillhub/market | Navigate |
 | `/skillhub/market/manage/:name` | /skillhub/market | Navigate |
 
+### Mobile 文件路由覆盖
+
+| 入口 | 导出组件 | surface ID |
+| --- | --- | --- |
+| apps/mobile/app/(auth)/login.tsx | LoginRoute | `mobile.auth` |
+| apps/mobile/app/account-deletion.tsx | AccountDeletionScreen | `mobile.account-deletion` |
+| apps/mobile/app/add-account.tsx | AddAccountScreen | `mobile.auth` |
+| apps/mobile/app/automations/[deviceId].tsx | AutomationsScreen | `mobile.automations` |
+| apps/mobile/app/companions/direct/[threadId].tsx | CompanionDirectMessages | `mobile.companions.direct` |
+| apps/mobile/app/devices/[deviceId].tsx | DeviceDetailScreen | `mobile.devices` |
+| apps/mobile/app/devices/desktop/[deviceId].tsx | @/remote-desktop/RemoteDesktopScreen | `mobile.remote-desktop` |
+| apps/mobile/app/devices/index.tsx | HomeScreen | `mobile.home` |
+| apps/mobile/app/devices/manage/[deviceId].tsx | DeviceInformationScreen | `mobile.device-management` |
+| apps/mobile/app/devices/manage.tsx | DeviceManagementScreen | `mobile.device-management` |
+| apps/mobile/app/files/[sessionId].tsx | RemoteFileBrowserScreen | `mobile.files` |
+| apps/mobile/app/files/preview/[sessionId].tsx | RemoteFilePreviewScreen | `mobile.files` |
+| apps/mobile/app/index.tsx | IndexScreen | `mobile.home` |
+| apps/mobile/app/resources/[collectionId]/[resourceId].tsx | RemoteResourceResolverScreen | `mobile.resources` |
+| apps/mobile/app/resources/[collectionId].tsx | RemoteCollectionScreen | `mobile.resources` |
+| apps/mobile/app/sessions/[sessionId].tsx | SessionScreen | `mobile.chat.session` |
+| apps/mobile/app/sessions/new.tsx | NewRemoteSessionScreen | `mobile.chat.new` |
+| apps/mobile/app/settings.tsx | SettingsScreen | `mobile.settings` |
+
+### Mobile 布局 / 开发入口排除
+
+| 文件 | 原因 |
+| --- | --- |
+| apps/mobile/app/+native-intent.ts | native intent routing; no screen |
+| apps/mobile/app/_layout.tsx | layout; visible mounted feedback is a separate overlay surface |
+| apps/mobile/app/listperf.tsx | __DEV__ list performance harness; not production UI |
+| apps/mobile/app/splash-preview.tsx | MOBILE_VISUAL_MOCK_ENABLED preview; not production UI |
+
+Mobile 静态图跟随本地 import/reexport 与平台 TSX；根布局仅登记可见反馈，不把布局自身或资源实例另算 surface。服务端动态内容、运行期 import 拼接、原生系统呈现及未显式导入的消费者需人工复核；不宣称完整递归渲染图。
+
 <!-- END GENERATED: surface-facts -->
 
 ## 人工标注
 
+DS-8（2026-09-10，本地候选，未提交）：Desktop 的 522/541 注册项、11 内置主题静态覆盖与通用排版/间距/圆角/尺寸/动效已通过 DTCG→Terrazzo 2.7.1 接入原消费者；19 项暂留及维护方法见 [Token README](../../packages/design-tokens/README.md)。默认/内置冻结、用户主题兼容、全量单测与两模式代表样本已验证，可撤销源改风格演练已恢复。这是数值来源接管，不把下面任一完整 surface 自动升级为 migrated；图表命中、Permission、G2、69 图公开与平台待项仍按原责任跟进。实机审核以当前 Cindy 测试版为准，截图在桌面唯一主计划的 `附件/DS-8/`，不入 Git。
+
 生成器不得改本表。首轮（DS-2a）：全部 `legacy`；暂无归属写 `unassigned`。`protected` 与迁移状态正交。
 
-Mobile 尚未展开顶层 screen，**待 DS-7 增量发现**；数值接管在 DS-10。
+Mobile 已由 DS-7 纳入同一台账（2026-09-10 静态入口发现），保留 legacy；数值接管在 DS-10。发现维护由 Codex 执行、kirozeng 协调；长期页面负责人待认领，2026-09-17 复查，不以 unassigned 表示无人跟进。
 
 另册 / 排除（不进必做迁移清单）：
 
@@ -139,7 +175,7 @@ Mobile 尚未展开顶层 screen，**待 DS-7 增量发现**；数值接管在 D
 | `desktop.overlay.toast` | unassigned | legacy | — | DS-8 提供适用数值；DS-9 按入口核对标准组件与呈现继承 | DS-9 核对实际消费者、局部 alias 与跨入口影响；保留现有保护合同，残余项登记理由、实际负责人及复查日期 |
 | `desktop.plugins.app-main` | unassigned | legacy | — | DS-8 提供适用数值；DS-9 按入口核对标准组件与呈现继承 | DS-9 核对实际消费者、局部 alias 与跨入口影响；保留现有保护合同，残余项登记理由、实际负责人及复查日期 |
 | `desktop.plugins.installed` | unassigned | legacy | — | DS-8 提供适用数值；DS-9 按入口核对标准组件与呈现继承 | DS-9 核对实际消费者、局部 alias 与跨入口影响；保留现有保护合同，残余项登记理由、实际负责人及复查日期 |
-| `desktop.settings` | kirozeng（DS-6 与用量图表跟进） | pilot | DESIGN.md §10 语义豁免色族消费者；外部主题导入保护 token（资源用量类别色在独立窗）；DESIGN.md §5 登记成员 `usage-heatmap-day` / `usage-token-bar` | DS-4 / DS-4b 已落地；DS-6 两张表单与指定普通确认复用已实施，用户测试版手动审核通过；DS-8 数值同源 | DS-6 补全状态、说明与公开附件；focus、ivory/elevated 见治理 §10。旧 alias 与 slot 按作用域生效，禁止仅因同值删除局部配色；DS-6/8/9/11 按实际消费者分批核对跨 surface alias，confirm-dialog 归 DS-6；用量图表形状与密度已随 #4064 恢复、等价日期控件未交付，不记为已合规（见下方迁移记录）；09-08 蓝色热力图描边、多色柱图七日强调与微弹裁决见 [组件规范](./usage-history-charts.md)，新增日期入口已按用户选择移除，替代命中方案待裁决；当前优化按所有者要求同步 #4076 供评审，合入前仍须解决命中尺寸并完成视觉验收，不提前标记 migrated；DS-6 SC/G2/公开附件/平台待项见 [本批证据](../design-evidence/2026-09-08/ds6-forms.md)，不把局部通过当完整设置页 migrated |
+| `desktop.settings` | kirozeng（DS-6 与用量图表跟进） | pilot | DESIGN.md §10 语义豁免色族消费者；外部主题导入保护 token（资源用量类别色在独立窗）；DESIGN.md §5 登记成员 `usage-heatmap-day` / `usage-token-bar` | DS-4 / DS-4b 已落地；DS-6 两张表单与指定普通确认已随 #4135 合入，用户测试版手动审核通过；DS-8 数值同源 | DS-6 工程与真实测试版审核已交付，G2/公开附件/平台待项按证据复查；focus、ivory/elevated 见治理 §10。旧 alias 与 slot 按作用域生效，禁止仅因同值删除局部配色；DS-6/8/9/11 按实际消费者分批核对跨 surface alias，confirm-dialog 归 DS-6；用量图表形状与密度已随 #4064 恢复、等价日期控件未交付，不记为已合规（见下方迁移记录）；09-08 蓝色热力图描边、多色柱图七日强调与微弹裁决见 [组件规范](./usage-history-charts.md)，新增日期入口已按用户选择移除，替代命中方案待裁决；图表优化 #4076 已合入；命中尺寸替代方案仍待设计裁决，合入不表示目标已合规，不提前标记 migrated；DS-6 SC/G2/公开附件/平台待项见 [本批证据](../design-evidence/2026-09-08/ds6-forms.md)，不把局部通过当完整设置页 migrated |
 | `desktop.shell.main-layout` | unassigned | legacy | DESIGN.md §15 CINDY 皮肤族（侧栏 vibrancy / 选中 pill）；外部主题导入保护 token；DESIGN.md §5 登记成员 `workflow-status-cell`（background-tasks 面板详情） | DS-8 提供适用数值；DS-9 按入口核对标准组件与呈现继承 | DS-9 核对实际消费者、局部 alias 与跨入口影响；保留现有保护合同，残余项登记理由、实际负责人及复查日期 |
 | `desktop.skillhub.local` | unassigned | legacy | — | DS-8 提供适用数值；DS-9 按入口核对标准组件与呈现继承 | DS-9 核对实际消费者、局部 alias 与跨入口影响；保留现有保护合同，残余项登记理由、实际负责人及复查日期 |
 | `desktop.skillhub.market` | unassigned | legacy | — | DS-8 提供适用数值；DS-9 按入口核对标准组件与呈现继承 | DS-9 核对实际消费者、局部 alias 与跨入口影响；保留现有保护合同，残余项登记理由、实际负责人及复查日期 |
@@ -151,6 +187,20 @@ Mobile 尚未展开顶层 screen，**待 DS-7 增量发现**；数值接管在 D
 | `desktop.window.sidebar` | unassigned | legacy | DESIGN.md §15 CINDY 皮肤族 | DS-8 提供适用数值；DS-9 按入口核对标准组件与呈现继承 | DS-9 核对实际消费者、局部 alias 与跨入口影响；保留现有保护合同，残余项登记理由、实际负责人及复查日期 |
 | `desktop.window.voice-dictionary-toast` | unassigned | legacy | — | DS-8 提供适用数值；DS-9 按入口核对标准组件与呈现继承 | DS-9 核对实际消费者、局部 alias 与跨入口影响；保留现有保护合同，残余项登记理由、实际负责人及复查日期 |
 | `desktop.window.voice-overlay` | unassigned | legacy | — | DS-8 提供适用数值；DS-9 按入口核对标准组件与呈现继承 | DS-9 核对实际消费者、局部 alias 与跨入口影响；保留现有保护合同，残余项登记理由、实际负责人及复查日期 |
+| `mobile.account-deletion` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.auth` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.automations` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.chat.new` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.chat.session` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.companions.direct` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.device-management` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.devices` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.files` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.home` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.overlay.connection-startup` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.remote-desktop` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.resources` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
+| `mobile.settings` | kirozeng 协调 / Codex 发现维护；页面 owner 待认领 | legacy | — | DS-7 已发现入口；DS-10 接管，未迁移 | 2026-09-17 复查入口变化和页面 owner；动态内容、平台实际呈现留 DS-10 验证 |
 
 
 ### Usage History category colors (2026-09-09)

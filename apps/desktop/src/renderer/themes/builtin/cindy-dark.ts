@@ -182,12 +182,18 @@ const overrides = {
   'sidebar-user-card-border': 'rgba(255, 255, 255, 0.13)',
   'sidebar-user-card-text': '#D4D4D4',
 } as const;
+// END GENERATED DS-8: theme
+
+
 
 export const cindyDark: Theme = {
   id: 'cindy-dark',
   name: 'CINDY Dark',
   type: 'dark',
-  colors: overrides,
+  colors: {
+    ...GENERATED_OVERRIDES,
+    "surface-translucent-sidebar": CINDY_ACRYLIC_WINDOW_BACKING.dark,
+  },
   // U5 品牌版横向 logo：白字+红箭头，深底可见。
   brand: { logo: { src: cindyLogoDark } },
 };

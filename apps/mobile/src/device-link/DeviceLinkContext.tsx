@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import { isHistoryViewUnavailable } from '@cindy/maker-shared/message-window';
 import { findRemoteHistoryView } from '@/session/remoteHistoryView';
 import { createBackgroundConnection } from './backgroundConnection';
+import { invokeWithHistoryViewCapability } from './historyViewCapability';
 import { createRecoveryDiagnostics, settleMeasuredSnapshot, type RecoveryPhase } from './recoveryDiagnostics';
 import { confirmTrackedSubscription, SubscriptionAcknowledgements } from './subscriptionAcknowledgements';
 import { AppState, Platform } from 'react-native';
@@ -144,6 +145,7 @@ import {
   schedulePresenceWipeTimer,
   updatePresenceAvailability,
 } from '@/device-link/presenceRecovery';
+import { createOfflineMirrorWipeQueue } from '@/device-link/offlineMirrorWipeQueue';
 import { hasMoreOlderMessages } from '@/session/messagePaging';
 import type { InputProjection, PendingInteraction, RemoteMessage } from '@/session/types';
 import { createVisualMockDeviceLinkContext, seedVisualMockStore } from '@/debug/visualMock';
@@ -1315,8 +1317,23 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
       opts?.preSend?.();
     };
     preSend();
-    return sendInvokeWithAccessHandling<T>(requireClient(clientRef.current), deviceId, channel, args, { preSend });
-  }, []);
+    const client = requireClient(clientRef.current);
+    return invokeWithHistoryViewCapability(
+      channel,
+      async () => {
+        // Reuse the existing peer-scoped handshake cache and its invalidation.
+        // A late accept from an obsolete link must not declare a downgrade.
+        const tracked = sendOpenLinkOnce(client, deviceId);
+        const accepted = await tracked.request;
+        if (clientRef.current !== client || openLinkInFlightRef.current.get(deviceId) !== tracked) {
+          throw new DeviceLinkError('NOT_CONNECTED', 'history link was superseded');
+        }
+        preSend();
+        return accepted;
+      },
+      () => sendInvokeWithAccessHandling<T>(client, deviceId, channel, args, { preSend }),
+    );
+  }, [sendOpenLinkOnce]);
 
   const subscribe = useCallback(async (owner: string, deviceId: string, topics: string[]) => {
     // `owner` is the stable id of the mounted consumer (e.g. `session:<id>`). Tracking is
@@ -1934,16 +1951,24 @@ function requireClient(client: DeviceLinkClient | null): DeviceLinkClient {
   return client;
 }
 
-function markOfflineDeviceMirror(deviceId: string): void {
+function markOfflineDeviceMirrors(deviceIds: readonly string[]): void {
   // 普通离线只清依赖在线连接的 live 投影,保留 session/messages。这样用户切回
   // 刚看过的会话时先看到 last-known 内容,恢复后 marker 失效会触发后台窗口对账。
-  remoteSessionStore.markDeviceOffline(deviceId);
-  invalidateScheduleIndexForDevice(deviceId);
-  remoteScheduleEventStore.invalidateDeviceMirror(deviceId);
-  evictDeviceProviders(deviceId);
-  evictDeviceModelMeta(deviceId);
-  evictAgentCapabilitiesForDevice(deviceId);
-  evictComposerPaletteCacheForDevice(deviceId);
+  // 批量入口:同一波离线两个 store 各 notify 一次,而不是每台各 notify 一轮——
+  // 逐台通知时设备数超过 React 嵌套更新上限即致命退出(2026-09-10)。
+  remoteSessionStore.markDevicesOffline(deviceIds);
+  for (const deviceId of deviceIds) {
+    invalidateScheduleIndexForDevice(deviceId);
+    evictDeviceProviders(deviceId);
+    evictDeviceModelMeta(deviceId);
+    evictAgentCapabilitiesForDevice(deviceId);
+    evictComposerPaletteCacheForDevice(deviceId);
+  }
+  remoteScheduleEventStore.invalidateDeviceMirrors(deviceIds);
+}
+
+function markOfflineDeviceMirror(deviceId: string): void {
+  markOfflineDeviceMirrors([deviceId]);
 }
 
 function wipeUnavailableDeviceMirror(deviceId: string): void {
@@ -1962,12 +1987,16 @@ function wipeUnavailableDeviceMirror(deviceId: string): void {
   evictComposerPaletteCacheForDevice(deviceId);
 }
 
+// 离线 wipe 的通知合并:同一 task 内到期/调度的多台设备收拢成一次批量清理。
+// 逐台通知时设备数超过 React 嵌套更新上限即致命退出(2026-09-10 Android)。
+const offlineMirrorWipeQueue = createOfflineMirrorWipeQueue(markOfflineDeviceMirrors);
+
 const basePresenceWipeTimerDeps = {
   now: Date.now,
   setTimer: (callback: () => void, delayMs: number) =>
     setTimeout(callback, delayMs),
   clearTimer: clearTimeout,
-  wipe: markOfflineDeviceMirror,
+  wipe: offlineMirrorWipeQueue.enqueue,
 };
 
 function scheduleUnavailableDeviceMirrorWipe(

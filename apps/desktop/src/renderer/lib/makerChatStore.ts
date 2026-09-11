@@ -504,6 +504,8 @@ export interface ChatMessage {
     | 'cmd'
     | 'goal-complete'
     | 'goal-resumed'
+    /** 个人版制作任务的完成记录,由持久化的 agentMeta.cindyMakeCompletion 派生,重开仍在。 */
+    | 'cindy-make-complete'
     | 'learn'
     | 'review'
     | 'auto-resume'
@@ -680,6 +682,8 @@ export interface AgentStatus {
   contextTokens: number;
   /** Context window size from SDK modelUsage (0 = not yet known). */
   contextWindow: number;
+  /** Model-picker metadata is replaceable until a runtime snapshot arrives. */
+  contextWindowFromRuntime?: boolean;
   isRunning: boolean;
   startedAt: number | null;
   /** Turn-cumulative output tokens for live TPS. */
@@ -6759,6 +6763,7 @@ function applyBackgroundStatus(
       : rawStatus;
   let contextTokens = state.agentStatus.contextTokens;
   let contextWindow = state.agentStatus.contextWindow;
+  let contextWindowFromRuntime = state.agentStatus.contextWindowFromRuntime;
   if (
     typeof data.contextWindow === 'number' &&
     data.contextWindow > 0 &&
@@ -6767,6 +6772,7 @@ function applyBackgroundStatus(
   ) {
     contextTokens = data.contextTokens;
     contextWindow = data.contextWindow;
+    contextWindowFromRuntime = true;
   }
   return {
     ...state,
@@ -6775,6 +6781,7 @@ function applyBackgroundStatus(
       status,
       contextTokens,
       contextWindow,
+      contextWindowFromRuntime,
     },
   };
 }
@@ -6891,6 +6898,7 @@ function handleStatusUpdate(
       costUsd: cu,
       contextTokens: ct,
       contextWindow: cw,
+      contextWindowFromRuntime: hasContextSnapshot || state.agentStatus.contextWindowFromRuntime,
       isRunning: update.isRunning,
       startedAt,
       ...mergeLiveGenerationStatus(isTurnStart, update, state.agentStatus),
@@ -10998,6 +11006,7 @@ function ensureInitialMessages(sessionId: string): void {
             costUsd: session.totalCostUsd ?? s.agentStatus.costUsd,
             contextTokens: session.contextTokens || s.agentStatus.contextTokens,
             contextWindow: session.contextWindow || s.agentStatus.contextWindow,
+            // Read projection can supply catalog metadata; only status events prove runtime origin.
           };
         }
         return Object.keys(updates).length > 0 ? { ...s, ...updates } : s;
@@ -14963,8 +14972,9 @@ async function clearSessionAfterGuardImpl(sessionId: string, clearedAt: string):
 }
 
 /**
- * F-CMD: Insert a local-only system card into the message stream.
- * Not persisted to the database — purely ephemeral UI.
+ * F-CMD: Insert a local system card into the message stream.
+ * Cindy Make cards are persisted below so the structured card survives reloads;
+ * the other command cards remain local-only UI state.
  */
 function insertSystemCard(
   sessionId: string,
@@ -14999,7 +15009,49 @@ function insertSystemCard(
       ],
     };
   });
+  if (
+    (cardType === 'cindy-make' || cardType === 'cindy-make-doctor') &&
+    data?.modalOnly !== true
+  ) {
+    enqueueCindyMakeCardPersistence(sessionId, clientId, cardType, data ?? {}, true);
+  }
   return clientId;
+}
+
+const CINDY_MAKE_CARD_MARKER = '__cindyMakeCard';
+const cindyMakeCardQueues = new Map<string, Promise<void>>();
+const cindyMakeNewCards = new Set<string>();
+
+/** Persist Cindy Make's structured card in the same message row that renders it. */
+function enqueueCindyMakeCardPersistence(
+  sessionId: string,
+  clientId: string,
+  cardType: 'cindy-make' | 'cindy-make-doctor',
+  data: Record<string, unknown>,
+  creating = false,
+): void {
+  const key = `${sessionId}:${clientId}`;
+  if (creating) cindyMakeNewCards.add(key);
+  const previous = cindyMakeCardQueues.get(key) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const content = { [CINDY_MAKE_CARD_MARKER]: { type: cardType, data } };
+      if (cindyMakeNewCards.has(key)) {
+        await messageService.create(sessionId, {
+          clientId,
+          role: 'assistant',
+          content,
+        });
+        cindyMakeNewCards.delete(key);
+      } else {
+        await messageService.updateContent(sessionId, clientId, content);
+      }
+    })
+    .catch((error) => {
+      log.warn('Failed to persist Cindy Make card:', error);
+    });
+  cindyMakeCardQueues.set(key, next);
 }
 
 /**
@@ -15063,6 +15115,20 @@ function updateSystemCardData(
     };
     return { ...s, messages };
   });
+  const current = getSnapshot(sessionId).messages.find((message) => message.clientId === clientId);
+  if (
+    current?.systemCardType === 'cindy-make' ||
+    current?.systemCardType === 'cindy-make-doctor'
+  ) {
+    if (current.systemCardData?.modalOnly !== true) {
+      enqueueCindyMakeCardPersistence(
+        sessionId,
+        clientId,
+        current.systemCardType,
+        current.systemCardData ?? {},
+      );
+    }
+  }
 }
 
 /**
@@ -16174,8 +16240,10 @@ function setContextWindow(sessionId: string, contextWindow: number | undefined):
     return;
   const nextContextWindow = Math.floor(contextWindow);
   setState(sessionId, (s) => {
-    // Model-selection metadata must not overwrite Codex's native usage snapshot.
-    if (s.agentKind === 'codex') return s;
+    // Model-selection metadata cannot relabel usage from an applied runtime budget.
+    // Keep Codex unknown until its native total is read, even before its first turn.
+    if (s.agentKind === 'codex' || s.agentStatus.contextWindowFromRuntime ||
+        s.agentStatus.contextTokens > 0) return s;
     if (s.agentStatus.contextWindow === nextContextWindow) return s;
     return {
       ...s,
@@ -17087,6 +17155,27 @@ function mapServerMessages(serverMsgs: Message[]): ChatMessage[] {
   const ordered = filtered.sort(compareMessageTimeline);
   const legacyUserTurnCosts = projectLegacyUserTurnCosts(ordered);
   const mapped = ordered.map((m) => {
+    const persistedCindyCard =
+      m.role === 'assistant' && m.content && typeof m.content === 'object'
+        ? (m.content as Record<string, unknown>)[CINDY_MAKE_CARD_MARKER]
+        : undefined;
+    if (persistedCindyCard && typeof persistedCindyCard === 'object') {
+      const card = persistedCindyCard as Record<string, unknown>;
+      const type: 'cindy-make' | 'cindy-make-doctor' =
+        card.type === 'cindy-make' ? 'cindy-make' : 'cindy-make-doctor';
+      const data =
+        card.data && typeof card.data === 'object'
+          ? (card.data as Record<string, unknown>)
+          : {};
+      return {
+        clientId: m.clientId,
+        role: 'assistant' as const,
+        content: '',
+        isStreaming: false,
+        systemCardType: type,
+        systemCardData: data,
+      };
+    }
     if (m.role === 'tool_use' && m.content && typeof m.content === 'object') {
       const c = m.content as Record<string, unknown>;
       const { toolName, input: toolInput, toolUseId } = parseMessageToolUse(m);
@@ -17463,6 +17552,17 @@ function mapServerMessages(serverMsgs: Message[]): ChatMessage[] {
         isStreaming: false,
         systemCardType: 'goal-complete' as const,
         systemCardData: { ...m.agentMeta.goalCompletion },
+      };
+    }
+    // 个人版制作任务完成记录:同 goal-complete,从持久 agentMeta 派生成完成卡片。
+    if (m.role === 'assistant' && m.agentMeta?.cindyMakeCompletion) {
+      return {
+        clientId: m.clientId,
+        role: m.role,
+        content: '',
+        isStreaming: false,
+        systemCardType: 'cindy-make-complete' as const,
+        systemCardData: { ...m.agentMeta.cindyMakeCompletion },
       };
     }
     // /goal 提示记录(usageLimited 到点自动续跑)→ 'goal-resumed' system card,同上派生。

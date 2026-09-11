@@ -209,6 +209,7 @@ export function commitActiveAppSession(
 export function commitVolatileAppSession(
   mode: AppSessionMode,
   cloudOwnerId?: string | null,
+  forceBumpGeneration = false,
 ): ActiveAppSession {
   const previous = ensureLoaded();
   let dataOwnerId: string | null = null;
@@ -219,10 +220,11 @@ export function commitVolatileAppSession(
     if (!normalized) throw new Error('cloud app session requires a verified data owner');
     dataOwnerId = normalized;
   }
-  if (previous.mode === mode && previous.dataOwnerId === dataOwnerId) {
+  const ownerChanged = previous.mode !== mode || previous.dataOwnerId !== dataOwnerId;
+  if (!ownerChanged && !forceBumpGeneration) {
     return { ...previous };
   }
-  appSessionCommitBoundaryHook?.();
+  if (ownerChanged) appSessionCommitBoundaryHook?.();
   active = {
     mode,
     dataOwnerId,

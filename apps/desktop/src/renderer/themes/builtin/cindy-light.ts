@@ -181,12 +181,18 @@ const overrides = {
   'create-agent-control-bg-pressed': 'var(--surface-hover-soft)',
   'create-agent-send-icon': '#FCFCFC',
 } as const;
+// END GENERATED DS-8: theme
+
+
 
 export const cindyLight: Theme = {
   id: 'cindy-light',
   name: 'CINDY Light',
   type: 'light',
-  colors: overrides,
+  colors: {
+    ...GENERATED_OVERRIDES,
+    "surface-translucent-sidebar": CINDY_ACRYLIC_WINDOW_BACKING.light,
+  },
   // U5 品牌版横向 logo：黑字+红箭头，浅底可见。
   brand: { logo: { src: cindyLogoLight } },
 };
