@@ -3,8 +3,8 @@
   "generatedBy": "packages/design-tokens/src/classify.ts",
   "snapshotCount": 541,
   "categories": {
-    "literal": 265,
-    "alias": 240,
+    "literal": 264,
+    "alias": 241,
     "hsl-triplet": 6,
     "runtime-derived-or-protected": 30
   },
@@ -1029,8 +1029,8 @@
       "lightKind": "alias",
       "darkKind": "alias",
       "aliasOf": {
-        "light": "sidebar-item-active",
-        "dark": "sidebar-item-active"
+        "light": "border-default-hsl",
+        "dark": "border-default-hsl"
       },
       "modeledAsSemantic": false
     },
@@ -2440,10 +2440,14 @@
     },
     {
       "id": "perm-item-selected-bg",
-      "category": "literal",
-      "destination": "reference-candidate",
-      "lightKind": "hex",
-      "darkKind": "hex",
+      "category": "alias",
+      "destination": "semantic-or-component-candidate",
+      "lightKind": "alias",
+      "darkKind": "alias",
+      "aliasOf": {
+        "light": "model-item-hover",
+        "dark": "model-item-hover"
+      },
       "modeledAsSemantic": false
     },
     {
@@ -3415,8 +3419,8 @@
       "lightKind": "alias",
       "darkKind": "alias",
       "aliasOf": {
-        "light": "text-tertiary-stone",
-        "dark": "text-tertiary-stone"
+        "light": "focus-ring",
+        "dark": "focus-ring"
       },
       "modeledAsSemantic": false
     },

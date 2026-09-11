@@ -7165,8 +7165,8 @@ export function ChatInput({
                   undefined,
                   expectedAgentSwitchRevision,
                   {
-                    effort: newEffort,
-                    fastMode: restoredFast,
+                    effort: atomicEffort,
+                    fastMode: atomicFast,
                     ...(confirmedContextWindow ? { confirmedContextWindow } : {}),
                   } as { effort: string; fastMode: boolean },
                 );
@@ -7771,7 +7771,7 @@ export function ChatInput({
                 newProviderId,
                 expectedAgentSwitchRevision,
                 {
-                  effort: eff,
+                  effort: atomicEffort,
                   fastMode: restoredFast,
                   ...(confirmedContextWindow ? { confirmedContextWindow } : {}),
                 } as { effort: string; fastMode: boolean },

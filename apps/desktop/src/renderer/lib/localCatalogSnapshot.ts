@@ -56,11 +56,22 @@ export async function refreshLocalCatalogSnapshot(): Promise<boolean> {
   }
 }
 
-/** 启动预热保留原有三次瞬时 IPC 重试语义；每次仍按可用快照原子提交。 */
+/** 启动预热重试上限：3 次快试后转入慢退避，覆盖启动窗口内最长的阻塞阶段。 */
+const PRELOAD_MAX_ATTEMPTS = 40;
+
+/**
+ * 启动预热：前 3 次 500ms 快试保留原语义，之后转 2s 慢退避直到首个完整快照提交。
+ *
+ * 启动窗口内 owner boundary 结算、账号迁移（activeOwnerMigrationPending）与本地 DB 门
+ * 就绪都可能阻塞 30s 以上，快试全败不代表异常；此前 3 次后永久放弃，一旦错过窗口
+ * 供应商页会停在空列表，直到下一次目录广播（可能永远不来）。成功即返回；达上限才告警。
+ */
 export async function preloadLocalCatalogSnapshot(): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < PRELOAD_MAX_ATTEMPTS; attempt += 1) {
     if (await refreshLocalCatalogSnapshot()) return;
-    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500));
+    // 前 3 次 500ms 快试；之后 2s 慢退避，等 owner 迁移与本地 DB 门就绪。
+    const delayMs = attempt < 2 ? 500 : 2000;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
-  log.warn('local catalog snapshot preload failed after 3 attempts');
+  log.warn('local catalog snapshot preload gave up after repeated attempts');
 }

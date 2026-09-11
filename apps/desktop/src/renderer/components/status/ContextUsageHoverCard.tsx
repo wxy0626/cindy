@@ -48,6 +48,29 @@ export interface ContextUsagePopoverProps extends ContextUsageHoverCardProps {
   children: ReactElement;
 }
 
+/**
+ * token 来源分类的 i18n key 表。
+ * 登记**完整 key**而不是「前缀 + 拼接」：模板拼接会让 i18nCompleteness 静态扫描
+ * 只看到半截前缀（`chat.systemCard.context.categories.`），把整条误报成缺词条；
+ * 写全字面量才能被门禁校验五语齐全。
+ */
+const CONTEXT_SOURCE_LABEL_KEY: Record<string, string> = {
+  systemPromptSource: 'chat.systemCard.context.categories.systemPromptSource',
+  toolsSource: 'chat.systemCard.context.categories.toolsSource',
+  mcpSource: 'chat.systemCard.context.categories.mcpSource',
+  skillsSource: 'chat.systemCard.context.categories.skillsSource',
+  conversationSource: 'chat.systemCard.context.categories.conversationSource',
+  subagentsSource: 'chat.systemCard.context.categories.subagentsSource',
+};
+
+/** 本轮 token 四格拆分的 i18n key 表（同上，用完整 key 避免静态扫描误报）。 */
+const CONTEXT_METRIC_LABEL_KEY: Record<string, string> = {
+  tokenSplitInput: 'ccAgent.layout.contextRing.tokenSplitInput',
+  tokenSplitCacheCreate: 'ccAgent.layout.contextRing.tokenSplitCacheCreate',
+  tokenSplitOutput: 'ccAgent.layout.contextRing.tokenSplitOutput',
+  tokenSplitCacheRead: 'ccAgent.layout.contextRing.tokenSplitCacheRead',
+};
+
 /** 有限非负数，避免脏 IPC 数据破坏进度条布局。 */
 function finiteNonNegative(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -236,7 +259,7 @@ function ContextUsageSourceDetails({
               style={{ backgroundColor: row.color }}
             />
             <span className="truncate text-[var(--text-secondary)]">
-              {t('chat.systemCard.context.categories.' + row.labelKey)}
+              {t(CONTEXT_SOURCE_LABEL_KEY[row.labelKey] ?? row.labelKey)}
             </span>
           </div>
           <span className="shrink-0 tabular-nums text-[var(--text-secondary)]">
@@ -279,7 +302,7 @@ function ContextUsageMetrics({ details }: { details?: TurnUsageDetails | null })
               style={{ backgroundColor: metric.color }}
             />
             <span className="truncate">
-              {t('ccAgent.layout.contextRing.' + metric.labelKey)}
+              {t(CONTEXT_METRIC_LABEL_KEY[metric.labelKey] ?? metric.labelKey)}
             </span>
           </span>
           <span className="shrink-0 tabular-nums text-[var(--text-primary)]">

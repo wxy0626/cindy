@@ -563,23 +563,25 @@ function isCssColor(value: unknown): value is string {
 }
 
 function localizeContextCategory(t: ReturnType<typeof useTranslation>['t'], name: string): string {
+  // 表里登记**完整 key**：模板拼接（`categories.${key}`）会让 i18nCompleteness
+  // 静态扫描只看到半截前缀并误报缺词条；写全字面量才能被门禁校验。
   const keyByName: Record<string, string> = {
-    'System prompt': 'systemPrompt',
-    'System tools': 'systemTools',
-    '[ANT-ONLY] System tools': 'systemTools',
-    'MCP tools': 'mcpTools',
-    'MCP tools (deferred)': 'mcpToolsDeferred',
-    'System tools (deferred)': 'systemToolsDeferred',
-    'Custom agents': 'customAgents',
-    'Memory files': 'memoryFiles',
-    Skills: 'skills',
-    Messages: 'messages',
-    'Autocompact buffer': 'autocompactBuffer',
-    'Compact buffer': 'compactBuffer',
-    'Free space': 'freeSpace',
+    'System prompt': 'chat.systemCard.context.categories.systemPrompt',
+    'System tools': 'chat.systemCard.context.categories.systemTools',
+    '[ANT-ONLY] System tools': 'chat.systemCard.context.categories.systemTools',
+    'MCP tools': 'chat.systemCard.context.categories.mcpTools',
+    'MCP tools (deferred)': 'chat.systemCard.context.categories.mcpToolsDeferred',
+    'System tools (deferred)': 'chat.systemCard.context.categories.systemToolsDeferred',
+    'Custom agents': 'chat.systemCard.context.categories.customAgents',
+    'Memory files': 'chat.systemCard.context.categories.memoryFiles',
+    Skills: 'chat.systemCard.context.categories.skills',
+    Messages: 'chat.systemCard.context.categories.messages',
+    'Autocompact buffer': 'chat.systemCard.context.categories.autocompactBuffer',
+    'Compact buffer': 'chat.systemCard.context.categories.compactBuffer',
+    'Free space': 'chat.systemCard.context.categories.freeSpace',
   };
   const key = keyByName[name];
-  return key ? t(`chat.systemCard.context.categories.${key}`) : name;
+  return key ? t(key) : name;
 }
 
 function lastPathPart(path: string): string {

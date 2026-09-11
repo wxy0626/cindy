@@ -149,6 +149,30 @@ describe('local profile visibility adoption', () => {
     expect(prefs.isModelEnabled('pi', 'xd', { id: 'restored', defaultEnabled: true })).toBe(false);
   });
 
+  it('falls back to catalog defaults on an empty baseline and stops recording unmet scopes', async () => {
+    // 事故态基线（2026-09-10 线上实测）：defaults 全空但 scopes 已记满 —— 修复前
+    // isModelEnabled 对目录里每个模型都返回 false，模型选择器/供应商页全空。
+    memStorage.setItem(initKey('owner-a'), JSON.stringify({
+      eligibleForDefaults: false,
+      defaults: {},
+      scopes: [JSON.stringify(['xd', 'pi'])],
+      followCatalogKeys: [],
+    }));
+    const prefs = await import('../state/modelVisibilityPrefs');
+    await prefs.setModelVisibilityOwner('owner-a', 1, 'cloud');
+    // 空基线回退目录默认：可见性跟随 defaultEnabled，而不是一律 false。
+    expect(prefs.isModelEnabled('pi', 'xd', { id: 'off', defaultEnabled: true })).toBe(true);
+    expect(prefs.isModelEnabled('pi', 'xd', { id: 'default', defaultEnabled: false })).toBe(false);
+    // 迁移不再把新 scope 记入空基线：defaults 仍空、scopes 不增长（幂等，不落盘）。
+    expect(await prefs.migrateModelVisibilityDefaults('owner-a', 1, [catalog])).toBe(true);
+    expect(JSON.parse(memStorage.getItem(initKey('owner-a'))!)).toEqual({
+      eligibleForDefaults: false,
+      defaults: {},
+      scopes: [JSON.stringify(['xd', 'pi'])],
+      followCatalogKeys: [],
+    });
+  });
+
   it.each([false, true])('preserves target restore-default choices through adoption and restart (interrupted: %s)', async (interrupted) => {
     seed();
     const sourceOverrides = { 'pi:xd:off': false, 'pi:xd:on': true, 'pi:xd:keep': true, 'pi:xd:manual': true };

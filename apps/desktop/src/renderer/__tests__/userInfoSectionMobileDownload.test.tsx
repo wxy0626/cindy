@@ -101,9 +101,64 @@ vi.mock('@/components/sidebar/MobileDownloadDialog', () => ({
 import { UserInfoSection } from '@/components/sidebar/UserInfoSection';
 
 beforeEach(() => {
+  authState.user = { name: 'Cindy user', avatar: null };
+  authState.mode = 'cloud';
+  authState.dataOwnerId = 'owner-a';
+  authState.isCanary = false;
   confirm.mockReset().mockResolvedValue(true);
   runningSnapshot.clear();
   navigate.mockClear();
+  listAccounts.mockReset().mockResolvedValue({
+    mutationAllowed: true,
+    accounts: [
+      {
+        accountKey: 'current',
+        displayName: 'Cindy user',
+        email: 'current@example.com',
+        avatarUrl: null,
+        kind: 'personal',
+        orgName: null,
+        orgLogoUrl: null,
+        isCurrent: true,
+      },
+      {
+        accountKey: 'other',
+        displayName: 'Other user',
+        email: 'other@example.com',
+        avatarUrl: null,
+        kind: 'personal',
+        orgName: null,
+        orgLogoUrl: null,
+        isCurrent: false,
+      },
+    ],
+  });
+  syncAccounts.mockReset().mockResolvedValue({
+    mutationAllowed: true,
+    accounts: [
+      {
+        accountKey: 'current',
+        displayName: 'Cindy user',
+        email: 'current@example.com',
+        avatarUrl: null,
+        kind: 'personal',
+        orgName: null,
+        orgLogoUrl: null,
+        isCurrent: true,
+      },
+      {
+        accountKey: 'other',
+        displayName: 'Other user',
+        email: 'other@example.com',
+        avatarUrl: null,
+        kind: 'personal',
+        orgName: null,
+        orgLogoUrl: null,
+        isCurrent: false,
+      },
+    ],
+  });
+  switchAccount.mockReset();
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
     value: {

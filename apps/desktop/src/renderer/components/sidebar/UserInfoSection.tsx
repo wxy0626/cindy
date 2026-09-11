@@ -94,7 +94,6 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
   const { state: betaChannelState } = useBetaChannelSettings();
   const hasPendingUpdate = status === 'ready' || status === 'superseding';
   const isFlameReopen = hasPendingUpdate && dismissed;
-  const showBetaLabel = !betaChannelState.loading && betaChannelState.enableBeta;
 
   // 头像地址变化(设置页改头像 / 服务端资料更新)时重置加载失败标记,
   // 让新地址有机会渲染,而不是永远停在首字母兜底。
@@ -125,7 +124,13 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
   // 取首字——那会渲染成「未」/「N」这类无意义字符,且四语各不相同。
   const showNotSignedInGlyph = !user && isLocal;
   const appDisplayVersion = window.electronAPI.appDisplayVersion;
-  const appDisplayVersionDetail = window.electronAPI.appDisplayVersionDetail;
+  // 开发版用独立标签显示语义版本，正式版继续显示区域和应用版本。
+  const semanticVersion = window.electronAPI.appSemanticVersion?.trim() || '';
+  const isDevelopmentBuild = window.electronAPI.appIsPackaged === false;
+  const betaLabel = !betaChannelState.loading && betaChannelState.enableBeta ? 'Beta' : null;
+  const developmentLabel = isDevelopmentBuild
+    ? `开发${semanticVersion ? ` ${semanticVersion}` : ''}`
+    : null;
   // 版本行的区域前缀。「哪些区域要标」只有 CINDY_REGION_CODE 一个事实源(issue
   // 反馈链路同源),口径见 DESIGN.md §16.3 与 region-and-editions.md §2.3:
   // cn → CN、dev → Dev、**global 不标**——Cindy 默认版本不给自己贴标签自证是全球版,
@@ -141,9 +146,16 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
   const appVersionLabel = appRegionLabel
     ? `${appRegionLabel} · ${appDisplayVersion}`
     : appDisplayVersion;
-  const appVersionLabelDetail = appRegionLabel
-    ? `${appRegionLabel} · ${appDisplayVersionDetail}`
-    : appDisplayVersionDetail;
+  // Git 版本只作为开发标签的悬停提示，不挤占账号第二行。
+  const gitRevision = appDisplayVersion.split(' · ').slice(1).join(' · ').trim();
+  const gitVersionLabel = isDevelopmentBuild && gitRevision ? `Git版本：${gitRevision}` : null;
+  // 账号行优先使用安全展示值，避免把姓名误当成账号标识。
+  const accountIdentifier = user?.accountLabel?.trim() || user?.email?.trim() || '';
+  const developmentAccountLabel =
+    CURRENT_CINDY_REGION === 'cn' && accountIdentifier
+      ? `CN · ${accountIdentifier}`
+      : accountIdentifier;
+  const accountDetailLabel = isDevelopmentBuild ? developmentAccountLabel : appVersionLabel;
   const remoteAvailable = mode === 'cloud';
 
   const openSettings = () => {
@@ -398,12 +410,38 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
         :has() 把胶囊底色还原,只让当前按钮高亮,避免双层叠色。 */}
       <div
         className={cn(
-          'flex h-10 items-center rounded-full border border-[var(--sidebar-user-card-border)] bg-[var(--sidebar-user-card-bg)] px-[7px]',
+          'relative',
+          'flex min-h-10 items-center rounded-full border border-[var(--sidebar-user-card-border)] bg-[var(--sidebar-user-card-bg)] px-[7px] py-1.5',
           'transition-colors hover:bg-[var(--sidebar-user-card-bg-hover)]',
           'has-[.flame-btn:hover]:bg-[var(--sidebar-user-card-bg)]',
           'has-[.mobile-download-btn:hover]:bg-[var(--sidebar-user-card-bg)]',
         )}
       >
+        <div
+          className="absolute left-2 top-0 z-10 flex -translate-y-1/2 items-center gap-1"
+          aria-hidden="true"
+        >
+          {developmentLabel ? (
+            <Tip text={gitVersionLabel ?? developmentLabel} side="top" delay={0}>
+              <button
+                type="button"
+                className="rounded-[3px] bg-[#c93636] px-1.5 py-0.5 text-10 font-semibold leading-none text-white shadow-sm"
+                data-testid="sidebar-development-label"
+                aria-label={gitVersionLabel ?? developmentLabel}
+              >
+                {developmentLabel}
+              </button>
+            </Tip>
+          ) : null}
+          {betaLabel ? (
+            <span
+              className="rounded-[3px] bg-[#3566a8] px-1.5 py-0.5 text-10 font-semibold leading-none text-white shadow-sm"
+              data-testid="sidebar-beta-channel-label"
+            >
+              {betaLabel}
+            </span>
+          ) : null}
+        </div>
         {renderMoreMenu(
           <button
             aria-label={moreLabel}
@@ -464,20 +502,12 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
                 {displayName}
               </p>
               {/* 2px gap 与同栏 userNameContainer 保持一致。 */}
-              <p
-                className="flex min-w-0 items-center gap-1 text-10 leading-[1.3] text-[var(--sidebar-user-card-text)]"
-                title={appVersionLabelDetail}
+              <div
+                className="flex min-w-0 flex-col text-10 leading-[1.3] text-[var(--sidebar-user-card-text)]"
+                title={accountDetailLabel}
               >
-                <span className="truncate opacity-80">{appVersionLabel}</span>
-                {showBetaLabel ? (
-                  <span
-                    className="shrink-0 select-none opacity-80"
-                    data-testid="sidebar-beta-channel-label"
-                  >
-                    {t('settings.betaChannel.badge')}
-                  </span>
-                ) : null}
-              </p>
+                <span className="truncate opacity-80">{accountDetailLabel}</span>
+              </div>
             </div>
           </button>,
         )}

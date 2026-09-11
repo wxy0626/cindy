@@ -20,6 +20,7 @@ import {
   ERROR_TEXT,
   LOADING_RING,
   LOGIN_COLORS,
+  LOCAL_PROJECT_SYNC_TYPE,
   METHOD_ROW,
   PANEL,
   REGION_PILL,
@@ -1101,10 +1102,10 @@ export function LoginLocalProjectSyncDialog({
         }}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h2 id="login-local-project-sync-title" className="text-center font-bold" style={{ fontSize: 32, lineHeight: '38px', color: LOGIN_COLORS.titleText }}>
+        <h2 id="login-local-project-sync-title" className="text-center font-bold" style={{ fontSize: LOCAL_PROJECT_SYNC_TYPE.title.fontSize, lineHeight: LOCAL_PROJECT_SYNC_TYPE.title.lineHeight, color: LOGIN_COLORS.titleText }}>
           {title}
         </h2>
-        <p id="login-local-project-sync-description" className="mt-4 text-center" style={{ fontSize: 20, lineHeight: '30px', color: LOGIN_COLORS.secondaryText }}>
+        <p id="login-local-project-sync-description" className="mt-4 text-center" style={{ fontSize: LOCAL_PROJECT_SYNC_TYPE.description.fontSize, lineHeight: LOCAL_PROJECT_SYNC_TYPE.description.lineHeight, color: LOGIN_COLORS.secondaryText }}>
           {description}
         </p>
         <div className="mt-5 flex justify-end gap-3" role="group" aria-label={title}>
@@ -1138,10 +1139,10 @@ export function LoginLocalProjectSyncDialog({
               className="flex min-h-[82px] items-center gap-5 border-b border-[var(--border-subtle)] py-3"
             >
               <div className="min-w-0 flex-1">
-                <div className="font-bold" style={{ fontSize: 21, lineHeight: '28px', color: LOGIN_COLORS.controlText }}>
+                <div className="font-bold" style={{ fontSize: LOCAL_PROJECT_SYNC_TYPE.fieldLabel.fontSize, lineHeight: LOCAL_PROJECT_SYNC_TYPE.fieldLabel.lineHeight, color: LOGIN_COLORS.controlText }}>
                   {field.label}
                 </div>
-                <div className="break-words" style={{ fontSize: 17, lineHeight: '24px', color: LOGIN_COLORS.secondaryText }}>
+                <div className="break-words" style={{ fontSize: LOCAL_PROJECT_SYNC_TYPE.fieldDescription.fontSize, lineHeight: LOCAL_PROJECT_SYNC_TYPE.fieldDescription.lineHeight, color: LOGIN_COLORS.secondaryText }}>
                   {field.description}
                 </div>
               </div>

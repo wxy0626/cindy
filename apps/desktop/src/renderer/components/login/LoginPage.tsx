@@ -1455,11 +1455,11 @@ export function LoginPage({
           style={{ background: LOGIN_COLORS.panelBg, boxShadow: 'inset 0 0 0 1px ' + LOGIN_COLORS.panelBorder }}
           data-testid="login-region-selector"
         >
-          <h1 className="text-[28px] font-bold" style={{ color: LOGIN_COLORS.titleText }}>选择版本</h1>
-          <p className="mt-3 text-[15px]" style={{ color: LOGIN_COLORS.secondaryText }}>请选择要使用的服务区域</p>
+          <h1 className="text-28 font-semibold" style={{ color: LOGIN_COLORS.titleText }}>选择版本</h1>
+          <p className="mt-3 text-15" style={{ color: LOGIN_COLORS.secondaryText }}>请选择要使用的服务区域</p>
           <div className="mt-8 grid grid-cols-2 gap-4">
-            <button type="button" data-testid="login-region-cn" disabled={regionSelecting} onClick={() => void chooseRegion('cn')} className="h-12 rounded-xl border border-white/20 bg-[#171717] px-4 text-[15px] font-semibold text-white transition-colors hover:bg-white hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:cursor-wait disabled:opacity-60">中国版</button>
-            <button type="button" data-testid="login-region-global" disabled={regionSelecting} onClick={() => void chooseRegion('global')} className="h-12 rounded-xl border border-white/20 bg-[#171717] px-4 text-[15px] font-semibold text-white transition-colors hover:bg-white hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:cursor-wait disabled:opacity-60">国际版</button>
+            <button type="button" data-testid="login-region-cn" disabled={regionSelecting} onClick={() => void chooseRegion('cn')} className="h-12 rounded-xl border border-white/20 bg-[#171717] px-4 text-15 font-semibold text-white transition-colors hover:bg-white hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:cursor-wait disabled:opacity-60">中国版</button>
+            <button type="button" data-testid="login-region-global" disabled={regionSelecting} onClick={() => void chooseRegion('global')} className="h-12 rounded-xl border border-white/20 bg-[#171717] px-4 text-15 font-semibold text-white transition-colors hover:bg-white hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:cursor-wait disabled:opacity-60">国际版</button>
           </div>
         </div>
       </div>

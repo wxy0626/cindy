@@ -533,7 +533,13 @@ export async function migrateModelVisibilityDefaults(
               break;
             }
           }
-          if (!next.scopes.includes(scope)) next.scopes.push(scope);
+          if (!next.scopes.includes(scope)) {
+            // 只有真的写入了 defaults（initializeScope）才把新 scope 记成「默认已定」。
+            // eligibleForDefaults=false 时若照记 scope，会留下「defaults 全空 + scopes
+            // 已记满」的自相矛盾基线：此后 isModelEnabled 对目录里每个模型都判 false
+            // （2026-09-10 模型选择器全空的根因之一）。
+            if (initializeScope) next.scopes.push(scope);
+          }
         }
       }
       if (Object.keys(aliases).length !== Object.keys(map).length
@@ -567,6 +573,13 @@ export function isModelEnabled(
   if (override !== undefined) return override;
   if (initialization?.followCatalogKeys.includes(key)) return isModelVisible(undefined, model.defaultEnabled);
   if (initialization && (!mayInitializeDefaults || initialization.scopes.length > 0)) {
+    // 空基线（defaults 一条都没记录过）不能解释为「每个模型都被有意关闭」——那只说明
+    // 初始化从未发生（如 eligibleForDefaults=false 时 scopes 被照记、defaults 永空，
+    // 2026-09-10 供应商页/模型选择器全空的实测根因）。此时回退目录默认值；
+    // 只要 defaults 记录过任何值，「未列入 = 关闭」的 fail-closed 语义保持不变。
+    if (Object.keys(initialization.defaults).length === 0) {
+      return isModelVisible(undefined, model.defaultEnabled);
+    }
     return initialization.defaults[key] ?? false;
   }
   return !activeOwnerId || (mayInitializeDefaults && !activeOwnerMigrationPending)

@@ -141,13 +141,14 @@ interface Exemption {
 }
 
 const EXEMPTIONS: Exemption[] = [
-  // 登录/Splash 品牌画布域:Tailwind font-bold ×7 + 内联 700 五处形态
+  // 登录/Splash 品牌画布域:Tailwind font-bold ×13 + 内联 700 五处形态
   // (238 直接字面量、290 filled/error 三元、300/310 focus/blur style 赋值、748 内联 style)。
+  // 13 = 上游 7 处 + 本地登录家族弹窗(本地项目同步/协议同意)6 处。
   {
     file: 'src/renderer/components/login/LoginControls.tsx',
     rule: 'tw-weight',
     reason: '登录品牌画布 Bold(§16)',
-    signatures: [{ match: 'font-bold', expected: 7 }],
+    signatures: [{ match: 'font-bold', expected: 13 }],
   },
   {
     file: 'src/renderer/components/login/LoginControls.tsx',

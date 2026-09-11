@@ -51,13 +51,37 @@ describe('provider model auto-refresh coordinator', () => {
     // Splash 已取过公共 Catalog；startup 不重复请求，并给失败恢复留 5 分钟宽限。
     await coordinator.requestAutoRefresh('startup');
     expect(refreshCatalog).not.toHaveBeenCalled();
+    // providers-open / model-selector-open 是用户显式意图，不受启动宽限压制：
+    // 否则快照错过启动窗口后，供应商页会一直空到宽限结束（此前线上实测 5 分钟）。
     await coordinator.requestAutoRefresh('providers-open');
-    expect(refreshCatalog).not.toHaveBeenCalled();
-
-    now += PROVIDER_MODEL_AUTO_REFRESH_FAILURE_COOLDOWN_MS;
-    await coordinator.requestAutoRefresh('model-selector-open');
     expect(refreshCatalog).toHaveBeenCalledOnce();
+
+    // 刷新成功后进入正常 30 分钟冷却：宽限已清，冷却接管。
+    now += PROVIDER_MODEL_AUTO_REFRESH_COOLDOWN_MS;
+    await coordinator.requestAutoRefresh('model-selector-open');
+    expect(refreshCatalog).toHaveBeenCalledTimes(2);
     await coordinator.requestAutoRefresh('foreground');
+    expect(refreshCatalog).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the startup grace applied to automatic triggers only', async () => {
+    let now = 1_000;
+    const refreshCatalog = vi.fn(async () => undefined);
+    const coordinator = createProviderModelRefreshCoordinator({
+      listProviders: async () => [view('openai', true)],
+      refreshProvider: vi.fn(async () => undefined),
+      refreshCatalog,
+      now: () => now,
+      log: { debug: vi.fn(), warn: vi.fn() },
+    });
+
+    await coordinator.requestAutoRefresh('startup');
+    expect(refreshCatalog).not.toHaveBeenCalled();
+    // 自动类触发（foreground / system-resume）仍被宽限压制。
+    await coordinator.requestAutoRefresh('foreground');
+    expect(refreshCatalog).not.toHaveBeenCalled();
+    now += PROVIDER_MODEL_AUTO_REFRESH_FAILURE_COOLDOWN_MS;
+    await coordinator.requestAutoRefresh('system-resume');
     expect(refreshCatalog).toHaveBeenCalledOnce();
   });
 

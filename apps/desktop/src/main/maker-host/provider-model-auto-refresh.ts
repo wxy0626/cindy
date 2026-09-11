@@ -123,8 +123,14 @@ export function createProviderModelRefreshCoordinator(
     if (catalogInflight?.scopeGeneration === scopeGeneration) {
       return catalogInflight.promise;
     }
+    // providers-open / model-selector-open 是用户显式打开界面的意图信号：启动宽限
+    // （startup 刚刷过、防重复的节流）只该压自动类触发，不该把用户主动逼清单的时机
+    // 也压掉——否则快照错过启动窗口后，供应商页会空到宽限结束（可达 5 分钟）。
+    // 这些触发之后仍走正常的 30 分钟冷却，不会造成高频重复刷新。
+    const isUserIntentTrigger =
+      trigger === 'providers-open' || trigger === 'model-selector-open';
     const now = deps.now();
-    if (catalogStartupGraceUntil !== undefined) {
+    if (catalogStartupGraceUntil !== undefined && !isUserIntentTrigger) {
       if (now < catalogStartupGraceUntil) {
         deps.log.debug('model catalog auto-refresh skipped by startup grace', {
           trigger,

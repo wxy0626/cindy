@@ -74,11 +74,11 @@
     "surface-hover": {
       "light": {
         "$type": "color",
-        "$value": "{hex-e5e5e5}"
+        "$value": "{hex-e5e5e0}"
       },
       "dark": {
         "$type": "color",
-        "$value": "{hex-3c3c3a}"
+        "$value": "{hex-2a2a2a}"
       }
     },
     "surface-hover-soft": {

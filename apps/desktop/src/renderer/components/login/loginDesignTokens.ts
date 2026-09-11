@@ -236,9 +236,23 @@ export const CONSENT_DIALOG = {
   button: { y: 260, width: 260, height: 80, radius: 40, fontSize: 24, disagreeX: 70, agreeX: 350 },
 } as const;
 
+/**
+ * 本地项目同步弹窗(登录皮肤家族;登录页「本地项目同步」开关面板)。
+ *
+ * 数值是 **2x 设计画布单位**,渲染时随 PANEL_FIXED_SCALE(=0.5)缩放:屏幕上得
+ * 标题 16 / 说明 10 / 字段名 10.5 / 字段描述 8.5 CSS px。
+ * 落点在本文件是 DESIGN.md §3 的既有约定——品牌画布裸数字只许进常量本体,
+ * 消费组件(LoginControls)只引用常量,不再自带字面量。
+ */
+export const LOCAL_PROJECT_SYNC_TYPE = {
+  title: { fontSize: 32, lineHeight: '38px' },
+  description: { fontSize: 20, lineHeight: '30px' },
+  fieldLabel: { fontSize: 21, lineHeight: '28px' },
+  fieldDescription: { fontSize: 17, lineHeight: '24px' },
+} as const;
+
 /** 顶部拖拽条 overlay 高度(附录 C §1.4 条4 工程定案:46px 独立层,不占文档流)。 */
 export const DRAG_BAR_HEIGHT = 46;
-
 /** 验证码重发倒计时时长(Step 3a 契约:双端 42s,绝对 deadline 模型)。 */
 export const RESEND_COUNTDOWN_MS = 42_000;
 

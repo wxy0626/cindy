@@ -106,9 +106,13 @@ export function stripDesktopDevRegionArgs(argv) {
 }
 
 /**
- * 计算 desktop dev 启动配置。remote dev 默认读取同区域仓内清单；
- * local + cn 是“本地运行桌面端、连接 CN 云端”的开发路径，也读取 CN 清单；
- * 只有不带 cn 的 local 路径才生成 localhost 本地服务清单。
+ * 计算 desktop dev 启动配置。
+ *
+ * remote dev **始终**读取同区域仓内清单——父进程继承来的 XDT_ENDPOINT_MANIFEST_FILE
+ * 属于内部透传状态，不是用户覆盖，必须被区域清单顶掉（否则同一终端里连着切区域会
+ * 一直停留在上一次的清单）。local 模式才把继承值当用户覆盖保留。
+ * local + cn 是“本地运行桌面端、连接 CN 云端”的开发路径，也读取 CN 清单；只有不带
+ * cn 的 local 路径才生成 localhost 本地服务清单。
  * --endpoints-cdn / XDT_ENDPOINTS_CDN=1 时不注入默认文件，让主进程走区域化 CDN。
  */
 export function resolveDesktopDevStartupConfig({
@@ -119,6 +123,7 @@ export function resolveDesktopDevStartupConfig({
   const region = resolveDesktopDevRegion(argv, env);
   const endpointsCdn =
     argv.includes("--endpoints-cdn") || env.XDT_ENDPOINTS_CDN === "1";
+  // local 模式下继承的清单是用户显式覆盖，保留优先；remote 模式忽略它。
   const configuredManifestFile = env.XDT_ENDPOINT_MANIFEST_FILE?.trim();
   // local + cn 必须复用 CN 云端清单，否则 dev-local-env 会把认证地址错误生成为
   // localhost:3344，登录页就会把本机没有启动认证服务误报成网络故障。
@@ -128,10 +133,11 @@ export function resolveDesktopDevStartupConfig({
     dev: "endpoint.dev.json",
   }[region]}`;
   const endpointManifestFile =
-    configuredManifestFile ||
-    (!endpointsCdn && (mode === "remote" || (mode === "local" && region === "cn"))
-      ? regionManifestFile
-      : undefined);
+    mode === "remote"
+      ? endpointsCdn
+        ? undefined
+        : regionManifestFile
+      : configuredManifestFile || (region === "cn" ? regionManifestFile : undefined);
   return { region, endpointsCdn, endpointManifestFile };
 }
 

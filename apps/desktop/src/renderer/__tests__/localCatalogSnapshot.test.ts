@@ -203,18 +203,31 @@ describe('refreshLocalCatalogSnapshot', () => {
 
       if (recovers) { rejectWrite = false; rejectLock = false; }
       await vi.advanceTimersByTimeAsync(1000);
-      await preload;
-      expect(mocks.loadProviders).toHaveBeenCalledTimes(recovers ? 2 : 3);
-      expect(mocks.commitProviders).toHaveBeenCalledTimes(recovers ? 1 : 0);
-      expect(mocks.commitCapabilities).toHaveBeenCalledTimes(recovers ? 1 : 0);
       if (recovers) {
+        // 故障源已在快试窗口内恢复：第 2 次尝试（500ms 处）成功提交。
+        await preload;
+        expect(mocks.loadProviders).toHaveBeenCalledTimes(2);
+        expect(mocks.commitProviders).toHaveBeenCalledTimes(1);
+        expect(mocks.commitCapabilities).toHaveBeenCalledTimes(1);
         expect(mocks.commitProviders).toHaveBeenLastCalledWith(2, providers);
         expect(sync).toHaveBeenLastCalledWith('owner-a', 1, { 'pi:xd:recommended': true },
           expect.not.objectContaining({ pending: true }));
         expect(prefs.isModelEnabled('pi', 'xd', { id: 'recommended' })).toBe(true);
       } else {
-        expect(mocks.warn).toHaveBeenCalledWith('local catalog snapshot preload failed after 3 attempts');
+        // 快试 3 次全败（0/500/1000ms），此时尚无任何提交，镜像仍标记 pending。
+        expect(mocks.loadProviders).toHaveBeenCalledTimes(3);
+        expect(mocks.commitProviders).not.toHaveBeenCalled();
+        expect(mocks.commitCapabilities).not.toHaveBeenCalled();
         expect(sync).toHaveBeenLastCalledWith('owner-a', 1, {}, expect.objectContaining({ pending: true }));
+        // 慢退避语义：恢复故障源后下一次尝试（3000ms 处）应成功提交，而不是像旧
+        // 实现那样 3 次后永久放弃（供应商页会一直空到下一次广播）。
+        rejectWrite = false;
+        rejectLock = false;
+        await vi.advanceTimersByTimeAsync(2500);
+        await preload;
+        expect(mocks.loadProviders).toHaveBeenCalledTimes(4);
+        expect(mocks.commitProviders).toHaveBeenCalledTimes(1);
+        expect(mocks.commitCapabilities).toHaveBeenCalledTimes(1);
       }
     } finally {
       prefs.__resetForTest();
