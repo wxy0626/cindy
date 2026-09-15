@@ -4215,16 +4215,91 @@ const createWindow = () => {
     if (!app.isPackaged) {
       const rendererDistDir = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`);
       let reloadDebounce: NodeJS.Timeout | null = null;
+      // 目录指纹（2026-09-15 修复"重复唤醒"）：Windows 的 fs.watch recursive 会收到
+      // 大量虚假事件（Defender/索引服务/属性变更，实测 dist 零写入仍连续触发），
+      // 不加甄别会导致窗口反复重载。指纹=递归清单(name+mtimeMs+size)；仅当指纹
+      // 相对上次真正变化时才重载。构建产物约千级文件，指纹计算只在防抖后执行。
+      const computeDistFingerprint = (): string => {
+        const parts: string[] = [];
+        const walk = (dir: string, prefix: string): void => {
+          let entries: fs.Dirent[];
+          try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+          } catch {
+            return;
+          }
+          for (const entry of entries) {
+            const childPath = path.join(dir, entry.name);
+            const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) {
+              parts.push(`d ${rel}`);
+              walk(childPath, rel);
+            } else {
+              try {
+                const stat = fs.statSync(childPath);
+                parts.push(`f ${rel} ${stat.mtimeMs} ${stat.size}`);
+              } catch {
+                parts.push(`f ${rel} ?`);
+              }
+            }
+          }
+        };
+        walk(rendererDistDir, '');
+        return parts.join('\n');
+      };
+      let lastDistFingerprint: string | null = null;
       try {
-        fs.watch(rendererDistDir, { recursive: true }, () => {
+        lastDistFingerprint = computeDistFingerprint();
+      } catch {
+        lastDistFingerprint = null;
+      }
+      // 指纹稳定后才重载：虚假事件（扫描器/属性噪声）指纹不变→跳过；真实构建
+      // 中途暂停（>防抖窗口）指纹仍在变→继续等，避免加载到半成品产物。
+      const maybeReloadRendererWindows = async (): Promise<void> => {
+        let fingerprint: string;
+        try {
+          fingerprint = computeDistFingerprint();
+        } catch {
+          return;
+        }
+        if (lastDistFingerprint !== null && fingerprint === lastDistFingerprint) {
+          rendererGuardLog.info('renderer dist watch event ignored (fingerprint unchanged)');
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        let stable: string;
+        try {
+          stable = computeDistFingerprint();
+        } catch {
+          return;
+        }
+        if (stable !== fingerprint) {
+          lastDistFingerprint = stable;
+          rendererGuardLog.info('renderer dist still changing — waiting for build to settle');
+          void maybeReloadRendererWindows();
+          return;
+        }
+        lastDistFingerprint = stable;
+        rendererGuardLog.info('renderer dist changed — reloading windows (fast-mode watch)');
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) win.webContents.reload();
+        }
+      };
+      try {
+        const watcher = fs.watch(rendererDistDir, { recursive: true }, () => {
           if (reloadDebounce) clearTimeout(reloadDebounce);
           reloadDebounce = setTimeout(() => {
             reloadDebounce = null;
-            rendererGuardLog.info('renderer dist changed — reloading windows (fast-mode watch)');
-            for (const win of BrowserWindow.getAllWindows()) {
-              if (!win.isDestroyed()) win.webContents.reload();
-            }
+            void maybeReloadRendererWindows();
           }, 1200);
+        });
+        watcher.on('error', (error) => {
+          // 产物目录被清理/重建时 watcher 可能 ENOENT；只降级日志，不炸主进程。
+          rendererGuardLog.warn(
+            `renderer dist watch error (auto-reload degraded): ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
         });
       } catch (error) {
         rendererGuardLog.warn(
