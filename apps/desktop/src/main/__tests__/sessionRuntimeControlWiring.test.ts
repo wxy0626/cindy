@@ -1051,6 +1051,40 @@ describe('session runtime control wiring', () => {
     expect(setModel).not.toContain('finalPiWindow < targetContextWindow');
   });
 
+  it('rebuilds a Pi session across proxy identities instead of failing the selection (#3705)', () => {
+    const setModel = handlerBody(
+      registerSource,
+      'const handleSetModel = async (',
+      'const recoverRemoteRuntimeAxisPersistence',
+    );
+    const apply = setModel.indexOf('await applyRuntimeSetModelChange({');
+
+    // 跨 proxy 供应商身份的 Pi route 变更交给引擎 close + 下次发送 lazy-create
+    // 重建(#3705),不再注入 always-throw 的 fail-closed 防护。
+    expect(setModel).not.toContain(
+      'Pi target route requires an unsupported runtime replacement',
+    );
+    expect(setModel).not.toContain('assertSessionCloseSupported');
+
+    // final-window 校验只对仍存活的 live runtime 生效;引擎已为重建关闭会话时
+    // (apply 后 getSession 为空)直接接受本次选择,不再回滚报
+    // MODEL_WINDOW_TARGET_CONTEXT_UNKNOWN。
+    const finalWindowGate = setModel.indexOf(
+      "runtimeAgentKind === 'pi' &&\n          runtimeRouteChanged &&",
+      apply,
+    );
+    expect(finalWindowGate).toBeGreaterThan(apply);
+    const finalWindowCondition = setModel.slice(
+      finalWindowGate,
+      setModel.indexOf(') {', finalWindowGate) + 1,
+    );
+    expect(finalWindowCondition).toContain('!modelWindowRebuilt &&');
+    expect(finalWindowCondition).toContain('piSessionAfterRouteChange');
+    expect(setModel).not.toContain(
+      'Pi target runtime could not be verified; runtime selection was not accepted',
+    );
+  });
+
   it('switches and verifies Pi before deciding whether the actual window needs rebuild', () => {
     const setModel = handlerBody(
       registerSource,

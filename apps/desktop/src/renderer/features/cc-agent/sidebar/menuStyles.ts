@@ -28,6 +28,10 @@ export const MENU_SUB_CONTENT_CLASS = MENU_CONTENT_CLASS;
 export const MENU_ITEM_CLASS =
   'flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2 text-sm outline-none text-[var(--cmd-palette-item-text)] transition-colors focus:bg-[var(--cmd-palette-item-hover)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
 
+/** 危险菜单项(删除等):静止红字无底色,hover / 键盘 focus 实红底 + 白字。 */
+export const MENU_ITEM_DANGER_CLASS =
+  'flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2 text-sm outline-none text-[hsl(var(--destructive))] transition-colors hover:bg-[hsl(var(--destructive))] hover:text-white focus:bg-[hsl(var(--destructive))] focus:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
+
 /** 含子菜单的触发行:在 MENU_ITEM 基础上,展开态(data-state=open)也保持高亮。 */
 export const MENU_ROW_CLASS =
   'flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2 text-sm outline-none text-[var(--cmd-palette-item-text)] transition-colors focus:bg-[var(--cmd-palette-item-hover)] data-[state=open]:bg-[var(--cmd-palette-item-hover)]';

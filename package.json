@@ -56,7 +56,8 @@
       "fast-uri": "^3.1.4",
       "sharp": "^0.35.0",
       "@esbuild-kit/core-utils>esbuild": "^0.25.0",
-      "builder-util-runtime": "^9.7.0"
+      "builder-util-runtime": "^9.7.0",
+      "lightningcss": "1.32.0"
     },
     "patchedDependencies": {
       "harmonyos-sans-sc-webfont-splitted": "dependency-patches/harmonyos-sans-sc-webfont-splitted.patch",
@@ -97,7 +98,7 @@
     "install:agent-binaries": "node scripts/ensure-agent-binaries.mjs",
     "postinstall": "node scripts/ensure-agent-binaries.mjs --best-effort && node scripts/fix-node-pty-perms.mjs",
     "dev:desktop": "node scripts/ensure-deps.mjs && node scripts/ensure-dev-runtime-assets.mjs && pnpm --filter desktop dev",
-    "dev:desktop:remote": "node scripts/ensure-deps.mjs && node scripts/ensure-dev-runtime-assets.mjs && pnpm --filter desktop dev:remote",
+    "dev:desktop:remote": "node scripts/ensure-deps.mjs && node scripts/ensure-dev-runtime-assets.mjs && cd apps/desktop && node scripts/ensure-wda-source-archive.mjs && node scripts/build-remote-bundles.mjs && node -e \"if(process.platform==='win32'){try{require('child_process').execSync('chcp 65001',{stdio:'ignore'})}catch(e){}}\" && node scripts/dev-remote-env.mjs electron-forge start --",
     "restart:desktop:remote": "node scripts/desktop-restart-runner.mjs --wait-ready",
     "restart:desktop:local": "node scripts/desktop-restart-runner.mjs --local --wait-ready",
     "desktop:whoami": "node scripts/desktop-whoami.mjs",

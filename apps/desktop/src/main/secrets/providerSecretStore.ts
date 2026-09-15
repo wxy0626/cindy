@@ -97,11 +97,111 @@ function ownerStoragePrefix(ownerId: string): string {
   return `owner_${dataOwnerStorageKey(ownerId)}_`;
 }
 
-/** Resolve a renderer/main logical provider-secret key into the active owner's key. */
+/**
+ * 自定义供应商凭证 = **本机共享凭证,不挂账号**(2026-09-12 用户明确心智模型:
+ * 「就一份,大家都能读到」—— 不管登录哪个账号或未登录,设置页里配的 key 都是同一份)。
+ *
+ * 覆盖两类用户手工填写的第三方凭证:自定义供应商 per-runtime key(`provider_key_*`)
+ * 与自定义请求头 blob(`provider_headers_*`)。它们与 Cindy 账号归属无关 —— 账号隔离
+ * 防的是「同机换账号把 A 的凭证给 B 用」,而这类凭证用户本来就当本机公共配置。
+ * 其余键(api_key 网关计费、provider_oauth_* 身份 token、ghost_secret_* 意识身份)
+ * 仍按 owner 严格隔离,不在此列。
+ *
+ * IO 层与 bootstrap 的 renderer safe-storage 路径解析必须共用本判定,保证读写同槽。
+ */
+export function isSharedLocalSecretKey(logicalKey: string): boolean {
+  return (
+    logicalKey.startsWith('provider_key_')
+    || logicalKey.startsWith(CUSTOM_PROVIDER_HEADER_SECRET_PREFIX)
+  );
+}
+
+/**
+ * Resolve a renderer/main logical provider-secret key into the active owner's key.
+ *
+ * 未登录(signed-out)时 `dataOwnerId` 为 null。此前的行为是直接返回 null —
+ * 「无 owner 则任何密钥都读不到」。但**自建供应商的 API key 不属于任何 Cindy 账号**:
+ * 它是用户在自己机器上填的第三方凭证,与是否登录无关。用 null 拦掉会让未登录 / 本地
+ * 档案用户明明配好了 key,设置页却全部显示未连接、模型开关全线禁用(用户反馈)。
+ *
+ * 因此无 owner 时回落到**本地档案命名空间**(local-v1):它是本机固定槽位,不含服务端
+ * 归属,正好承载「不依赖账号的本地凭证」。云账号登录后仍走各自 owner 前缀,两套互不
+ * 串号 —— 这里只影响「没有任何账号在场」这一种态,不改变账号间的隔离语义。
+ *
+ * **写/删/清一律用本函数(严格)**:未登录写入落 local-v1 槽位、清理只清 local-v1,
+ * 绝不碰任何云账号槽位。读路径的跨槽位回落见 resolveOwnerScopedSecretStorageKeyForRead。
+ */
 export function resolveOwnerScopedSecretStorageKey(storageKey: string): string | null {
-  const ownerId = getActiveAppSession().dataOwnerId;
-  if (!ownerId) return null;
+  // 共享键(自定义供应商凭证):任何账号态都落 local-v1 槽位 —— 本机一份,谁登录都读写同一份。
+  if (isSharedLocalSecretKey(storageKey)) {
+    return `${ownerStoragePrefix(LOCAL_DATA_OWNER_ID)}${storageKey}`;
+  }
+  const ownerId = getActiveAppSession().dataOwnerId ?? LOCAL_DATA_OWNER_ID;
   return `${ownerStoragePrefix(ownerId)}${storageKey}`;
+}
+
+/** 匹配「owner 前缀 + 逻辑键」的落盘文件名(捕获组 = 逻辑键)。 */
+const OWNER_PREFIXED_FILE_RE = /^owner_[0-9a-f]{20}_(.+)\.enc$/;
+
+/**
+ * 读路径专用解析:在严格解析之上增加「未登录时的本机凭证回落」。
+ *
+ * 场景(2026-09-12 用户实测):key 是**登录云账号时**配置的,落在该账号槽位;
+ * 之后未登录(signed-out / local 档案)使用时,严格解析只能看到 local-v1 槽位 ——
+ * 那里根本没有这份 key,自建供应商依旧全部「未连接」。本机是单用户场景,
+ * 未登录态读取「本机最近配置过的同名凭证」是安全且符合直觉的延续。
+ *
+ * 语义:
+ *   - 云账号在场 → 严格自己的槽位,绝不读他人(账号间隔离不放松);
+ *   - 未登录 → 先看 local-v1 槽位(未登录期间新配的优先),没有则扫描全部
+ *     owner 槽位里同名凭证的落盘文件,取**修改时间最新**的一份(= 用户最后一次配置);
+ *   - 都没有 → 返回 local-v1 槽位键名,readPhysical 照常返回 null。
+ *
+ * 只服务 `electronSecretIo.read` / renderer safe-storage **读** IPC;写/删/清仍走
+ * 严格版,未登录的清理不会误删云账号槽位里登录后还要用的凭证。
+ */
+export function resolveOwnerScopedSecretStorageKeyForRead(storageKey: string): string | null {
+  const localKey = `${ownerStoragePrefix(LOCAL_DATA_OWNER_ID)}${storageKey}`;
+  try {
+    const dir = secretDir();
+
+    // 共享键:落点恒为 local-v1;共享槽没有时回落扫描**任意** owner 槽位的同名凭证
+    // (兼容共享化之前登录各账号时配的存量文件;任何账号态都回落 —— 共享键本来就
+    // 跨账号,读 mtime 最新 = 用户最后一次配置)。取 mtime 最新 = 最近一次配置的那份。
+    if (isSharedLocalSecretKey(storageKey)) {
+      if (fs.existsSync(path.join(dir, `${localKey}.enc`))) return localKey;
+      let newestShared: { scopedKey: string; mtimeMs: number } | null = null;
+      for (const fileName of fs.readdirSync(dir)) {
+        const match = OWNER_PREFIXED_FILE_RE.exec(fileName);
+        if (!match || match[1] !== storageKey) continue;
+        const mtimeMs = fs.statSync(path.join(dir, fileName)).mtimeMs;
+        if (!newestShared || mtimeMs > newestShared.mtimeMs) {
+          newestShared = { scopedKey: fileName.slice(0, -'.enc'.length), mtimeMs };
+        }
+      }
+      return newestShared?.scopedKey ?? localKey;
+    }
+
+    const session = getActiveAppSession();
+    // 云账号在场:严格自己的前缀,跨账号回落不存在。
+    if (session.dataOwnerId) return `${ownerStoragePrefix(session.dataOwnerId)}${storageKey}`;
+    // local-v1 槽位已有该键:未登录期间配置的优先,不扫描。
+    if (fs.existsSync(path.join(dir, `${localKey}.enc`))) return localKey;
+    // 扫描其它 owner 槽位的同名凭证,取 mtime 最新 = 最近一次配置的那份。
+    let newest: { scopedKey: string; mtimeMs: number } | null = null;
+    for (const fileName of fs.readdirSync(dir)) {
+      const match = OWNER_PREFIXED_FILE_RE.exec(fileName);
+      if (!match || match[1] !== storageKey) continue;
+      const mtimeMs = fs.statSync(path.join(dir, fileName)).mtimeMs;
+      if (!newest || mtimeMs > newest.mtimeMs) {
+        newest = { scopedKey: fileName.slice(0, -'.enc'.length), mtimeMs };
+      }
+    }
+    return newest?.scopedKey ?? localKey;
+  } catch {
+    // 目录不存在 / 扫描失败:退回严格口径,读不到就是读不到。
+    return localKey;
+  }
 }
 
 function readPhysical(storageKey: string): string | null {
@@ -172,7 +272,8 @@ const electronSecretIo: SecretStorageIo = {
     return safeStorage.isEncryptionAvailable();
   },
   read(storageKey) {
-    const scopedKey = resolveOwnerScopedSecretStorageKey(storageKey);
+    // 读路径走 ForRead:未登录时可回落到本机最近配置的 owner 槽位(见函数注释)。
+    const scopedKey = resolveOwnerScopedSecretStorageKeyForRead(storageKey);
     return scopedKey ? readPhysical(scopedKey) : null;
   },
   write(storageKey, value) {
@@ -194,8 +295,10 @@ const electronSecretIo: SecretStorageIo = {
     }
   },
   list() {
-    const ownerId = getActiveAppSession().dataOwnerId;
-    if (!ownerId) return [];
+    // 与 resolveOwnerScopedSecretStorageKey 同口径:无 owner 时列本地档案命名空间,
+    // 否则 signed-out 下 list() 恒为空 —— clearAllSecrets 的前缀扫描会漏掉本地槽里的
+    // 动态键(自定义供应商 key / OAuth blob),账号切换时留下串号隐患。
+    const ownerId = getActiveAppSession().dataOwnerId ?? LOCAL_DATA_OWNER_ID;
     const prefix = ownerStoragePrefix(ownerId);
     try {
       return fs

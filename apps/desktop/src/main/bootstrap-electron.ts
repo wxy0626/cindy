@@ -59,6 +59,8 @@ import {
   recordDesktopDevAuthStartupResult,
   markDesktopDevStartupFailed,
   markDesktopDevWindowReady,
+  markDesktopDevRootReady,
+  markDesktopDevLocalDbReady,
 } from './devStartupStatus';
 import {
   installWindowFullscreenStateBroadcast,
@@ -131,6 +133,13 @@ if (process.env.XDT_DEV_DISABLE_GPU === '1') {
   app.commandLine.appendSwitch('disable-gpu');
   app.commandLine.appendSwitch('in-process-gpu');
 }
+
+// 开发构建的能力放宽(2026-09-12 用户要求):未打包的 dev 实例里没有登录也应当能像
+// 正式登录一样选用任意模型。放宽只覆盖「账号能力」这一层派生,打包后的正式版
+// (app.isPackaged === true)完全不生效 —— 不引入面向终端用户的行为变化。
+// 注入而非让 appCapabilities 直接 import electron:后者会把 Electron 运行时依赖
+// 提前到 import 期,单测加载不了该模块(见 appCapabilities.ts 的注释)。
+setDevCapabilityRelaxation(!app.isPackaged);
 
 // TapTap Maker 等站点的 WASM 多线程引擎依赖 SharedArrayBuffer。Chromium 把 SAB 锁在
 // crossOriginIsolated(COOP/COEP 响应头)之后,而 Electron 不实现 COOP 进程隔离——
@@ -777,6 +786,7 @@ import { clearAllSessionRuntimeAxes } from './maker-host/session-effort-store.js
 import { clearAllSessionRuntimeControlStates } from './maker-ipc/sessionRuntimeControl.js';
 import {
   resolveOwnerScopedSecretStorageKey,
+  resolveOwnerScopedSecretStorageKeyForRead,
   getProviderSecretStore,
 } from './secrets/providerSecretStore.js';
 import {
@@ -972,7 +982,7 @@ import {
 } from './model-access/index.js';
 import { effectiveXdGatewayBaseUrl } from './model-access/effectiveEndpoint.js';
 import { isLocalDbOwnerCurrent } from './appSessionPolicy.js';
-import { getAppCapabilities, requireAppCapability } from './appCapabilities.js';
+import { getAppCapabilities, requireAppCapability, setDevCapabilityRelaxation } from './appCapabilities.js';
 import {
   activeOwnerScopeKey,
   beginAppSessionBoundary,
@@ -1640,10 +1650,6 @@ function clearAccountBoundaryAbortMark(): void {
 
 async function teardownAuthAccountBoundary(reason: string): Promise<void> {
   const blockingFailures: unknown[] = [];
-  // 账号切换可能发生在目标库的同步导入仍进行时；先等导入事务结束，再销毁旧库。
-  await authManager.waitForPendingLocalProjectSyncImports();
-  // 本地项目同步必须在旧 DbClient 被 teardown 之前读取；未配置同步时此调用是 no-op。
-  await authManager.capturePendingLocalProjectSyncSnapshot();
   // Goal timers can dispatch through the outgoing Maker while launch-fence
   // acquisition waits behind queued filesystem work. Invalidate them before
   // the first await; resetGoalController() synchronously disposes the current
@@ -1719,6 +1725,12 @@ async function teardownAuthAccountBoundary(reason: string): Promise<void> {
   } catch (err) {
     authBoundaryLog.error(`resetGoalController on ${reason} failed (non-fatal):`, err);
   }
+  // 账号切换可能发生在目标库的同步导入仍进行时；先等导入事务结束，再销毁旧库。
+  // （2026-09-15 移到围栏获取之后：首个 await 必须是围栏，防止 Goal 定时器在
+  // 排队文件操作期间越过旧 Maker 派发 —— 见 piSubagentQuitEscalation 回归。）
+  await authManager.waitForPendingLocalProjectSyncImports();
+  // 本地项目同步必须在旧 DbClient 被 teardown 之前读取；未配置同步时此调用是 no-op。
+  await authManager.capturePendingLocalProjectSyncSnapshot();
   try {
     // Hardware must stop before the long async drain. Otherwise a held stick or
     // microphone keeps acting on the outgoing account while caches and IM stop.
@@ -3096,6 +3108,16 @@ function isPathAllowed(filePath: string): boolean {
 // "双击启动不了"。
 let mainWindowRef: BrowserWindow | null = null;
 let mainWindowMaximizeRecoveryController: MainWindowMaximizeRecoveryController | null = null;
+
+// 主窗口认证/就绪上报判定（启动 readiness 2026-09-15）：只有主窗口主 frame 的
+// renderer 才允许驱动 dev 启动状态；副窗口/子 frame 的调用正常执行但不宣称就绪。
+function isMainWindowAuthInitializeEvent(event: Electron.IpcMainInvokeEvent): boolean {
+  const mainWindow = mainWindowRef;
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  const webContents = mainWindow.webContents;
+  if (webContents.isDestroyed()) return false;
+  return event.sender === webContents && event.senderFrame === webContents.mainFrame;
+}
 // 端点清单阻断门:ready 流程走到正常 createWindow() 前置 true。在此之前
 // second-instance / activate 一律不许建窗——阻断循环(错误框重试)期间用户
 // 双击图标 / 点 Dock 若能建窗,preload 的模块级 sendSync 会因 handler 未注册
@@ -4186,6 +4208,32 @@ const createWindow = () => {
     });
   } else {
     mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+    // 快启模式（renderer 预构建产物，无 dev server）：dev 侧的 watch 构建会把
+    // 源码变化增量重建到产物目录，这里监听目录变更并防抖刷新全部应用窗口，
+    // 让「改 renderer 代码」在快启模式下也能自动生效（整页刷新语义）。
+    // 仅 dev 生效；watch 构建中途的过渡态由防抖窗口吸收。
+    if (!app.isPackaged) {
+      const rendererDistDir = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`);
+      let reloadDebounce: NodeJS.Timeout | null = null;
+      try {
+        fs.watch(rendererDistDir, { recursive: true }, () => {
+          if (reloadDebounce) clearTimeout(reloadDebounce);
+          reloadDebounce = setTimeout(() => {
+            reloadDebounce = null;
+            rendererGuardLog.info('renderer dist changed — reloading windows (fast-mode watch)');
+            for (const win of BrowserWindow.getAllWindows()) {
+              if (!win.isDestroyed()) win.webContents.reload();
+            }
+          }, 1200);
+        });
+      } catch (error) {
+        rendererGuardLog.warn(
+          `renderer dist watch failed (auto-reload disabled): ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
   }
 };
 
@@ -4524,6 +4572,28 @@ const registerIpcHandlers = () => {
 
   ipcMain.on('get-app-display-version-info', (event) => {
     event.returnValue = getAppDisplayVersionInfo();
+  });
+
+  // 启动 readiness IPC（2026-09-15）：仅主窗口主 frame 可上报；root-ready =
+  // App 树首个真实 commit，local-db-ready = LocalDbGate 撤盖（界面可操作）。
+  // 两者 + 窗口可见 + auth/DB 结果共同构成 dev 启动器的严格 ready 闸门。
+  const assertPrimaryMainFrameReadiness = (event: Electron.IpcMainInvokeEvent): void => {
+    assertTrustedAppRendererEvent(event);
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win !== mainWindowRef || event.sender !== win?.webContents || !event.sender.mainFrame) {
+      throwIpcError('PERMISSION_DENIED', 'Readiness is only accepted from the primary main frame');
+    }
+  };
+  ipcMain.handle('renderer:root-ready', (event) => {
+    assertPrimaryMainFrameReadiness(event);
+    markDesktopDevRootReady();
+    return { ok: true as const };
+  });
+  ipcMain.handle('renderer:local-db-ready', (event, ownerId: unknown) => {
+    assertPrimaryMainFrameReadiness(event);
+    // owner 仅作可选校验输入；类型防御：只接受 string。
+    markDesktopDevLocalDbReady(typeof ownerId === 'string' ? ownerId : undefined);
+    return { ok: true as const };
   });
 
   // Renderer → main 日志转发:走 unified logger 的 writeFromRenderer,
@@ -5468,6 +5538,15 @@ const registerIpcHandlers = () => {
       ? path.join(app.getPath('userData'), 'safe-storage', `${scopedKey}.enc`)
       : null;
   };
+  // 读专用路径解析:共享键(自定义供应商凭证,本机一份)允许回落到任意 owner 槽位的
+  // 存量文件(共享化之前登录期配的);普通键未登录时回落到本机最近配置的 owner 槽位。
+  // 仅 safe-storage-read 使用;store / remove 走严格口径(共享键落共享槽,其余落 owner 槽)。
+  const resolveSafeStorageFilepathForRead = (key: string): string | null => {
+    const scopedKey = resolveOwnerScopedSecretStorageKeyForRead(key);
+    return scopedKey
+      ? path.join(app.getPath('userData'), 'safe-storage', `${scopedKey}.enc`)
+      : null;
+  };
 
   // 共用的 api_key 变更后, 若 Codex app-server 以 env-key 启动(无 OAuth,gateway key 冻入
   // 子进程 env)则重建 —— settings 改/删了 key 进程感知不到, 必须重建才生效。oauth-bearer
@@ -5590,7 +5669,7 @@ const registerIpcHandlers = () => {
       try {
         assertTrustedAppRendererEvent(event);
         if (!isValidRendererKey(key)) return null;
-        const filepath = resolveSafeStorageFilepath(key);
+        const filepath = resolveSafeStorageFilepathForRead(key);
         if (!filepath) return null;
         if (!safeStorage.isEncryptionAvailable()) {
           if (strictCustomProviderRead) {
@@ -5728,7 +5807,10 @@ const registerIpcHandlers = () => {
 
   // ── Auth IPC handlers (delegated to authManager) ──
 
-  ipcMain.handle('auth:initialize', async () => {
+  ipcMain.handle('auth:initialize', async (event) => {
+    // 仅主窗口的主 frame 负责驱动开发启动器状态；副窗口/子 frame 的认证初始化
+    // 仍正常执行，但不能提前宣称启动成功或覆盖主窗口失败信息。
+    const isPrimaryAuthRenderer = isMainWindowAuthInitializeEvent(event);
     try {
       let pendingCompletion: Promise<authManager.AuthState> | null = null;
       const state = await authManager.initialize({
@@ -5737,7 +5819,7 @@ const registerIpcHandlers = () => {
         },
       });
       await authManager.ensureStableOwnerPostCommitTasks('auth-initialize');
-      if (!app.isPackaged) {
+      if (!app.isPackaged && isPrimaryAuthRenderer) {
         recordDesktopDevAuthStartupResult(state, pendingCompletion, () =>
           authManager.getAuthState(),
         );
@@ -5753,7 +5835,7 @@ const registerIpcHandlers = () => {
       }
       return state;
     } catch (err) {
-      if (!app.isPackaged) {
+      if (!app.isPackaged && isPrimaryAuthRenderer) {
         markDesktopDevStartupFailed(
           'AUTH_INIT_FAILED',
           err instanceof Error ? err.message : String(err),
@@ -8620,6 +8702,8 @@ app.on('ready', async () => {
   registerLegacyMigrationIpc();
   setHistoryToolNameReader(getHistoryToolName);
   registerLocalDbIpc({
+    isMainWindowStartupReporter: isMainWindowAuthInitializeEvent,
+    postReadyDeletedPiSubagentCleanup: process.env.XDT_POST_READY_PI_SUBAGENT_CLEANUP === 'true',
     isSessionTurnPendingCompletion,
     readHistoryLiveMessages: getSessionThinkingSnapshots,
     resolveContextWindow: (session) => resolveSessionContextWindow(getActiveCatalog(), session),
@@ -8837,15 +8921,20 @@ app.on('ready', async () => {
           error: error instanceof Error ? error.message : String(error),
         });
       }
-      try {
-        await resumeDeletedPiSubagentCleanup();
-      } catch (err) {
-        dbClientLog.warn('PI Subagent deleted-task cleanup recovery failed (non-fatal)', {
-          userId,
-          error: err instanceof Error ? err.message : String(err),
-        });
+      // PI 清理延后实验（启动优化 2026-09-15）：XDT_POST_READY_PI_SUBAGENT_CLEANUP=true
+      // 时此处跳过，改由 local-db ready 响应后非阻塞执行（registerAll 的
+      // onReadyPostReady），缩短 DB takeover 前的关键路径。默认仍在此同步执行。
+      if (process.env.XDT_POST_READY_PI_SUBAGENT_CLEANUP !== 'true') {
+        try {
+          await resumeDeletedPiSubagentCleanup();
+        } catch (err) {
+          dbClientLog.warn('PI Subagent deleted-task cleanup recovery failed (non-fatal)', {
+            userId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        logStartupPhase('pi-subagent-cleanup-recovery');
       }
-      logStartupPhase('pi-subagent-cleanup-recovery');
       // Phase 1.1: file worker 接管 DB 连接后,释放 main 端的 _db + optimize 定时器。
       // 如果 worker takeover 失败并进入 inproc fallback,main _db 必须继续保留,
       // 否则 fallback 会拿到已关闭的连接。

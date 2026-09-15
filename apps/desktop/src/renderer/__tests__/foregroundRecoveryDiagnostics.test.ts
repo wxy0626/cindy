@@ -152,8 +152,10 @@ describe('前台恢复诊断', () => {
   it('renderer 入口会把前台恢复和性能时间线清理接到 HMR dispose', () => {
     expect(rendererIndexSource).toContain('installPerformanceTimelineCleanupInterval()');
     expect(rendererIndexSource).toContain('import.meta.hot?.dispose');
-    expect(rendererIndexSource).toContain('disposeForegroundRecoveryDiagnostics();');
-    expect(rendererIndexSource).toContain('disposePerformanceTimelineCleanupInterval();');
+    // 2026-09-15：dispose 改为可选链调用（deferred 初始化可能未完成即触发 HMR
+    // 卸载，直接调用会在 undefined 上抛 TypeError），断言同步跟进。
+    expect(rendererIndexSource).toContain('disposeForegroundRecoveryDiagnostics?.();');
+    expect(rendererIndexSource).toContain('disposePerformanceTimelineCleanupInterval?.();');
   });
 
   it('从隐藏状态恢复时会在清理前记录 performance timeline 数量', () => {

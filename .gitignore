@@ -198,3 +198,10 @@ github-result-*.json
 
 # 内置插件种子已废弃(改走 plugin-store 安装);历史克隆含私有插件与凭证,永不入仓。
 apps/desktop/resources/builtin-ghosts/
+
+# 本地工作目录与运行产物（2026-09-15 收尾清理）
+.workbuddy/
+/build/
+apps/desktop/dev/
+scripts/.debug-dev-window-command.txt
+_tmp_*

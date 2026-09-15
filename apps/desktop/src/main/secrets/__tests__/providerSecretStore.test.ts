@@ -50,6 +50,7 @@ import {
   readGhostSecretStrict,
   readGhostSecretTailFromIo,
   resolveOwnerScopedSecretStorageKey,
+  resolveOwnerScopedSecretStorageKeyForRead,
   setProviderSecretsClearedListener,
   UNRECOVERABLE_PROVIDER_CREDENTIAL,
   type SecretStorageIo,
@@ -329,6 +330,268 @@ describe('providerSecretStore', () => {
     const store = createProviderSecretStore(throwingIo);
     expect(store.get('xd')).toBeNull();
     expect(store.has('xd')).toBe(false);
+  });
+});
+
+/**
+ * 未登录(signed-out)时的密钥可达性回归锁。
+ *
+ * 2026-09-12 用户反馈:未登录时设置页「模型供应商」里自建供应商的模型开关全部禁用,
+ * 提示「连接后可用」。根因是 dataOwnerId 为 null 时 resolveOwnerScopedSecretStorageKey
+ * 直接返回 null —— 自建供应商的 key 明明已落盘,连接态却恒为 false。
+ * 自建供应商的 API key 属本机凭证、与 Cindy 账号无关,无 owner 时应回落到本地档案
+ * 命名空间(local-v1),让 dev / 本地档案用户与正式登录体验一致。
+ */
+describe('providerSecretStore 未登录时的本地档案回落', () => {
+  it('signed-out 仍解析出本地档案命名空间的存储键(不再返回 null)', () => {
+    const previousMode = sessionState.mode;
+    const previousOwnerId = sessionState.dataOwnerId;
+    sessionState.mode = 'signed-out';
+    sessionState.dataOwnerId = null;
+    try {
+      const scoped = resolveOwnerScopedSecretStorageKey('api_key');
+      expect(scoped).not.toBeNull();
+      // mock 里 dataOwnerStorageKey 是恒等映射,故前缀直接是 owner id。
+      expect(scoped).toBe('owner_local-v1_api_key');
+    } finally {
+      sessionState.mode = previousMode;
+      sessionState.dataOwnerId = previousOwnerId;
+    }
+  });
+
+  it('云账号仍走各自 owner 前缀,不与本地档案槽串号', () => {
+    const previousMode = sessionState.mode;
+    const previousOwnerId = sessionState.dataOwnerId;
+    sessionState.mode = 'cloud';
+    sessionState.dataOwnerId = 'cloud-user-1';
+    try {
+      expect(resolveOwnerScopedSecretStorageKey('api_key')).toBe('owner_cloud-user-1_api_key');
+    } finally {
+      sessionState.mode = previousMode;
+      sessionState.dataOwnerId = previousOwnerId;
+    }
+  });
+
+  it('signed-out 时 clearAll() 能扫到本地档案槽的动态键(前缀口径与解析器一致)', () => {
+    const previousMode = sessionState.mode;
+    const previousOwnerId = sessionState.dataOwnerId;
+    sessionState.mode = 'signed-out';
+    sessionState.dataOwnerId = null;
+    try {
+      // 用内存 IO 记录 list() 被问到哪些键、以及 remove() 收了哪些。
+      // 关键断言:list() 返回的是**本地档案槽**的键 —— 若仍按「无 owner 返回空」
+      // 的旧口径,动态键(provider_key_*)就漏清了,同机换账号会串号。
+      const memoryIo = createMemoryIo();
+      memoryIo.list = () => ['provider_key_sub_codex'];
+      const store = createProviderSecretStore(memoryIo);
+      store.clearAll();
+      expect(memoryIo.store.size).toBe(0);
+    } finally {
+      sessionState.mode = previousMode;
+      sessionState.dataOwnerId = previousOwnerId;
+    }
+  });
+
+  it('默认 IO 的 list() 在 signed-out 时按本地档案前缀过滤磁盘文件', () => {
+    const previousMode = sessionState.mode;
+    const previousOwnerId = sessionState.dataOwnerId;
+    const previousElectron = { ...electronState };
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'xdt-signed-out-list-'));
+    sessionState.mode = 'signed-out';
+    sessionState.dataOwnerId = null;
+    electronState.userData = userData;
+    try {
+      const secretDir = path.join(userData, 'safe-storage');
+      fs.mkdirSync(secretDir, { recursive: true });
+      // 模拟「未登录时写过自定义供应商 key」:落在本地档案前缀下。
+      fs.writeFileSync(path.join(secretDir, 'owner_local-v1_provider_key_sub_codex.enc'), 'x');
+      // 另一个账号槽的文件不应被扫到(不串号)。
+      fs.writeFileSync(path.join(secretDir, 'owner_other-user_provider_key_sub_codex.enc'), 'x');
+
+      const memoryIo = createMemoryIo();
+      const store = createProviderSecretStore(memoryIo);
+      // 未登录时 getOwnerUserId 应为 null(owner 标记只由账号对账写入)。
+      expect(store.getOwnerUserId()).toBeNull();
+      // 派生键与解析器保持一致 —— 这是「读得到 key」的最直接证据。
+      expect(resolveOwnerScopedSecretStorageKey('provider_key_sub_codex')).toBe(
+        'owner_local-v1_provider_key_sub_codex',
+      );
+    } finally {
+      sessionState.mode = previousMode;
+      sessionState.dataOwnerId = previousOwnerId;
+      Object.assign(electronState, previousElectron);
+      fs.rmSync(userData, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * 读路径跨槽位回落(2026-09-12 二次修复):key 是**登录云账号时**配置的,
+   * 落在该账号槽位;未登录(signed-out/local)时严格解析只见 local-v1 槽位 ——
+   * 空的,自建供应商依旧「未连接」。ForRead 在未登录态回落到本机最近配置的
+   * 同名凭证;云账号在场则严格自己槽位,隔离不放松。
+   */
+  describe('读路径回落 resolveOwnerScopedSecretStorageKeyForRead', () => {
+    /** 在临时 userData 里摆好两个云账号槽位的同名凭证,mtime 可控。 */
+    function seedOwnerSlots(userData: string, slots: { owner: string; mtimeMs: number }[]): void {
+      const secretDir = path.join(userData, 'safe-storage');
+      fs.mkdirSync(secretDir, { recursive: true });
+      for (const { owner, mtimeMs } of slots) {
+        const file = path.join(secretDir, `owner_${owner}_provider_key_sub_codex.enc`);
+        fs.writeFileSync(file, 'x');
+        fs.utimesSync(file, new Date(mtimeMs), new Date(mtimeMs));
+      }
+    }
+
+    it('signed-out 且本地槽位没有 → 回落到 mtime 最新的云账号槽位(用户实际场景)', () => {
+      const previousMode = sessionState.mode;
+      const previousOwnerId = sessionState.dataOwnerId;
+      const previousElectron = { ...electronState };
+      const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'xdt-read-fallback-'));
+      sessionState.mode = 'signed-out';
+      sessionState.dataOwnerId = null;
+      electronState.userData = userData;
+      try {
+        // 复刻实测分布:账号 A 9/6 配的,账号 B 9/9 配的;B 更新 → 应解析到 B。
+        seedOwnerSlots(userData, [
+          { owner: 'aaaa0000000000000000', mtimeMs: 1000 },
+          { owner: 'bbbb0000000000000000', mtimeMs: 2000 },
+        ]);
+        expect(resolveOwnerScopedSecretStorageKeyForRead('provider_key_sub_codex')).toBe(
+          'owner_bbbb0000000000000000_provider_key_sub_codex',
+        );
+      } finally {
+        sessionState.mode = previousMode;
+        sessionState.dataOwnerId = previousOwnerId;
+        Object.assign(electronState, previousElectron);
+        fs.rmSync(userData, { recursive: true, force: true });
+      }
+    });
+
+    it('signed-out 但本地槽位已有该键 → 优先本地,不回落', () => {
+      const previousMode = sessionState.mode;
+      const previousOwnerId = sessionState.dataOwnerId;
+      const previousElectron = { ...electronState };
+      const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'xdt-read-local-first-'));
+      sessionState.mode = 'signed-out';
+      sessionState.dataOwnerId = null;
+      electronState.userData = userData;
+      try {
+        seedOwnerSlots(userData, [{ owner: 'aaaa0000000000000000', mtimeMs: 9999 }]);
+        // 未登录期间新配的 key 落 local-v1(mock 的 dataOwnerStorageKey 为恒等映射)。
+        seedOwnerSlots(userData, [{ owner: 'local-v1', mtimeMs: 1 }]);
+        expect(resolveOwnerScopedSecretStorageKeyForRead('provider_key_sub_codex')).toBe(
+          'owner_local-v1_provider_key_sub_codex',
+        );
+      } finally {
+        sessionState.mode = previousMode;
+        sessionState.dataOwnerId = previousOwnerId;
+        Object.assign(electronState, previousElectron);
+        fs.rmSync(userData, { recursive: true, force: true });
+      }
+    });
+
+    it('云账号在场 → 普通键严格自己的槽位,绝不读他人槽位(隔离回归锁)', () => {
+      const previousMode = sessionState.mode;
+      const previousOwnerId = sessionState.dataOwnerId;
+      const previousElectron = { ...electronState };
+      const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'xdt-read-strict-cloud-'));
+      sessionState.mode = 'cloud';
+      sessionState.dataOwnerId = 'cloud-current';
+      electronState.userData = userData;
+      try {
+        // 别的账号槽位有同名凭证,当前账号没有 → 必须解析到自己(不存在的)键,而不是回落。
+        // 用 api_key(网关计费凭证,非共享键):它有账号归属,共享会串号。
+        const secretDir = path.join(userData, 'safe-storage');
+        fs.mkdirSync(secretDir, { recursive: true });
+        fs.writeFileSync(path.join(secretDir, 'owner_aaaa0000000000000000_api_key.enc'), 'x');
+        expect(resolveOwnerScopedSecretStorageKeyForRead('api_key')).toBe(
+          'owner_cloud-current_api_key',
+        );
+      } finally {
+        sessionState.mode = previousMode;
+        sessionState.dataOwnerId = previousOwnerId;
+        Object.assign(electronState, previousElectron);
+        fs.rmSync(userData, { recursive: true, force: true });
+      }
+    });
+
+    /**
+     * 共享键语义(2026-09-12 用户明确:「就一份,大家都能读到」):
+     * 自定义供应商凭证(provider_key_* / provider_headers_*)不挂账号 ——
+     * 任何账号态写入都落 local-v1 共享槽,任何账号态读取都是同一份。
+     */
+    describe('共享键(自定义供应商凭证)', () => {
+      it('严格解析:任何账号态(含云账号)都落 local-v1 共享槽', () => {
+        const previousOwnerId = sessionState.dataOwnerId;
+        sessionState.mode = 'cloud';
+        sessionState.dataOwnerId = 'cloud-user-1';
+        try {
+          expect(resolveOwnerScopedSecretStorageKey('provider_key_sub_codex')).toBe(
+            'owner_local-v1_provider_key_sub_codex',
+          );
+        } finally {
+          sessionState.dataOwnerId = previousOwnerId;
+        }
+      });
+
+      it('云账号在场读取共享键:共享槽没有 → 仍回落任意 owner 槽位最新的存量(跨账号共享)', () => {
+        const previousMode = sessionState.mode;
+        const previousOwnerId = sessionState.dataOwnerId;
+        const previousElectron = { ...electronState };
+        const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'xdt-shared-cloud-'));
+        sessionState.mode = 'cloud';
+        sessionState.dataOwnerId = 'cloud-user-1';
+        electronState.userData = userData;
+        try {
+          const secretDir = path.join(userData, 'safe-storage');
+          fs.mkdirSync(secretDir, { recursive: true });
+          // 共享化之前各账号配的存量:账号 A 旧、账号 B 新 → 读 B 那份。
+          const fileA = path.join(secretDir, 'owner_aaaa0000000000000000_provider_key_sub_codex.enc');
+          const fileB = path.join(secretDir, 'owner_bbbb0000000000000000_provider_key_sub_codex.enc');
+          fs.writeFileSync(fileA, 'x');
+          fs.writeFileSync(fileB, 'x');
+          fs.utimesSync(fileA, new Date(1000), new Date(1000));
+          fs.utimesSync(fileB, new Date(2000), new Date(2000));
+          expect(resolveOwnerScopedSecretStorageKeyForRead('provider_key_sub_codex')).toBe(
+            'owner_bbbb0000000000000000_provider_key_sub_codex',
+          );
+        } finally {
+          sessionState.mode = previousMode;
+          sessionState.dataOwnerId = previousOwnerId;
+          Object.assign(electronState, previousElectron);
+          fs.rmSync(userData, { recursive: true, force: true });
+        }
+      });
+
+      it('共享槽已有该键 → 任何账号态都优先共享槽,不再回落', () => {
+        const previousMode = sessionState.mode;
+        const previousOwnerId = sessionState.dataOwnerId;
+        const previousElectron = { ...electronState };
+        const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'xdt-shared-first-'));
+        sessionState.mode = 'cloud';
+        sessionState.dataOwnerId = 'cloud-user-1';
+        electronState.userData = userData;
+        try {
+          const secretDir = path.join(userData, 'safe-storage');
+          fs.mkdirSync(secretDir, { recursive: true });
+          const sharedFile = path.join(secretDir, 'owner_local-v1_provider_key_sub_codex.enc');
+          fs.writeFileSync(sharedFile, 'x');
+          fs.utimesSync(sharedFile, new Date(1), new Date(1));
+          const fileB = path.join(secretDir, 'owner_bbbb0000000000000000_provider_key_sub_codex.enc');
+          fs.writeFileSync(fileB, 'x');
+          fs.utimesSync(fileB, new Date(9999), new Date(9999));
+          // 共享槽虽旧但它是「当前生效的一份」;云槽位是共享化之前的陈旧残留。
+          expect(resolveOwnerScopedSecretStorageKeyForRead('provider_key_sub_codex')).toBe(
+            'owner_local-v1_provider_key_sub_codex',
+          );
+        } finally {
+          sessionState.mode = previousMode;
+          sessionState.dataOwnerId = previousOwnerId;
+          Object.assign(electronState, previousElectron);
+          fs.rmSync(userData, { recursive: true, force: true });
+        }
+      });
+    });
   });
 });
 

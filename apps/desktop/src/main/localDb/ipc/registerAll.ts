@@ -9,12 +9,13 @@ import { registerRoutinesIpc } from '../../routines/service.js';
  * lifecycle 统一编排（避免与 feishuBot.dispose 等其它清理 race）。
  */
 
-import { ipcMain } from 'electron';
+import { ipcMain, type IpcMainInvokeEvent } from 'electron';
 
 import { closeDb, ensureReady, getCurrentUserId } from '../index';
 import { getCurrentDbClientUserId, tryGetDbClient } from '../client/current';
 import {
   registerSessionIpc,
+  resumeDeletedPiSubagentCleanup,
   type RegisterSessionIpcOpts,
   setSessionRemovalCancelOperations,
   setSessionRemovalCleanup,
@@ -117,6 +118,11 @@ export interface RegisterLocalDbIpcOpts {
    * startScheduler，谁后到谁负责真正启动。
    */
   onReady?: (userId: string) => void | Promise<void>;
+  /** Explicit experiment: move non-critical deleted PI cleanup after ready response. */
+  postReadyDeletedPiSubagentCleanup?: boolean;
+  onReadyPostReady?: (userId: string) => void | Promise<void>;
+  /** Decide whether an IPC caller is the main window for dev startup reporting. */
+  isMainWindowStartupReporter?: (event: IpcMainInvokeEvent) => boolean;
 }
 
 export function registerLocalDbIpc(opts: RegisterLocalDbIpcOpts = {}): void {
@@ -186,6 +192,31 @@ export function registerLocalDbIpc(opts: RegisterLocalDbIpcOpts = {}): void {
         });
       });
     },
+    onReadyPostReady:
+      opts.postReadyDeletedPiSubagentCleanup
+        ? async (userId) => {
+            if (
+              getCurrentDbClientUserId() !== userId ||
+              !(opts.isOwnerCurrent?.(userId) ?? true)
+            ) {
+              return;
+            }
+            try {
+              await resumeDeletedPiSubagentCleanup();
+            } catch (err) {
+              log.warn('PI Subagent deleted-task cleanup recovery failed (non-fatal)', {
+                userId,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+        : undefined,
+    onReadyPostReadyError: (userId, err) => {
+      log.warn('PI Subagent deleted-task cleanup post-ready failed (non-fatal)', {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    },
     onReadyError: (userId, err) => {
       log.warn(
         JSON.stringify({
@@ -202,7 +233,10 @@ export function registerLocalDbIpc(opts: RegisterLocalDbIpcOpts = {}): void {
       await opts.discardStaleOwner?.(userId);
     },
   });
-  ipcMain.handle('local-db:ensure-ready', async (_e, userId: unknown) => {
+  ipcMain.handle('local-db:ensure-ready', async (event, userId: unknown) => {
+    // 仅主窗口的 ensure-ready 驱动 dev 启动状态；副窗口重复调用不得提前 mark ready
+    // 或用失败覆盖主窗口结果（readiness 契约 2026-09-15）。
+    const shouldReportStartup = opts.isMainWindowStartupReporter?.(event) ?? true;
     const startedAt = performance.now();
     log.info(
       JSON.stringify({
@@ -221,7 +255,7 @@ export function registerLocalDbIpc(opts: RegisterLocalDbIpcOpts = {}): void {
         ready: false,
         error: { code: 'DB_INIT_FAILED', message: 'invalid userId' },
       } as const;
-      recordDesktopDevLocalDbStartupResult(result);
+      if (shouldReportStartup) recordDesktopDevLocalDbStartupResult(result);
       return result;
     }
     let result;
@@ -241,7 +275,7 @@ export function registerLocalDbIpc(opts: RegisterLocalDbIpcOpts = {}): void {
         error: { code: 'DB_INIT_FAILED', message },
       } as const;
     }
-    recordDesktopDevLocalDbStartupResult(result);
+    if (shouldReportStartup) recordDesktopDevLocalDbStartupResult(result);
     if (!result.ready) {
       try {
         await opts.onEnsureReadyFailed?.(userId);

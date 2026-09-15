@@ -29,6 +29,7 @@ import {
   resetBotReadStateForTests,
   setBotReadStateOwner,
 } from '../botReadState';
+import { getBotProfiles, refreshBotProfiles } from '../botStore';
 
 let messageListeners: Array<(payload: unknown) => void> = [];
 
@@ -41,6 +42,30 @@ function installElectronApi(bot: unknown, listedBot: unknown = bot): void {
         bots: {
           get: vi.fn(async () => bot),
           list: vi.fn(async () => [listedBot]),
+        },
+        messages: {
+          onCreated: (cb: (payload: unknown) => void) => {
+            messageListeners.push(cb);
+            return () => {
+              messageListeners = messageListeners.filter((entry) => entry !== cb);
+            };
+          },
+        },
+      },
+    },
+  });
+}
+
+/** get/list 永不 resolve 的 API 桩：证明快路径挂载不再依赖这两个 IPC。 */
+function installHangingElectronApi(): void {
+  Object.defineProperty(window, 'electronAPI', {
+    configurable: true,
+    writable: true,
+    value: {
+      localDb: {
+        bots: {
+          get: () => new Promise(() => undefined),
+          list: () => new Promise(() => undefined),
         },
         messages: {
           onCreated: (cb: (payload: unknown) => void) => {
@@ -125,5 +150,36 @@ describe('Bot conversation read position', () => {
 
     await waitFor(() => expect(messageListeners.length).toBe(0));
     expect(getBotLastReadAt('bot-1')).toBeNull();
+  });
+});
+
+describe('Bot conversation fast gate (botStore projection)', () => {
+  it('mounts the chat on the first frame when the store projection confirms the session', async () => {
+    // 先经真实水合路径（api.list → normalizeDbProfile）灌 store，保证 profile
+    // 形状与生产一致（含 status / sessions 投影）。
+    installElectronApi(readyBot);
+    refreshBotProfiles();
+    await waitFor(() => expect(getBotProfiles().some((bot) => bot.id === 'bot-1')).toBe(true));
+    // 再换成永不 resolve 的 API 桩：渲染后的挂载不能再依赖这两个 IPC。
+    installHangingElectronApi();
+
+    const view = render(<BotSessionView />);
+
+    // 首帧同步出现聊天视图；「挂载即标已读」的 effect 也照常执行。
+    expect(view.getByTestId('chat')).toBeTruthy();
+    await waitFor(() => expect(getBotLastReadAt('bot-1')).toBe(10_000));
+  });
+
+  it('still demotes to unavailable when the authoritative IPC contradicts the projection', async () => {
+    // 水合一份 active 投影，然后把权威 IPC 改口为 archived：快路径先挂聊天，
+    // 确认结论到达后必须纠正（快路径不允许吞掉真实失效）。
+    installElectronApi(readyBot);
+    refreshBotProfiles();
+    await waitFor(() => expect(getBotProfiles()).toHaveLength(1));
+    installElectronApi({ ...readyBot, status: 'archived' });
+
+    const view = render(<BotSessionView />);
+    expect(view.getByTestId('chat')).toBeTruthy();
+    await waitFor(() => expect(view.getByText('bots.sessionUnavailableTitle')).toBeTruthy());
   });
 });

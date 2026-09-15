@@ -6522,6 +6522,7 @@ export class PiAgent extends BaseAgent {
                   ctx.turnCacheRead = 0;
                   ctx.turnCacheWrite = 0;
                   ctx.finalAssistantText = '';
+                  ctx.streamedAssistantText = '';
                   ctx.pendingAssistantError = null;
                   queue.push({
                     type: 'done',
@@ -6585,6 +6586,7 @@ export class PiAgent extends BaseAgent {
                     ctx.turnCacheRead = 0;
                     ctx.turnCacheWrite = 0;
                     ctx.finalAssistantText = '';
+                    ctx.streamedAssistantText = '';
                     ctx.pendingAssistantError = null;
                     queue.push({
                       type: 'done',

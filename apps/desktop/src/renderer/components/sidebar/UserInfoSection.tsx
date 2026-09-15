@@ -5,6 +5,7 @@ import {
   Building2,
   Check,
   Flame,
+  LogOut,
   Settings,
   Shield,
   Smartphone,
@@ -28,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from '@/lib/toast';
+import { mapIpcErrorToI18nKey } from '@/utils/ipcError';
 import type { DesktopSavedAccount } from '@/lib/authService';
 import { CURRENT_CINDY_REGION } from '../../../shared/brandRegion';
 import { shouldLabelRegion } from '../../../shared/regionCode';
@@ -67,7 +69,7 @@ function AccountMenuAvatar({ account }: { account: DesktopSavedAccount }) {
 }
 
 export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSectionProps) {
-  const { user, mode, dataOwnerId, isCanary, listAccounts, syncAccounts, switchAccount } =
+  const { user, mode, dataOwnerId, isCanary, listAccounts, syncAccounts, switchAccount, logout, exitLocalMode } =
     useAuth();
   const confirmDialog = useOptionalConfirmDialog();
   const navigate = useNavigate();
@@ -160,6 +162,48 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
 
   const openSettings = () => {
     if (location.pathname !== '/settings') navigate('/settings');
+  };
+
+  /**
+   * 侧边栏「退出登录」：二次确认后清掉当前会话（未登录态退出 local、已登录态登出
+   * 账号），然后回登录页——登录页会先展示「选择版本：中国版/国际版」。
+   *
+   * 两种会话态的清理通道不同，不能混用：
+   * - local（跳过登录）→ exitLocalMode()，数据语义是切回 signed-out，不删本机数据；
+   * - cloud → logout()，内部已含整页 reload，无需再 navigate。
+   *
+   * 退出不可逆（要重新登录/重新选区域），必须过确认弹窗；confirmDialog 缺失时
+   * 直接中止而不是放行，避免无弹窗的静默退出。
+   */
+  const handleExitSession = async () => {
+    if (!confirmDialog) return;
+    const confirmed = await confirmDialog.confirm({
+      title: t('logic.confirm.logoutTitle'),
+      description: t('logic.confirm.logoutDescription'),
+      confirmText: t('logic.confirm.logoutConfirm'),
+      cancelText: t('logic.confirm.cancel'),
+      confirmVariant: 'destructive',
+    });
+    if (!confirmed) return;
+
+    if (mode === 'local') {
+      try {
+        await exitLocalMode();
+      } catch {
+        // 退出失败也要给出口，不能把用户钉在主界面（与 LocalDbGate 同口径）。
+      }
+      navigate('/login', { replace: true });
+      return;
+    }
+    try {
+      await logout();
+    } catch (error) {
+      toast.error(
+        t(mapIpcErrorToI18nKey(error, { fallback: 'ipcError.INTERNAL' }), {
+          defaultValue: t('ipcError.INTERNAL'),
+        }),
+      );
+    }
   };
 
   const openAddAccount = async () => {
@@ -306,6 +350,16 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
         <DropdownMenuItem onSelect={openSettings} className="gap-2.5">
           <Settings className="h-4 w-4" aria-hidden="true" />
           {t('sidebar.user.menuSettings')}
+        </DropdownMenuItem>
+        {/* 退出登录:两种会话态（未登录 local / 已登录 cloud）共用同一文案,
+            不做分支——用户看到的永远是「退出登录」。红色 destructive 提示这是
+            离开当前会话的动作。 */}
+        <DropdownMenuItem
+          onSelect={() => void handleExitSession()}
+          className="gap-2.5 text-[var(--text-danger,#c93636)] focus:text-[var(--text-danger,#c93636)]"
+        >
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+          {t('settings.logout.button')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

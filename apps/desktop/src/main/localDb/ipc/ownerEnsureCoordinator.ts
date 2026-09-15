@@ -10,6 +10,9 @@ interface OwnerEnsureCoordinatorDeps {
   beforeEnsureReady?(ownerId: string): void | Promise<void>;
   ensureReady(ownerId: string): Promise<OwnerEnsureResult>;
   onReady?(ownerId: string): void | Promise<void>;
+  /** Optional non-blocking work launched after the ready result is committed. */
+  onReadyPostReady?(ownerId: string): void | Promise<void>;
+  onReadyPostReadyError?(ownerId: string, error: unknown): void;
   onReadyError?(ownerId: string, error: unknown): void;
   discardReadyOwner(ownerId: string): void | Promise<void>;
 }
@@ -68,6 +71,13 @@ export function createOwnerEnsureCoordinator(deps: OwnerEnsureCoordinatorDeps) {
       if (!deps.isOwnerCurrent(ownerId)) {
         await deps.discardReadyOwner(ownerId);
         return staleResult();
+      }
+      // 就绪结果已提交后触发可选的非阻塞收尾（如 PI 清理延后实验）：
+      // 失败只记日志、绝不影响已承诺给 renderer 的 ready 结果。
+      if (result.ready && deps.onReadyPostReady) {
+        void Promise.resolve(deps.onReadyPostReady(ownerId)).catch((error) => {
+          deps.onReadyPostReadyError?.(ownerId, error);
+        });
       }
 
       return result;

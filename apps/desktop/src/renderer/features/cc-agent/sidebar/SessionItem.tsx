@@ -54,6 +54,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   MENU_CONTENT_CLASS,
+  MENU_ITEM_DANGER_CLASS,
   MENU_ITEM_CLASS,
   MENU_ROW_CLASS,
   MENU_SEPARATOR_CLASS,
@@ -1341,7 +1342,7 @@ export const SessionItem = memo(function SessionItem({
                 <DropdownMenuItem
                   disabled={remoteWritesBlocked}
                   onSelect={() => handleDeleteSelect()}
-                  className={MENU_ITEM_CLASS}
+                  className={MENU_ITEM_DANGER_CLASS}
                 >
                   {t('ccAgent.sidebar.sessionMenu.delete')}
                 </DropdownMenuItem>
@@ -1361,7 +1362,7 @@ export const SessionItem = memo(function SessionItem({
                 <DropdownMenuItem
                   disabled={remoteWritesBlocked}
                   onSelect={() => handleDeleteSelect()}
-                  className={MENU_ITEM_CLASS}
+                  className={MENU_ITEM_DANGER_CLASS}
                 >
                   {t('ccAgent.sidebar.sessionMenu.delete')}
                 </DropdownMenuItem>
@@ -1407,7 +1408,7 @@ export const SessionItem = memo(function SessionItem({
                 <DropdownMenuItem
                   disabled={remoteWritesBlocked}
                   onSelect={() => handleDeleteSelect()}
-                  className={MENU_ITEM_CLASS}
+                  className={MENU_ITEM_DANGER_CLASS}
                 >
                   {t('ccAgent.sidebar.sessionMenu.delete')}
                 </DropdownMenuItem>

@@ -64,8 +64,10 @@ describe('safe storage Codex restart invariants', () => {
     expect(end).toBeGreaterThan(start);
     const body = src.slice(start, end);
     expect(body).toContain('assertTrustedAppRendererEvent(event);');
+    // 2026-09-15：read 路径切换到读回落辅助（共享键本机一份 / 未登录回落最近 owner 槽），
+    // 断言同步跟进且仍要求"先可信校验、后解析路径"的 fail-closed 顺序。
     expect(body.indexOf('assertTrustedAppRendererEvent(event);')).toBeLessThan(
-      body.indexOf('resolveSafeStorageFilepath(key)'),
+      body.indexOf('resolveSafeStorageFilepathForRead(key)'),
     );
     expect(body).toContain("isIpcError(err) && err.code === 'PERMISSION_DENIED'");
     expect(body).toContain("safeStorageReadLog.debug('read denied for untrusted renderer')");

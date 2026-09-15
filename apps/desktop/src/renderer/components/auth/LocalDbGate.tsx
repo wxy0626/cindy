@@ -48,6 +48,51 @@ export function LocalDbGate() {
   const [retryNonce, setRetryNonce] = useState(0);
   const retryCountRef = useRef(0);
   const previousOwnerIdRef = useRef<string | null>(null);
+  // 启动 readiness 上报一次性闸：HMR/StrictMode 重挂不重复上报（main 侧幂等，双保险）。
+  const readinessReportedRef = useRef(false);
+  // 主功能区模块预加载汇合（启动提速 2026-09-12）：路由拆分后（见 router.tsx
+  // 路由级懒加载注释），MainLayout 与 cc-agent 落地链是 gate ready 后立刻渲染的
+  // 模块。这里与 ensureReady 检查并行加载，并把「就绪」并入 cover 撤除条件——
+  // AppShellCover（Splash）一直盖到主图可渲染，撤盖无闪帧。加载失败也放行
+  // （渲染层 Suspense 会重试，好过永久盖屏）。
+  const [mainChunksReady, setMainChunksReady] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    // 汇合组：gate ready 后必须立即可渲染的三个模块。
+    void Promise.all([
+      import('@/components/layout/MainLayout'),
+      import('@/features/cc-agent/CCAgentFeatureLayout'),
+      import('@/features/cc-agent/CCAgentIndexRedirect'),
+    ]).then(
+      () => {
+        if (!alive) return;
+        setMainChunksReady(true);
+        // 错峰预热（不参与汇合）：默认落地链的二级页面（session 视图 = 上次
+        // 会话恢复；new = 空列表兜底），在汇合组完成后追加，避免与关键路径
+        // 抢带宽/transform 队列。
+        void import('@/features/cc-agent/CCAgentSessionView');
+        void import('@/features/cc-agent/NewMakerDraftRoute');
+      },
+      () => {
+        if (alive) setMainChunksReady(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 启动分段打点（2026-09-12 拆分测量）：主图汇合完成的时刻——「用户可见」=
+  // max(decision ready, 本时刻)，与 gate attempt / ready 行对比即可验证拆分收益。
+  useEffect(() => {
+    if (!mainChunksReady) return;
+    window.electronAPI?.logToMain?.(
+      'debug',
+      'renderer/boot',
+      `main-chunks-ready uptimeMs=${Math.round(performance.now())}`,
+    );
+  }, [mainChunksReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +114,9 @@ export function LocalDbGate() {
 
     (async () => {
      const attemptStartedAt = performance.now();
+     // 启动分段打点（2026-09-12）：gate 首次发起 ensureReady 的时刻。若此点远晚于
+     // App mount，说明卡点在 AuthContext（dataOwnerId 解析）而非 DB 本身。
+     log.info(`gate attempt start uptimeMs=${Math.round(attemptStartedAt)} ownerId=${ownerId ?? 'null'}`);
      try {
       // ensureReady（按 userId 切换 db；失败 main 已弹对话框）
       const ready = await window.electronAPI.localDb.ensureReady(ownerId);
@@ -78,6 +126,9 @@ export function LocalDbGate() {
         setDecision({ phase: 'fatal', code: ready.error.code, message: ready.error.message });
         return;
       }
+      // 注意：rendererLocalDbReady 的启动信号不在 ensureReady 成功处上报，而是推迟到
+      // 下方 cover 撤除（gate ready + 主图 chunks 汇合）时带上 owner 一次性上报，
+      // 保证启动器 ready == 界面真实可操作（splash 盖已撤）。
 
       log.info('startup readiness reached', {
         event: 'renderer.local-db-gate.ready',
@@ -148,19 +199,35 @@ export function LocalDbGate() {
   }, [dataOwnerId, retryNonce, t]);
 
   useEffect(() => {
-    if (!dataOwnerId || decision.phase === 'checking') {
+    // cover 撤除条件 = gate 决策就绪 且 主图已可渲染（mainChunksReady 汇合，
+    // 见上方预加载注释）；fatal 立即显示恢复界面，不受汇合影响。
+    const stillCovered =
+      !dataOwnerId ||
+      decision.phase === 'checking' ||
+      (decision.phase === 'ready' && !mainChunksReady);
+    if (stillCovered) {
       reportLocalDbGate('pending');
     } else if (decision.phase === 'fatal') {
       reportLocalDbGate('fatal');
     } else {
       reportLocalDbGate('ready');
+      // 启动 readiness 终点：splash 盖真实撤除 = 界面可操作。必须带 owner 上报，
+      // 否则 local/cloud 模式下主进程 owner 校验会忽略该信号导致启动器永久等待。
+      if (!readinessReportedRef.current && dataOwnerId) {
+        readinessReportedRef.current = true;
+        void window.electronAPI.reportLocalDbReady?.(dataOwnerId).catch(() => {});
+      }
     }
     return () => {
       reportLocalDbGate('pending');
     };
-  }, [dataOwnerId, decision, reportLocalDbGate]);
+  }, [dataOwnerId, decision, mainChunksReady, reportLocalDbGate]);
 
-  if (!dataOwnerId || decision.phase === 'checking') {
+  if (
+    !dataOwnerId ||
+    decision.phase === 'checking' ||
+    (decision.phase === 'ready' && !mainChunksReady)
+  ) {
     // 主界面还不能画。视觉盖由 AppShellCover + Splash / 品牌层承接
     // (DESIGN.md §10),这里返回 null 避免先露出空壳再盖上。
     return null;

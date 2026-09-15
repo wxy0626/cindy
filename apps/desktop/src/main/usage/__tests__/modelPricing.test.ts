@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   getCurrentDbClientUserId: vi.fn(() => 'user-a' as string | null),
   electronAppGetPath: vi.fn(() => ''),
   getClientEndpoint: vi.fn(() => 'https://model-access.example.test'),
-  resolveOwnerScopedSecretStorageKey: vi.fn(() => 'provider-xd'),
+  resolveOwnerScopedSecretStorageKeyForRead: vi.fn(() => 'provider-xd'),
   statSync: vi.fn(() => ({
     dev: 1n,
     ino: 2n,
@@ -50,7 +50,7 @@ vi.mock('../../clientEndpointsService', () => ({
   getClientEndpoint: mocks.getClientEndpoint,
 }));
 vi.mock('../../secrets/providerSecretStore', () => ({
-  resolveOwnerScopedSecretStorageKey: mocks.resolveOwnerScopedSecretStorageKey,
+  resolveOwnerScopedSecretStorageKeyForRead: mocks.resolveOwnerScopedSecretStorageKeyForRead,
 }));
 
 import { CURRENT_CINDY_REGION } from '../../../shared/brandRegion';
@@ -104,7 +104,7 @@ beforeEach(async () => {
   mocks.electronAppGetPath.mockReturnValue(tempUserDataDir);
   mocks.getCurrentDbClientUserId.mockReturnValue('user-a');
   mocks.getClientEndpoint.mockReturnValue('https://model-access.example.test');
-  mocks.resolveOwnerScopedSecretStorageKey.mockReturnValue('provider-xd');
+  mocks.resolveOwnerScopedSecretStorageKeyForRead.mockReturnValue('provider-xd');
   mocks.statSync.mockReturnValue({
     dev: 1n,
     ino: 2n,

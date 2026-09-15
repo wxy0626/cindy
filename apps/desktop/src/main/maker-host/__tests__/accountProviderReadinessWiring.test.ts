@@ -164,8 +164,9 @@ describe('account provider readiness wiring', () => {
       /handle\.isLive\(\)\s*&&\s*accountProviderReadinessBarrier\.isCurrentAdoptable\(\)/,
     );
 
-    expect(bootstrapSource).toContain(
-      'accountProviderReadinessArm.publish(userId, startProviderReadiness, resumeIncompleteDiscovery)',
+    // 2026-09-15：源码断言改为空白不敏感且不含收尾括号（多行格式化 + 尾逗号均鲁棒）。
+    expect(bootstrapSource.replace(/\s+/g, '')).toContain(
+      'accountProviderReadinessArm.publish(userId,startProviderReadiness,resumeIncompleteDiscovery',
     );
     expect(bootstrapSource).toContain('accountProviderReadinessArm.clear()');
     expect(bootstrapSource).toContain('startPendingAccountProviderReadiness = null');

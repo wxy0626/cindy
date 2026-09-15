@@ -2405,6 +2405,11 @@ interface ElectronAPI {
    */
   appReadyForBot: () => Promise<{ ok: true }>;
 
+  /** 主窗口主 frame 的 renderer root commit readiness 信号。 */
+  reportRootReady: () => Promise<{ ok: true }>;
+  /** 主窗口主 frame 的 LocalDbGate 完成 readiness 信号；带 dataOwnerId 供 main 做 owner 校验。 */
+  reportLocalDbReady: (ownerId?: string) => Promise<{ ok: true }>;
+
   syncDesktopCcPrefs: (prefs: {
     model: string;
     effort: string;

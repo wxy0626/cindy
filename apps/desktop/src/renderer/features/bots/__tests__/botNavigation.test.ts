@@ -88,7 +88,10 @@ describe('伙伴创建统一使用弹窗，并兼容旧创建链接', () => {
   const sidebar = readFileSync(resolve(__dirname, '..', 'BotsSidebar.tsx'), 'utf8');
 
   it('挂在 /bots/roster,且静态段排在 :botId 之前', () => {
-    expect(router).toContain("{ path: 'roster', element: <BotRosterView /> }");
+    // 路由懒加载改造(2026-09-12)后 element 都包在 <Lazy> 里，契约只断言
+    // 「roster 有挂载 + 静态段排序」，不再锁 element 的具体写法。
+    expect(router).toContain("path: 'roster'");
+    expect(router).toContain('<BotRosterView />');
     expect(router.indexOf("path: 'roster'")).toBeLessThan(router.indexOf("path: ':botId'"));
   });
 

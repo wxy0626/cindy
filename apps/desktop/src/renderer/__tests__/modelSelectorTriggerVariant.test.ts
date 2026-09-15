@@ -1155,6 +1155,9 @@ describe('ModelSelector trigger variants', () => {
       });
       expect(trigger.textContent).toContain('GPT-5.5');
       expect(trigger.querySelector('[data-composer-engine-lead="codex"]')).toBeTruthy();
+      // 切换中(pending)也不写引擎名字文本(2026-09-11):身份由 lead mark 表达,
+      // 「Next message: Codex」只留在 aria-label / title。
+      expect(trigger.textContent).not.toContain('Codex');
       expect(trigger.getAttribute('aria-label')).not.toContain('Current');
       // 切换失败时 intent 会保留供重试；重复渲染仍明确标成“下条消息”，不会隐藏身份。
       view.rerender(React.createElement(IntentTrigger, { refresh: 2 }));

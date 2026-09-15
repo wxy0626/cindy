@@ -20,7 +20,8 @@ import {
 } from './desktop-dev-verdict.mjs';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const startupLogPath = path.join(rootDir, '.codex', 'log', 'desktop-dev-startup-timing.log');
+// 启动诊断日志统一放在项目 .workbuddy，避免在仓库根部散落临时产物。
+const startupLogPath = path.join(rootDir, '.workbuddy', 'restart', 'desktop-dev-startup-timing.log');
 
 /** 记录启动阶段耗时，便于定位真实瓶颈且不影响启动流程。 */
 function recordStartupTiming(event, startedAt, detail = '') {

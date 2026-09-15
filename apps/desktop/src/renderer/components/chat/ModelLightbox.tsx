@@ -37,6 +37,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+/** @google/model-viewer 的按需加载单例 —— 首次调用触发动态 import 并缓存 promise,
+ *  后续调用直接复用。启动提速(2026-09-11): 该库(~1MB+ 含 three.js)原本在
+ *  main-entry 顶层全局加载,但只有本 lightbox 需要;未注册时 <model-viewer>
+ *  是 HTMLUnknownElement,custom element 注册后会自动 upgrade 已有节点,
+ *  延迟加载零行为差异(poster + spinner 已兜底解析前的空窗)。 */
+let modelViewerLoadPromise: Promise<unknown> | null = null;
+
+/** 触发 model-viewer custom element 的注册(幂等,返回已缓存的加载 promise)。 */
+function loadModelViewer(): Promise<unknown> {
+  modelViewerLoadPromise ??= import('@google/model-viewer');
+  return modelViewerLoadPromise;
+}
+
 /** Where the model bytes come from — decides URL building and menu actions. */
 export type ModelLightboxSource =
   | {
@@ -84,6 +97,12 @@ export function ModelLightbox({ source, onClose }: ModelLightboxProps) {
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+
+  // 挂载即注册 <model-viewer> custom element(按需懒加载)——未注册时节点已在
+  // DOM 中,注册后自动 upgrade,无需等待加载完成才渲染。
+  useEffect(() => {
+    void loadModelViewer();
+  }, []);
 
   const handleClose = useCallback(() => {
     if (isClosingRef.current) return;

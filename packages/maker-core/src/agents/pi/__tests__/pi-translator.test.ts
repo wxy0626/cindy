@@ -534,8 +534,13 @@ describe('pi translator', () => {
       status: 'failed',
       usage: { inputTokens: 100, outputTokens: 16_000 },
     });
-    expect((events.find((event) => event.type === 'error')?.data as { usage: unknown }).usage)
-      .toEqual((events.find((event) => event.type === 'done')?.data as { usage: unknown }).usage);
+    // done.usage 是 error.usage 的超集(ghost did-turn-end 上报附加 parentUsage/subagentUsage),
+    // 两者共享的 token/时长字段必须一致;全等断言在 done.usage 扩展后已失效(预存在红)。
+    const errorUsage = (events.find((event) => event.type === 'error')?.data as { usage: Record<string, unknown> }).usage;
+    const doneUsage = (events.find((event) => event.type === 'done')?.data as { usage: Record<string, unknown> }).usage;
+    for (const key of ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheCreationTokens', 'segments', 'segmentsComplete', 'durationMs', 'turnDurationMs']) {
+      expect(doneUsage[key]).toEqual(errorUsage[key]);
+    }
   });
 
   it.each([['empty', ''], ['logs', '2026-09-09 INFO health check succeeded\n'.repeat(1_000)], ['JSON', JSON.stringify(Array(20_000).fill(0))]])(
@@ -1661,6 +1666,37 @@ describe('pi translator', () => {
     const done2 = events2.events.find((e) => e.type === 'done');
     expect((done2!.data as { result?: unknown }).result).toBe('');
     expect(done2!.data).toMatchObject({ silentStop: true });
+  });
+
+  it('does not judge silent-stop when the bridge dropped the final message but text deltas streamed', () => {
+    const ctx = createPiTranslateContext(noopLogger);
+    const { queue, events } = makeQueue();
+    translatePiEvent(ev({ type: 'agent_start' }), queue, ctx);
+    // 桥丢内容事故形态(2026-09-13 4a188f14):流式 delta 有文本(用户看到回复),
+    // message_end 却带空 content + 0 token → 有流式文本就不得判空响应触发自动续跑。
+    translatePiEvent(
+      ev({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'ok' } }),
+      queue,
+      ctx,
+    );
+    translatePiEvent(
+      ev({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: '' }], usage: { input: 0, output: 0 } } }),
+      queue,
+      ctx,
+    );
+    translatePiEvent(ev({ type: 'agent_settled' }), queue, ctx);
+    const done = events.find((e) => e.type === 'done')!;
+    // result 兜底为用户真实看到的文本,will-assistant-message 钩子不静默跳过。
+    expect(done.data).toMatchObject({ status: 'completed', result: 'ok' });
+    expect(done.data).not.toHaveProperty('silentStop');
+
+    // 下一 turn 无任何流式文本 → 增量已随 agent_start 重置,恢复空响应判定。
+    translatePiEvent(ev({ type: 'agent_start' }), queue, ctx);
+    expect(ctx.streamedAssistantText).toBe('');
+    const events2 = makeQueue();
+    translatePiEvent(ev({ type: 'agent_settled' }), events2.queue, ctx);
+    const done2 = events2.events.find((e) => e.type === 'done')!;
+    expect(done2.data).toMatchObject({ silentStop: true, result: '' });
   });
 
   it('resets turn usage counters on the next agent_start', () => {

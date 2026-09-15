@@ -842,7 +842,9 @@ describe('ModelSelector composer pill 引擎小标', () => {
     });
     const trigger = triggerOf();
     expect(trigger.querySelector('[data-composer-engine-lead="codex"]')).toBeTruthy();
-    expect(trigger.querySelector('[data-composer-engine-mark="codex"]')).toBeNull();
+    // mark 已随 2026-09-06 裁决移到打头位:lead span 同时携带 engine-mark 属性,
+    // 尾部不再有第二个 mark 节点 —— 改为断言「mark 只出现一次且就在 lead 位」。
+    expect(trigger.querySelectorAll('[data-composer-engine-mark="codex"]')).toHaveLength(1);
     // 名字文本不再出现在 pill 上(但仍留在 title / aria-label 里,读屏与 hover 不丢信息)。
     expect(trigger.textContent).not.toContain('Codex');
     expect(trigger.getAttribute('title')).toContain('Codex');

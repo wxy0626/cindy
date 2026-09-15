@@ -4470,6 +4470,9 @@ export async function exitLocalMode(): Promise<AuthState> {
     reason: 'exit-local-mode',
     nextMode: 'signed-out',
   });
+  // 与 logout 同口径:退出会话即清掉本进程内的区域选择记忆,让登录页重新
+  // 回到「选择版本(中国版/国际版)」入口,而不是沿用本次启动的区域。
+  clearSelectedRuntimeRegion();
   return snapshotAuthState();
 }
 
@@ -5212,7 +5215,9 @@ async function runColdStartRefreshFlow(
           undefined,
           readStoredAccountLabel(storedRealm, refreshData.membership.id),
         );
-        commitCloudAppSession(currentUser.id);
+        // 跨 realm 冷启动恢复也要推进 owner 代数（与 completeLogin 一致）：
+        // 否则其它 realm 提交后进程内缓存不失效（authLoginFlowReset 回归守护）。
+        commitCloudAppSession(currentUser.id, authRealmChanged);
         persistedRefreshTokenNeedsIdentityCheck = false;
         clearReplacementIntegrationReloadTimers();
       },

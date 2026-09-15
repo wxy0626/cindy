@@ -10,9 +10,9 @@
     "build:remote-bundles": "node scripts/build-remote-bundles.mjs",
     "ensure-wda-source": "node scripts/ensure-wda-source-archive.mjs",
     "build:ios-simulator-sidecar": "pnpm --filter @cindy/ios-simulator-runtime native:build",
-    "predev": "pnpm ensure-wda-source && pnpm build:remote-bundles",
-    "predev:remote": "pnpm ensure-wda-source && pnpm build:remote-bundles",
-    "predev:inspect": "pnpm ensure-wda-source && pnpm build:remote-bundles",
+    "predev": "node scripts/ensure-wda-source-archive.mjs && node scripts/build-remote-bundles.mjs",
+    "predev:remote": "node scripts/ensure-wda-source-archive.mjs && node scripts/build-remote-bundles.mjs",
+    "predev:inspect": "node scripts/ensure-wda-source-archive.mjs && node scripts/build-remote-bundles.mjs",
     "prepackage": "pnpm ensure-wda-source && pnpm build:remote-bundles",
     "prebuild": "pnpm ensure-wda-source && pnpm build:remote-bundles",
     "dev": "pnpm dev:winsetup && node scripts/dev-local-env.mjs electron-forge start --",
@@ -206,7 +206,8 @@
     "@types/react-dom": "^19.0.0",
     "@types/sortablejs": "^1.15.8",
     "@types/ws": "^8.18.1",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "4.3.4",
+    "@vitejs/plugin-react-swc": "^4.3.3",
     "ali-oss": "^6.21.0",
     "autoprefixer": "^10.4.20",
     "cross-env": "^7.0.3",
@@ -223,7 +224,7 @@
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.0.0",
     "unified": "11.0.5",
-    "vite": "^6.4.3",
+    "vite": "npm:rolldown-vite@7.3.1",
     "vitest": "^3.2.4"
   }
 }

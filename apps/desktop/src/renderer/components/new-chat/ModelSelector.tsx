@@ -3629,30 +3629,10 @@ export function ModelSelector({
       />
     </span>
   ) : null;
-  const agentIdentityPrefix =
-    agentIdentityLabel &&
-    !isCompactToolbar &&
-    (!engineMarkOption || agentIdentity?.state === 'pending') ? (
-      <>
-        <span
-          className={cn(
-            'shrink-0 font-normal text-[var(--model-trigger-meta)]',
-            isCreateAgentVariant ? 'text-12' : dense ? 'text-12' : 'text-13',
-          )}
-        >
-          {agentIdentityLabel}
-        </span>
-        <span
-          className={cn(
-            'shrink-0 font-normal text-[var(--model-trigger-meta)]',
-            isCreateAgentVariant ? 'text-12' : dense ? 'text-12' : 'text-13',
-          )}
-          aria-hidden="true"
-        >
-          ·
-        </span>
-      </>
-    ) : null;
+  // 引擎名字文本已从 pill 视觉全面退位(2026-09-06 裁决收稳态,2026-09-11 裁决连
+  // 切换中(pending)也不写):agentIdentity 存在时引擎 mark 必存在(同源自
+  // vendorKey),图标即身份;「即将切到 X」措辞只留在 title / aria-label。
+  // 此前的 agentIdentityPrefix 文本节点因此不可达,已移除。
   // 保留 useMorphPopover 作用域开关(仅 composer 工具条 opt-in;settings/CreateWorker 用 Radix 回退),
   // 但去掉 !isCreateAgentVariant —— 新建对话框工具条也走脱身上浮 morph,与会话内统一(2026-07-22)。
   const morphEnabled = useMorphPopover && !isFieldTrigger;
@@ -3750,7 +3730,6 @@ export function ModelSelector({
             logoKind={disconnectedProvider?.logoKind}
             colorClass="text-[var(--error-fg)]"
           />
-          {agentIdentityPrefix}
           <span
             className={cn(
               'min-w-0 font-normal text-[var(--text-primary)]',
@@ -3831,7 +3810,6 @@ export function ModelSelector({
               }
             />
           ) : null}
-          {agentIdentityPrefix}
           <span
             className={cn(
               'min-w-0 font-normal',

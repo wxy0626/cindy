@@ -317,4 +317,138 @@ describe('useComposerSendFocusRestore', () => {
     expect(editor.state.selection.from).toBe(2);
     expect(editor.state.selection.to).toBe(6);
   });
+
+  // 回归：React Activity 重连（reconnectPassiveEffects）时，本 hook 的 passive effect 可能
+  // 先于 tiptap 自身的 remount 执行，此时 editor.view 是惰性 Proxy，读 .dom 会直接 throw。
+  // 未挂载的 editor 上 editor.isEditable/setEditable 均安全（tiptap setOptions 有
+  // !editorView 守卫），故无需为 harness 加额外保护。
+  describe('while the editor view is unmounted (Activity reconnect window)', () => {
+    const remountEditor = (editor: Editor) => {
+      const remount = document.createElement('div');
+      document.body.append(remount);
+      act(() => {
+        editor.mount(remount);
+        // jsdom 不会像真实浏览器那样在节点移除时自动收起选区；旧 view 的选区会继续挂在
+        // document 上并被误判为「composer 外的非折叠选区」。清空以模拟浏览器行为。
+        document.getSelection()?.removeAllRanges();
+      });
+    };
+
+    it('renders without touching the lazy view proxy while the editor is unmounted', () => {
+      const editor = createEditor();
+      editor.unmount();
+
+      expect(() => renderRestoreHook(editor)).not.toThrow();
+    });
+
+    it('clears the pending intent when a document pointerdown lands outside the unmounted composer', () => {
+      const editor = createEditor();
+      const hook = renderRestoreHook(editor);
+
+      focusComposerSelection(editor);
+      act(() => {
+        hook.result.current();
+      });
+      hook.rerender({
+        sendDispatchInFlight: true,
+        allowTypeDuringSend: false,
+        voiceLocked: false,
+      });
+      editor.unmount();
+
+      const outside = document.createElement('button');
+      document.body.append(outside);
+      fireEvent.pointerDown(outside);
+
+      remountEditor(editor);
+      hook.rerender({
+        sendDispatchInFlight: false,
+        allowTypeDuringSend: false,
+        voiceLocked: false,
+      });
+      flushAnimationFrames();
+
+      // intent 已被 document 级 pointerdown 清空：解锁后不得恢复焦点。
+      // （editor.commands 每次访问都是新对象，无法用 spyOn 计数，统一以焦点结果断言。）
+      expect(document.activeElement).not.toBe(editor.view.dom);
+    });
+
+    it('keeps the pending intent when the restore frame fires before tiptap remounts', () => {
+      const editor = createEditor();
+      const hook = renderRestoreHook(editor);
+
+      focusComposerSelection(editor);
+      act(() => {
+        hook.result.current();
+      });
+      hook.rerender({
+        sendDispatchInFlight: true,
+        allowTypeDuringSend: false,
+        voiceLocked: false,
+      });
+      // 真实浏览器在 view DOM 被移除时会派发 blur 把 editor.isFocused 置回 false；
+      // jsdom 不派发该事件，需像上方既有用例一样显式 blur 模拟。
+      act(() => editor.view.dom.blur());
+      editor.unmount();
+      hook.rerender({
+        sendDispatchInFlight: false,
+        allowTypeDuringSend: false,
+        voiceLocked: false,
+      });
+      flushAnimationFrames();
+
+      // 未挂载窗口内 rAF 不得 focus（若触碰 view Proxy 会直接 throw 使本用例失败），
+      // 也不得丢弃 intent——intent 是否保留由下方 remount 后的恢复结果证明。
+      // 注意此时编辑器仍是未挂载态，断言里不能碰 editor.view.dom。
+      expect(document.activeElement).toBe(document.body);
+
+      remountEditor(editor);
+      // 再走一次加锁→解锁，让 rAF 在 view 可用后消费保留的 intent。
+      hook.rerender({
+        sendDispatchInFlight: true,
+        allowTypeDuringSend: false,
+        voiceLocked: false,
+      });
+      hook.rerender({
+        sendDispatchInFlight: false,
+        allowTypeDuringSend: false,
+        voiceLocked: false,
+      });
+      flushAnimationFrames();
+
+      expect(document.activeElement).toBe(editor.view.dom);
+      expect(editor.state.selection.from).toBe(2);
+      expect(editor.state.selection.to).toBe(6);
+    });
+
+    it('restores the preserved selection after the editor remounts mid-send', () => {
+      const editor = createEditor();
+      const hook = renderRestoreHook(editor);
+
+      focusComposerSelection(editor);
+      act(() => {
+        hook.result.current();
+      });
+      hook.rerender({
+        sendDispatchInFlight: true,
+        allowTypeDuringSend: false,
+        voiceLocked: false,
+      });
+      // 同上：显式 blur 模拟浏览器在 view DOM 移除时派发的 blur。
+      act(() => editor.view.dom.blur());
+      editor.unmount();
+
+      remountEditor(editor);
+      hook.rerender({
+        sendDispatchInFlight: false,
+        allowTypeDuringSend: false,
+        voiceLocked: false,
+      });
+      flushAnimationFrames();
+
+      expect(document.activeElement).toBe(editor.view.dom);
+      expect(editor.state.selection.from).toBe(2);
+      expect(editor.state.selection.to).toBe(6);
+    });
+  });
 });

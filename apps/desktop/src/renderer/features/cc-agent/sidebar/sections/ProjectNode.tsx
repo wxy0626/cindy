@@ -54,7 +54,7 @@ import { getProjectSessionCollapseLimit } from '../../lib/sidebarCollapseConfig'
 import type { FolderPickerOption } from '@/components/new-chat/FolderPickerPopover';
 import type { SessionMoveTarget } from '../sessionMoveTarget';
 import type { FilterStatus } from '../../hooks/useSidebarFilter';
-import { MENU_CONTENT_CLASS, MENU_ITEM_CLASS, MENU_SEPARATOR_CLASS } from '../menuStyles';
+import { MENU_CONTENT_CLASS, MENU_ITEM_CLASS, MENU_ITEM_DANGER_CLASS, MENU_SEPARATOR_CLASS } from '../menuStyles';
 import { RemoteProjectIcon } from '../RemoteProjectIcon';
 import { SidebarRightStatusIndicator } from '../SidebarRightStatusIndicator';
 import { isDeviceLinkWriteBlocked } from '../../lib/remoteSessionWriteGuard';
@@ -603,10 +603,7 @@ export const ProjectNode = memo(function ProjectNode({
             <DropdownMenuItem
               disabled={projectWritesBlocked}
               onClick={handleDeleteProject}
-              className={cn(
-                MENU_ITEM_CLASS,
-                'text-[hsl(var(--destructive))]',
-              )}
+              className={MENU_ITEM_DANGER_CLASS}
             >
               {t('ccAgent.sidebar.projectAction.deleteProject')}
             </DropdownMenuItem>

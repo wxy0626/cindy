@@ -38,6 +38,22 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => authState.current,
 }));
 
+// 启动提速(2026-09-12)：LocalDbGate 现在会预加载主功能区模块（路由级懒加载的
+// 另一半，见 router.tsx 头注）。单元测试不加载真实重图，仅验证汇合放行语义。
+vi.mock('@/components/layout/MainLayout', () => ({ MainLayout: () => null }));
+vi.mock('@/features/cc-agent/CCAgentFeatureLayout', () => ({
+  CCAgentFeatureLayout: () => null,
+}));
+vi.mock('@/features/cc-agent/CCAgentIndexRedirect', () => ({
+  CCAgentIndexRedirect: () => null,
+}));
+vi.mock('@/features/cc-agent/CCAgentSessionView', () => ({
+  CCAgentSessionView: () => null,
+}));
+vi.mock('@/features/cc-agent/NewMakerDraftRoute', () => ({
+  NewMakerDraftRoute: () => null,
+}));
+
 import { LocalDbGate } from '../LocalDbGate';
 
 type ElectronApiStub = {

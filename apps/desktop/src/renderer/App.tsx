@@ -142,6 +142,13 @@ function OwnerScopedRouter() {
 export function App() {
   useDisableContextMenu();
   useDisableTab();
+  // 启动 readiness（dev 专用）：App 树首次真实 commit 后上报 renderer root ready。
+  // 必须放在 effect 里（root.render() 只是调度，commit 才代表可渲染）；仅主窗口上报，
+  // 辅助窗口调用会被 main 的主帧校验拒绝。main 侧幂等，StrictMode/HMR 重挂无副作用。
+  useEffect(() => {
+    if (isSecondaryWindow() || isSidebarWindow() || isGhostPanelWindow()) return;
+    void window.electronAPI.reportRootReady?.().catch(() => {});
+  }, []);
   // mac ⌘W 根级兜底: splash / env check / 登录 / 迁移等壳外阶段关(隐藏)本窗口;
   // MainLayout / SidebarWindowLayout 挂载期间声明所有权, 本兜底让路给壳层的
   // 焦点分派消费点 (右侧栏 tab 优先)。见 useCloseWindowShortcut.ts。

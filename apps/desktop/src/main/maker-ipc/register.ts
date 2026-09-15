@@ -4264,7 +4264,14 @@ async function settleSilentStopDone(
   productTurnUsageTargetTracker.clear(sessionId);
   sessionTurnActivityTracker.scheduleIdleAfterTerminalBroadcast(sessionId);
   noteClaudeSessionTurnState(sessionId, false);
-  agentInputCoordinatorHolder?.onTurnEvent(sessionId, 'done');
+  // 权威收尸:markTurnEndedAndCheckIdle 已确认之后没有更新的 turn 起跑,silent-stop
+  // 链(用户 turn + 外部 auto-resume 直发)整体结束。合成 done 必须携带收尸标记 ——
+  // 链上的外部续跑已把 turnGeneration 推进到残留 activeTurn 绑定代号之后,无标记的
+  // done 会被 coordinator 的 unowned 守卫按代号不符拒收,用户消息的残留 turn 清不掉,
+  // 会话从此永久卡死:新消息全部堵在队列里,停止按钮常亮(2026-09-13 实证)。
+  agentInputCoordinatorHolder?.onTurnEvent(sessionId, 'done', undefined, undefined, {
+    assertsTurnChainSettled: true,
+  });
   settlePendingCredentialSwitch(sessionId, `silent-stop:${reason}`);
   settlePendingSessionRuntimeControlHolder?.(sessionId, `silent-stop:${reason}`);
   deferredCodexRestartHolder?.onSessionSettled();
@@ -18346,16 +18353,11 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
               forceSessionRebuild:
                 rebuildLiveOrcaWorker ||
                 (atomicSelection?.effort === null && runtimeAgentKind !== 'pi'),
-              ...(runtimeAgentKind === 'pi' && runtimeRouteChanged
-                ? {
-                    assertSessionCloseSupported: () => {
-                      throwIpcError(
-                        'PRECONDITION_FAILED',
-                        'Pi target route requires an unsupported runtime replacement; runtime selection was not changed',
-                      );
-                    },
-                  }
-                : {}),
+              // Pi 跨 proxy 供应商身份的 route 变更不再 fail-closed(#3705 语义在
+              // register 层恢复):引擎按凭证边界决定 close——空闲即关、忙碌 defer
+              // 到回合边界;下一次发送按 DB route lazy-create 并 resume 原 jsonl。
+              // 窗口压力防护:热切路径仍走下方 Pi final-window 校验;重建路径的
+              // 历史压力由 Pi 原生 auto-compact 在 resume 后兜底。
               isSessionInTurn,
               registerPendingCredentialSwitch: registerPendingCredentialSwitchForSession,
               clearPendingCredentialSwitch: atomicSelection
@@ -18388,15 +18390,12 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
           runtimeAgentKind === 'pi' &&
           runtimeRouteChanged &&
           result.status !== 'deferred' &&
-          !modelWindowRebuilt
+          !modelWindowRebuilt &&
+          // apply 可能已按凭证边界关闭会话待重建(跨 proxy 供应商身份):此时没有
+          // live runtime 可核实 final window。目标窗口已在 apply 前按目录核实,
+          // route 已提交、由下一次发送 lazy-create 重建 —— 不视为失败。
+          piSessionAfterRouteChange
         ) {
-          if (!piSessionAfterRouteChange) {
-            restoreControlStores();
-            throwIpcError(
-              localModelWindowSwitchErrorCode('MODEL_WINDOW_TARGET_CONTEXT_UNKNOWN'),
-              'Pi target runtime could not be verified; runtime selection was not accepted',
-            );
-          }
           const reportedPiWindow = piSessionAfterRouteChange.getUsageSnapshot?.().contextWindow;
           if (typeof reportedPiWindow !== 'number' || !Number.isFinite(reportedPiWindow) || reportedPiWindow <= 0) {
             await closeRejectedPiRuntime('final context window was not verified');

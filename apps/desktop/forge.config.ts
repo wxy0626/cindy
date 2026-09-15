@@ -9,7 +9,7 @@ import { rebuild as electronRebuild } from '@electron/rebuild';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
-import { VitePlugin } from '@electron-forge/plugin-vite';
+import VitePlugin from '../../tools/plugin-vite-lab/plugin-vite-fork/src/VitePlugin';
 import type { ForgeArch, ForgeConfig, ForgePlatform } from '@electron-forge/shared-types';
 import {
   BRAND_IDENTITY,
@@ -479,6 +479,18 @@ async function rebuildNativeDepsInPackage(
 
 const isDev = process.env.NODE_ENV !== 'production' && !process.argv.includes('make') && !process.argv.includes('package');
 const isWin = process.platform === 'win32';
+
+// 30 秒启动实验开关（只读 instrumentation）：plugin-vite 会在 preStart 中
+// await 整个 build() Listr，且 renderer 启动依赖同一 preStart gate；当前版本没有
+// 可安全拆分「主窗口 ready 后再构建 worker」的生命周期钩子。保留旧行为为默认值，
+// 实验关闭时仅记录意图与阻塞点，绝不跳过 worker 产物（避免运行时找不到入口）。
+const eagerWorkers = process.env.XDT_EAGER_WORKERS !== '0';
+if (isDev) {
+  console.log(
+    `[boot-experiment] XDT_EAGER_WORKERS=${eagerWorkers ? '1' : '0'} ` +
+      '(worker deferral unavailable: plugin-vite preStart awaits all build targets)',
+  );
+}
 
 /**
  * Build cindy-updater (Rust + Tauri) and copy the release binary into
@@ -1676,6 +1688,14 @@ const config: ForgeConfig = {
     // 使其在 packaged 应用中可以被 require()——asar 会阻止原生模块的 dlopen 调用。
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({
+      // 启动提速(2026-09-12): rolldown 的 watch 模式在全并发下互相放大
+      // (单条 watch 只多 0.6s,24 条并发时 main 从 2.6s 放大到 45s —— 探针实测,
+      // probe-rolldown/probe3-isolate.mjs)。dev 改串行构建: 首包总时长 ~10s,
+      // 热更不受影响(各条目 watcher 仍独立增量重建);打包(isDev=false)保持并发。
+      // 2026-09-14 实测：即使 worker 已回退根 vite，dev 并发仍让 main rolldown
+      // 构建从 2.6s 恶化到 7.4s（同进程 JS 线程竞争）且总时长无收益（51→54s），
+      // 维持 dev 串行。
+      concurrent: !isDev,
       build: [
         {
           entry: 'src/main/index.ts',

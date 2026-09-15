@@ -1,9 +1,26 @@
 import { defineConfig, type Plugin } from 'vite';
-import react from '@vitejs/plugin-react';
+// 2026-09-13 关键认知修正 + react 插件终版:
+//
+// 【事实修正】forge plugin-vite 实际使用的 vite 是**根 node_modules/vite（普通版
+// 6.4.3）**——plugin-vite 从自己的安装位置解析 vite,命中的是 pnpm hoist 到根部的
+// 6.4.3;desktop 的 rolldown-vite 钉死只对「从 desktop 解析 vite 的独立脚本/探针」
+// 生效（此前 probe 的「main 构建 1.9s」是 rolldown 裸跑,forge 里一直是 rollup 版,
+// 实测 main 构建 19-27s——两者不矛盾,是不同 vite）。因此:
+//   - @vitejs/plugin-react-oxc 在 forge 场景必然抛错（要求 this.meta.rolldownVersion,
+//     根 vite 6.4.3 不提供）——0.4.3 已卸载,不要再装;
+//   - 若未来要让 forge 走 rolldown,正确路径是让 plugin-vite 解析到 rolldown-vite
+//     （根级提供），历史上曾因此挂死（第 10 目标起 CPU 归零），有前科、需单独实验。
+//
+// 【当前方案】@vitejs/plugin-react-swc（官方 SWC 插件，兼容 vite 6.4.3）:
+// renderer 首次加载的总 transform 量是最大剩余成本（打点实测 ~19s 活动量，
+// 串并行只搬移不减少）——SWC(Rust) 替代 Babel 提 transform 吞吐。
+// 回退路径:切回 @vitejs/plugin-react 4.3.4（精确钉死仍在）。
+import reactSwc from '@vitejs/plugin-react-swc';
 import path from 'node:path';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import crypto from 'node:crypto';
+import { bootTimingPlugin } from './vite-boot-timing';
 
 const TIPTAP_AND_PROSEMIRROR_PACKAGES = [
   '@tiptap/core',
@@ -324,7 +341,8 @@ export default defineConfig(({ command }) => {
 const rendererConfig = {
   root: path.resolve(__dirname, 'src/renderer'),
   envDir: __dirname,
-  plugins: [react(), pdfjsAssetsPlugin()],
+  // reactSwc（2026-09-13 启用，见文件头注释；回退 = 换回 react() 导入）
+  plugins: [reactSwc(), pdfjsAssetsPlugin(), bootTimingPlugin('renderer.main_window')],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src/renderer'),
@@ -342,9 +360,32 @@ const rendererConfig = {
     ],
     // 首屏 App.tsx 会间接加载 highlight.js;提前预优化,避免页面启动后才发现新依赖并
     // 切换 browserHash,旧动态 chunk 被清理后会触发 "Failed to fetch dynamically imported module" 黑屏。
+    // 【2026-09-13 实验结论】曾尝试把源码入口（./index.tsx / ./main-entry.tsx）纳入预打包
+    // 以消灭 per-module HTTP 瀑布——两轮实测 chunks-ready 45.5s/47.4s vs 基线 24-29s，
+    // 巨型预打包产物的加载+求值本身成了新瓶颈，vite 的按需瀑布已接近该架构最优，方向证伪。
     include: ['@tiptap/react', 'highlight.js', 'highlight.js/lib/core', 'highlight.js/lib/languages/typescript'],
   },
   server: {
+    // 首屏 transform 预热（2026-09-12 A/B 终版结论）：无 warmup 对照轮证明 24-29s
+    // 构建窗与 warmup 无关（关掉仍 25.5s），而 warmup 让 renderer 端到端净变快
+    // （有 warmup 57.2s vs 无 73.2s 全链 gate ready）——保留默认开启。
+    // 注意：warmup 的全图 Babel 预转换与 forge 串行构建同进程，确有互饿，但它是
+    // 「把 renderer 冷加载提前」与「构建窗变长」的净正交换；renderer 侧 App 巨图
+    // （动态 import）不在预热范围，其按需 transform 会与预转换队列排队，属可接受代价。
+    // 语义依据：rolldown-vite 7.3.1 node.js `mapFiles` 静态路径按 `path.resolve(root,file)`
+    // 解析（root = src/renderer）；`warmupFile` 对 .html 走 transformIndexHtml 级联。
+    warmup: {
+      // 2026-09-14 增补：LocalDbGate 汇合组三个懒加载 chunk（mainChunksWarmupPromise
+      // 与 App 图并行加载，此前只能靠浏览器请求触发 transform，实测 gate ready 后仍要
+      // ~4s 才 chunks ready）。构建提速后预热不再被 main 构建饿死，这里一并预热。
+      clientFiles: [
+        'index.html',
+        'index.tsx',
+        'components/layout/MainLayout.tsx',
+        'features/cc-agent/CCAgentFeatureLayout.tsx',
+        'features/cc-agent/CCAgentIndexRedirect.tsx',
+      ],
+    },
     watch: {
       // 被 exclude 的内部包以 node_modules 软链路径进模块图,默认 `**/node_modules/**`
       // 忽略规则会让 watcher 对它们的源码变更全盲(变更后引用新导出的组件热更、被引用包

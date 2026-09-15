@@ -101,6 +101,21 @@ const CREDENTIAL_SWITCH_RETRY_DELAY_MS = 10_000;
 const TERMINAL_DONE_FALLBACK_DELAY_MS = 250;
 const REWIND_BOUNDARY_POLL_INTERVAL_MS = 100;
 
+/**
+ * 僵尸 turn 兜底回收安全窗:已 dispatched 的 activeTurn 与 vendor 权威空闲的矛盾
+ * 持续超过该时长即强制收尸(见 tryReconcileStaleDispatchBoundary 的兜底分支)。
+ * 窗口必须显著大于 pre-dispatch 亚秒级窗口( Pi gap: send 已返回、agent_start 未
+ * 观测)与探针抖动,否则会把合法 in-flight send 误杀;默认 30s,可用环境变量覆盖。
+ */
+function parseZombieTurnReclaimDelayMs(raw: string | undefined): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 5_000) return 30_000;
+  return parsed;
+}
+const ZOMBIE_TURN_RECLAIM_DELAY_MS = parseZombieTurnReclaimDelayMs(
+  process.env.XDT_ZOMBIE_TURN_RECLAIM_MS,
+);
+
 type QueuedAttachment = NonNullable<AgentInputQueuedMessage['files']>[number];
 
 function isMakerImageAttachment(file: Pick<QueuedAttachment, 'category' | 'ext'>): boolean {
@@ -690,6 +705,16 @@ interface SessionInputState {
    * flips idle; reconcile only after SESSION_RUNNING_RETRY_DELAY_MS.
    */
   staleLiveIdleSinceMs: number | null;
+  /**
+   * 僵尸 turn 兜底计时:已 dispatched 的 activeTurn 与 vendor 权威空闲的矛盾首次
+   * 观测时刻。矛盾持续超过 ZOMBIE_TURN_RECLAIM_DELAY_MS 即强制收尸 —— 这是全部
+   * generation 归属回收路径都拒绝后的最后防线,保证任何原因造成的僵尸 turn 最坏
+   * 也只是一个有界自愈窗口而不是永久卡死(2026-09-13 silent-stop 死锁)。边界闸门
+   * (abort / steer / 交互锁)或 vendor 恢复运行时重置。
+   */
+  zombieIdleSinceMs: number | null;
+  /** 与 zombieIdleSinceMs 配对:计时所属的 activeTurn 身份,换 turn 后重新计时。 */
+  zombieActiveTurnClientId: string | null;
   /** Leftover terminal fence: Session incarnation + the generation that was reclaimed. */
   fencedStaleTerminal: { instanceId: string; generation: number } | null;
   /**
@@ -773,6 +798,8 @@ function createInitialInputState(
     sessionRunningRetryDelayMs: null,
     sessionRunningRetryToken: null,
     staleLiveIdleSinceMs: null,
+    zombieIdleSinceMs: null,
+    zombieActiveTurnClientId: null,
     fencedStaleTerminal,
     suppressedTerminalError: null,
     credentialSwitchWait: null,
@@ -2213,7 +2240,13 @@ export class AgentInputCoordinator {
             sessionId,
             staleClientId: latest.activeTurn.item?.clientId,
           });
-          this.onTurnEvent(sessionId, 'done');
+          // maker-core 权威 NO_ACTIVE_TURN = 整条 turn 链确已结束的强证据。合成
+          // done 必须携带收尸标记:若残留 turn 绑定的是被外部续跑(auto-resume/
+          // scheduler 直发)推进前的旧 generation,无标记的 done 会被 unowned 守卫
+          // 按代号不符拒收,尸体永远清不掉,本函数退化成每次发送空转的死循环。
+          this.onTurnEvent(sessionId, 'done', undefined, undefined, {
+            assertsTurnChainSettled: true,
+          });
         }
         log.info('steer fallback to normal turn dispatch (no active turn)', {
           sessionId,
@@ -3296,7 +3329,21 @@ export class AgentInputCoordinator {
     type: 'done' | 'error',
     message?: string,
     signals?: Omit<InterruptedTurnErrorSignals, 'message'>,
-    meta?: { sessionTurnGeneration?: number; sessionInstanceId?: string },
+    meta?: {
+      sessionTurnGeneration?: number;
+      sessionInstanceId?: string;
+      /**
+       * host 权威收尸标记。settleSilentStopDone / steer NO_ACTIVE_TURN 合成 done
+       * 时,host 已握有"整条逻辑 turn 链(含后续外部直发续跑)确实结束"的强证据
+       * (turn lease 校验无更新 turn / maker-core 权威 NO_ACTIVE_TURN)。此时残留
+       * dispatched activeTurn 若绑定的是更早的 generation(外部续跑推进了代号),
+       * observed 终态必然与绑定代号不符 —— 按 unowned 拒收会让尸体永远清不掉,
+       * 会话永久卡死(2026-09-13 silent-stop 链 + auto-resume 实证)。携带本标记
+       * 即跳过 unowned 归属校验直接收尸。仅限上述两处合成 done 使用;真实 vendor
+       * 终态事件必须继续走 generation 归属校验,不得携带。
+       */
+      assertsTurnChainSettled?: boolean;
+    },
   ): void {
     const state = this.getState(sessionId);
     if (this.isFencedStaleTerminal(sessionId, meta)) {
@@ -3515,7 +3562,13 @@ export class AgentInputCoordinator {
     }
     if (active && isActiveTurnDispatched(active)) {
       const observed = this.readObservedCurrentTurnTerminal(sessionId);
-      if (observed?.kind === 'error') {
+      // host 权威收尸(assertsTurnChainSettled)且 observed 属于其它 generation 的
+      // turn 链:不把那次失败转嫁给本残留 turn(它自己的 done 早在 silent-stop 链
+      // 里被吞掉),也不因代号不符拒收 —— 直接落到下方收尸,恢复队列派发。
+      const chainSettledReclaim =
+        meta?.assertsTurnChainSettled === true &&
+        !this.observedMatchesBoundActiveTurn(active, observed);
+      if (observed?.kind === 'error' && !chainSettledReclaim) {
         if (this.observedMatchesBoundActiveTurn(active, observed)) {
           if (!this.consumeSuppressedObservedError(sessionId, observed)) {
             const signals: Omit<InterruptedTurnErrorSignals, 'message'> = {
@@ -3974,9 +4027,15 @@ export class AgentInputCoordinator {
 
   private shouldIgnoreUnownedTerminal(
     active: ActiveTurn,
-    meta: { sessionTurnGeneration?: number } | undefined,
+    meta:
+      | { sessionTurnGeneration?: number; sessionInstanceId?: string; assertsTurnChainSettled?: boolean }
+      | undefined,
     observed: ReturnType<AgentInputCoordinator['readObservedCurrentTurnTerminal']>,
   ): boolean {
+    // host 权威收尸:合成 done 已被 host 侧强证据背书(见 onTurnEvent meta 注释),
+    // 不再做 generation 归属猜测 —— 猜测路径(test: drain-lost-terminal-generation-
+    // mismatch 钉死的约定)只约束 coordinator 自行推断,不约束 host 显式断言。
+    if (meta?.assertsTurnChainSettled) return false;
     if (typeof active.vendorTurnGeneration !== 'number') return false;
     if (typeof meta?.sessionTurnGeneration === 'number') {
       return meta.sessionTurnGeneration !== active.vendorTurnGeneration;
@@ -4022,6 +4081,36 @@ export class AgentInputCoordinator {
     );
   }
 
+  /**
+   * 僵尸 turn 兜底强制收尸:仅由 tryReconcileStaleDispatchBoundary 在矛盾持续超过
+   * 安全窗后调用。围栏残留 turn 自己的迟到终态(强制清后其 done/error 尾巴若真到
+   * 达,不得再被当成用户可见的恢复 / Retry 入口 —— turn 已在此结算),然后清账,
+   * 队列恢复派发。有意不合成 error/recovery:vendor 已权威空闲,该 turn 的真实
+   * 结局(完成/失败/从未开始)已由其它路径呈现过,这里只负责解除派发死锁。
+   */
+  private reclaimZombieActiveTurn(sessionId: string, state: SessionInputState): void {
+    const boundGeneration = state.activeTurn?.vendorTurnGeneration ?? null;
+    const instanceId = readSessionInstanceId(this.deps.getTurnSessionIdentity?.(sessionId));
+    if (typeof boundGeneration === 'number' && instanceId) {
+      state.fencedStaleTerminal = { instanceId, generation: boundGeneration };
+    }
+    log.warn('zombie dispatched activeTurn swept after vendor-idle deadline', {
+      sessionId,
+      clientId: state.activeTurn?.item?.clientId ?? null,
+      dispatchLifecycle: state.activeTurn?.dispatchLifecycle ?? null,
+      boundGeneration,
+      observedGeneration: this.readObservedCurrentTurnTerminal(sessionId)?.generation ?? null,
+      zombieIdleMs:
+        state.zombieIdleSinceMs != null ? Date.now() - state.zombieIdleSinceMs : null,
+      fencedStaleTerminal: state.fencedStaleTerminal,
+    });
+    state.activeTurn = null;
+    state.zombieIdleSinceMs = null;
+    state.zombieActiveTurnClientId = null;
+    state.staleLiveIdleSinceMs = null;
+    this.emit(sessionId);
+  }
+
   private tryReconcileStaleDispatchBoundary(
     sessionId: string,
     state: SessionInputState,
@@ -4035,11 +4124,15 @@ export class AgentInputCoordinator {
       this.deps.hasPendingInteraction(sessionId)
     ) {
       state.staleLiveIdleSinceMs = null;
+      // 有边界在活动 = 有人正在按自己的语义处置,矛盾计时暂停重记。
+      state.zombieIdleSinceMs = null;
       return false;
     }
     // Missing live probe fail-closed: do not steal abort/live-turn reconcile.
     if (this.deps.isLiveTurnRunning?.(sessionId) !== false) {
       state.staleLiveIdleSinceMs = null;
+      // vendor 不再空闲 / 探针不可用:矛盾不成立,兜底计时重置。
+      state.zombieIdleSinceMs = null;
       return false;
     }
 
@@ -4049,7 +4142,35 @@ export class AgentInputCoordinator {
     const recoverLeftoverError =
       leftoverActiveTurn && this.canRecoverLeftoverActiveTurnError(sessionId, state);
     if (leftoverActiveTurn && !reclaimLeftover && !recoverLeftoverError) {
+      // 僵尸 turn 最后防线:全部 generation 归属回收路径都拒绝(典型:外部链
+      // 直发续跑推进了 turnGeneration,observed 终态与残留绑定代号错位,任何
+      // 同代校验都 fail-closed)时,这里的"已 dispatched + vendor 权威空闲"本身
+      // 就是矛盾实锤。计时超过安全窗后强制收尸,把任何原因造成的僵尸从"永久
+      // 卡死"压到"最多一个自愈窗口"(2026-09-13 silent-stop 死锁实证)。只有
+      // pre-dispatch(发还在飞)的 activeTurn 是合法并发窗口,绝不兜底。
+      const active = state.activeTurn;
+      const zombieClientId = active?.item?.clientId ?? null;
+      if (active !== null && isActiveTurnDispatched(active)) {
+        if (
+          state.zombieActiveTurnClientId !== zombieClientId ||
+          state.zombieIdleSinceMs == null
+        ) {
+          state.zombieActiveTurnClientId = zombieClientId;
+          state.zombieIdleSinceMs = Date.now();
+        }
+        if (
+          Date.now() - state.zombieIdleSinceMs >= ZOMBIE_TURN_RECLAIM_DELAY_MS
+        ) {
+          this.reclaimZombieActiveTurn(sessionId, state);
+          return true;
+        }
+        // 保住 250ms 心跳:drain 侧见 staleLiveIdleSinceMs 非空会续约重试定时器,
+        // 让兜底计时在无用户操作时也能持续推进。
+        state.staleLiveIdleSinceMs = Date.now();
+        return false;
+      }
       state.staleLiveIdleSinceMs = null;
+      state.zombieIdleSinceMs = null;
       return false;
     }
     if (!trackerBusy && !reclaimLeftover && !recoverLeftoverError) {

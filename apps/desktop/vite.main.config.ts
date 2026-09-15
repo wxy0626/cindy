@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import { desktopClientBuildEnv } from '../../scripts/shared/client-endpoint-build-env.mjs';
+import { buildConfigTimingPlugin } from './vite-boot-timing';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 // 登录 scenario fixtures 的生产空 stub(implementation-plan Step 0 WHAT4 生产排除
@@ -28,6 +29,50 @@ export default defineConfig(({ mode }) => {
       ? (process.env[key] ?? '')
       : (allEnv[key] ?? '');
   return {
+    // Dev 启动分段探针：main 目标在 dev 是 forge 的第一个构建目标，config-resolved
+    // 时刻即「vite 构建工作开始」；与 renderer server-listening、target built、
+    // App started 对齐可分解前置段（见 vite-boot-timing.ts 头注）。
+    plugins: [
+      buildConfigTimingPlugin('main'),
+      // rolldown 兼容补丁（2026-09-13）：rolldown 的 CJS 输出不会转换
+      // `import.meta.url`（运行时是 undefined），而 `_generated` 的运行时代码用
+      // `createRequire(import.meta.url)` 解析 require → ERR_INVALID_ARG_VALUE →
+      // Electron "App threw an error during load"。main bundle 是 CJS 格式，
+      // `__filename` 由 Node 包装器保证且 createRequire 两者语义等价。
+      // 仅 dev 时启用（rollup 分支下替换同样语义等价且无害；与 inline 开关解耦——
+      // rolldown 对【任何】走它编译的 import.meta.url 都会生成 `{}.url`（undefined），
+      // manualChunks 多 chunk 形态同样需要本插件）。
+      ...(mode === 'development'
+        ? [
+            {
+              name: 'xdt-import-meta-url-cjs-compat',
+              transform(code: string) {
+                if (!code.includes('import.meta.url')) return null;
+                // 1) 高频标准写法 → 语义等价的 CJS 形式
+                let next = code
+                  .replace(
+                    /createRequire\(\s*import\.meta\.url\s*\)/g,
+                    'createRequire(__filename)',
+                  )
+                  .replace(
+                    /fileURLToPath\(\s*import\.meta\.url\s*\)/g,
+                    '__filename',
+                  );
+                // 2) 兜底：rolldown 的 CJS 输出不给 import.meta.url 任何值（undefined），
+                //    剩余用法一律替换为 __filename（路径语义；日志计数便于排查）。
+                const fallbackCount = (next.match(/import\.meta\.url/g) || []).length;
+                if (fallbackCount > 0) {
+                  console.log(
+                    `[xdt-import-meta-patch] fallback import.meta.url -> __filename x${fallbackCount}`,
+                  );
+                  next = next.replace(/import\.meta\.url/g, '__filename');
+                }
+                return next === code ? null : { code: next, map: null };
+              },
+            },
+          ]
+        : []),
+    ],
     resolve: {
       // 仅 fixtures 生产排除条件(v6.17 允许范围):production 构建把
       // '@cindy/auth-client/fixtures' 整模块替换为空 stub,dev 构建保留真模块。
@@ -102,27 +147,43 @@ export default defineConfig(({ mode }) => {
       ),
     },
     build: {
+      // dev 冷启动提速(2026-09-11):esnext 免去对 ~33MB main 产物的语法降级转译
+      // (Vite 默认 target 'modules' 需按 es2020 一档转译,数秒级)。Electron 41 的
+      // V8 全量支持 esnext,运行行为无差异;生产构建保持默认 target 不变。
+      ...(mode === 'development' ? { target: 'esnext' as const } : {}),
       rollupOptions: {
         output: {
-          // Keep the vendored @cindy/browser-control-runtime (including its
-          // dynamically-imported pw-ai.js / chrome-mcp.js) in ONE chunk. Otherwise
-          // vite code-splits those dynamic imports into separate chunks that
-          // `require()` the bootstrap-electron entry chunk again at load time →
-          // bootstrap RE-EVALUATES → its module-top-level side effects re-run:
-          //   - registerImageScheme() throws "registerSchemesAsPrivileged after
-          //     ready" (→ browser navigate reports "Playwright unavailable"), and
-          //   - the startup claude-orphan reaper re-runs and SIGKILLs the active
-          //     agent.
-          // Co-locating the whole package keeps the dynamic imports intra-chunk so
-          // they resolve to the already-loaded module and never re-require/re-eval
-          // the entry. See packages/browser-control-runtime.
-          manualChunks(id: string) {
-            const norm = id.replace(/\\/g, '/');
-            if (norm.includes('/packages/browser-control-runtime/')) {
-              return 'browser-control-runtime';
-            }
-            return undefined;
-          },
+          // rolldown 实验开关（2026-09-13）：rolldown 默认拆 chunk + 动态 import，
+          // 而 plugin-vite / Electron 期望单文件 CJS 入口——实测多 chunk 产物会
+          // 挂在 Electron 启动早期（进程起来但无任何日志）。dev +
+          // XDT_MAIN_INLINE_SINGLE=1 时改强制单文件（inlineDynamicImports），
+          // 与下方 manualChunks 互斥，故按开关二选一。
+          // 单文件语义 = browser-control-runtime 的动态 import 内联进主 chunk，
+          // 恰好比 manualChunks 更彻底地满足「动态 import 不拆包」的原始约束
+          // （见下方 manualChunks 注释），dev 下安全。
+          ...(mode === 'development' && process.env.XDT_MAIN_INLINE_SINGLE === '1'
+            ? { inlineDynamicImports: true }
+            : {
+                // Keep the vendored @cindy/browser-control-runtime (including its
+                // dynamically-imported pw-ai.js / chrome-mcp.js) in ONE chunk. Otherwise
+                // vite code-splits those dynamic imports into separate chunks that
+                // `require()` the bootstrap-electron entry chunk again at load time →
+                // bootstrap RE-EVALUATES → its module-top-level side effects re-run:
+                //   - registerImageScheme() throws "registerSchemesAsPrivileged after
+                //     ready" (→ browser navigate reports "Playwright unavailable"), and
+                //   - the startup claude-orphan reaper re-runs and SIGKILLs the active
+                //     agent.
+                // Co-locating the whole package keeps the dynamic imports intra-chunk so
+                // they resolve to the already-loaded module and never re-require/re-eval
+                // the entry. See packages/browser-control-runtime.
+                manualChunks(id: string) {
+                  const norm = id.replace(/\\/g, '/');
+                  if (norm.includes('/packages/browser-control-runtime/')) {
+                    return 'browser-control-runtime';
+                  }
+                  return undefined;
+                },
+              }),
         },
         // better-sqlite3 is a native (.node) addon — must NOT be bundled, must
         // be require()'d at runtime from node_modules. Same for ws transitive

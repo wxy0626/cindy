@@ -69,6 +69,13 @@ vi.mock('../botStore', () => ({
     sessions?: Array<{ id: string; role?: string; kind?: string }>;
   }) =>
     bot.sessions?.find((session) => session.role === 'canonical' || session.kind === 'chat')?.id,
+  // 与真实实现同口径：唯一 role==='canonical' 的投影才算 canonical。
+  canonicalBotSession: (
+    bot: { sessions?: Array<{ id: string; role?: string; kind?: string }> },
+  ) => {
+    const matches = (bot.sessions ?? []).filter((session) => session.role === 'canonical');
+    return matches.length === 1 ? matches[0] : undefined;
+  },
 }));
 vi.mock('../BotDeleteDialog', () => ({
   BotDeleteDialog: ({ bot }: { bot: { name: string } | null }) =>

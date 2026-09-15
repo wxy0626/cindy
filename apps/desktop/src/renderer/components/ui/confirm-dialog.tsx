@@ -62,7 +62,10 @@ export interface ConfirmDialogProps {
   contentSelectable?: boolean;
   /** 嵌套在其它 Dialog 内时提升层级；普通确认继续使用默认层级。 */
   zIndex?: number;
-  /** Destructive actions use the semantic destructive theme tokens. */
+  /**
+   * 主按钮变体。destructive 为实心红色危险按钮:常态红底配 accent-pure-cta-fg
+   * (暗色主题下翻黑,即红底黑字),悬停/按下文字翻白(2026-09-11 用户拍板)。
+   */
   confirmVariant?: 'default' | 'destructive';
   /**
    * 主按钮文字前的小图标(如 Full access 确认的警示三角)。跟随按钮文字颜色,
@@ -324,7 +327,7 @@ export function ConfirmDialog({
                     className={cn(
                       'h-auto min-h-9 min-w-[96px] max-w-full gap-1.5 whitespace-normal [overflow-wrap:anywhere] py-1.5',
                       confirmVariant === 'destructive'
-                        ? 'border-transparent bg-[hsl(var(--destructive))] text-[var(--accent-pure-cta-fg)] enabled:hover:border-transparent enabled:active:border-transparent enabled:hover:bg-[hsl(var(--destructive))] enabled:active:bg-[hsl(var(--destructive))] enabled:hover:opacity-90'
+                        ? 'border-transparent bg-[hsl(var(--destructive))] text-[var(--accent-pure-cta-fg)] enabled:hover:border-transparent enabled:active:border-transparent enabled:hover:bg-[hsl(var(--destructive))] enabled:active:bg-[hsl(var(--destructive))] enabled:hover:text-white enabled:hover:opacity-90'
                         : 'border-transparent bg-[var(--confirm-btn-primary-bg)] text-[var(--confirm-btn-primary-text)] enabled:hover:border-transparent enabled:active:border-transparent enabled:hover:bg-[var(--confirm-btn-primary-hover)] enabled:active:bg-[var(--confirm-btn-primary-hover)]',
                     )}
                   >
@@ -375,7 +378,7 @@ export function ConfirmDialog({
                       'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
                       'active:scale-[0.98]',
                       confirmVariant === 'destructive'
-                        ? 'bg-[hsl(var(--destructive))] text-[var(--accent-pure-cta-fg)] hover:opacity-90 focus-visible:ring-[var(--focus-ring)]'
+                        ? 'bg-[hsl(var(--destructive))] text-[var(--accent-pure-cta-fg)] enabled:hover:text-white hover:opacity-90 focus-visible:ring-[var(--focus-ring)]'
                         : 'bg-[var(--confirm-btn-primary-bg)] text-[var(--confirm-btn-primary-text)] hover:bg-[var(--confirm-btn-primary-hover)] focus-visible:ring-[var(--confirm-btn-primary-bg)]',
                       loading &&
                         confirmVariant === 'default' &&

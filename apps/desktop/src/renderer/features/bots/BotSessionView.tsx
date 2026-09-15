@@ -7,6 +7,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { CCAgentSessionView } from '@/features/cc-agent/CCAgentSessionView';
 import type { ComposerBotMention } from '@/lib/fileTypes';
 import { getBotLastReadAt, markBotRead } from './botReadState';
+import { getBotProfiles, getBotUnreadCounts } from './botStore';
 import type { BotChatIdentity } from './BotSessionContentHeader';
 import { useBotIslandVisibleSession } from './useBotIslandVisibleSession';
 
@@ -62,6 +63,57 @@ function readBotMention(value: unknown, currentBotId: string): ComposerBotMentio
 }
 
 /**
+ * 同步快路径（切伙伴提速，2026-09-14）：botStore 内存投影已确认「伙伴 active +
+ * 目标会话是 active 的 chat 投影」时，首帧直接产出 ready gate —— 省掉一次全屏
+ * spinner 和两个串行 IPC 往返（此前切伙伴要连吃 BotsHomeView、本 gate 两段
+ * 近黑底转圈，体感即"黑屏闪一下"）。数据与 main 侧投影同源；权威 IPC 确认
+ * 仍在后台执行，结论相悖时由既有 effect 纠正为 unavailable/error，慢路径语义不变。
+ */
+function computeFastGate(
+  botId: string | undefined,
+  sessionId: string | undefined,
+): BotSessionGate | null {
+  if (!botId || !sessionId) return null;
+  const profiles = getBotProfiles();
+  const bot = profiles.find((candidate) => candidate.id === botId);
+  if (!bot || bot.status !== 'active') return null;
+  const projection = bot.sessions.find(
+    (row) => row.id === sessionId && row.kind === 'chat' && row.status === 'active',
+  );
+  if (!projection) return null;
+  const lastReadAt = getBotLastReadAt(botId);
+  const unreadCount = getBotUnreadCounts()[botId] ?? 0;
+  return {
+    kind: 'ready',
+    // 欢迎语只属于主任务（与慢路径同一口径）。
+    isCanonical: projection.role === 'canonical',
+    unreadBoundaryAt:
+      projection.role === 'canonical' && unreadCount > 0 ? lastReadAt : null,
+    identity: readBotChatIdentity(bot, botId),
+    mentions: profiles
+      .map((candidate) => readBotMention(candidate, botId))
+      .filter((candidate): candidate is ComposerBotMention => candidate !== null),
+  };
+}
+
+/**
+ * ready→ready 且内容完全一致时不 setGate：权威确认往往与内存投影同值，
+ * 跳过后可避免刚挂载的重型聊天子树（CCAgentSessionView）再吃一次全量 props 更新。
+ */
+function isSameReadyGate(a: BotSessionGate, b: BotSessionGate): boolean {
+  if (a.kind !== 'ready' || b.kind !== 'ready') return false;
+  return (
+    a.isCanonical === b.isCanonical &&
+    a.unreadBoundaryAt === b.unreadBoundaryAt &&
+    a.identity.name === b.identity.name &&
+    a.identity.avatar === b.identity.avatar &&
+    a.identity.avatarColor === b.identity.avatarColor &&
+    a.mentions.length === b.mentions.length &&
+    a.mentions.every((mention, index) => mention.id === b.mentions[index]?.id)
+  );
+}
+
+/**
  * A Bot URL is a navigation projection, not authority to adopt an arbitrary
  * Cindy task. Check the durable Bot link before mounting the writable chat.
  */
@@ -75,7 +127,11 @@ function BotSessionGateView() {
   const navigate = useNavigate();
   const { botId, sessionId } = useParams();
   const [reloadVersion, setReloadVersion] = useState(0);
-  const [gate, setGate] = useState<BotSessionGate>({ kind: 'loading' });
+  // 首帧即尝试快路径：内存投影确认可用时直接挂聊天视图，不进 loading。
+  // 投影缺失/不可信时回落到原 loading → IPC 权威确认链路。
+  const [gate, setGate] = useState<BotSessionGate>(
+    () => computeFastGate(botId, sessionId) ?? { kind: 'loading' },
+  );
   useBotIslandVisibleSession(gate.kind === 'ready' ? sessionId ?? null : null);
 
   useEffect(() => {
@@ -86,7 +142,8 @@ function BotSessionGateView() {
         cancelled = true;
       };
     }
-    setGate({ kind: 'loading' });
+    // 不再无条件回退 loading：快路径已 ready 时保持当前画面，本次 IPC 只做
+    // 权威确认与数据刷新（重试入口自己负责把 gate 拨回 loading）。
     const lastReadAt = getBotLastReadAt(botId);
     void Promise.all([
       window.electronAPI.localDb.bots.get(botId),
@@ -131,19 +188,22 @@ function BotSessionGateView() {
           typeof (listedBot as { unreadCount?: unknown }).unreadCount === 'number'
             ? (listedBot as { unreadCount: number }).unreadCount
             : 0;
-        setGate({
-          kind: 'ready',
-          // 欢迎语只属于主任务:渠道路由任务是「别处的对话被接进来」,
-          // 在那里冒出一句自我介绍是插话,不是打招呼。
-          isCanonical: activeProjection?.role === 'canonical',
-          unreadBoundaryAt:
-            activeProjection?.role === 'canonical' && unreadCount > 0 ? lastReadAt : null,
-          identity: readBotChatIdentity(bot, botId),
-          mentions: Array.isArray(bots)
-            ? bots
-                .map((candidate) => readBotMention(candidate, botId))
-                .filter((candidate): candidate is ComposerBotMention => candidate !== null)
-            : [],
+        setGate((prev) => {
+          const nextGate: BotSessionGate = {
+            kind: 'ready',
+            // 欢迎语只属于主任务:渠道路由任务是「别处的对话被接进来」,
+            // 在那里冒出一句自我介绍是插话,不是打招呼。
+            isCanonical: activeProjection?.role === 'canonical',
+            unreadBoundaryAt:
+              activeProjection?.role === 'canonical' && unreadCount > 0 ? lastReadAt : null,
+            identity: readBotChatIdentity(bot, botId),
+            mentions: Array.isArray(bots)
+              ? bots
+                  .map((candidate) => readBotMention(candidate, botId))
+                  .filter((candidate): candidate is ComposerBotMention => candidate !== null)
+              : [],
+          };
+          return isSameReadyGate(prev, nextGate) ? prev : nextGate;
         });
       })
       .catch((error: unknown) => {
@@ -220,7 +280,11 @@ function BotSessionGateView() {
             {failed ? (
               <button
                 type="button"
-                onClick={() => setReloadVersion((value) => value + 1)}
+                onClick={() => {
+                  // 重试要重新过 gate：这里负责拨回 loading（effect 已不再无条件重置）。
+                  setGate({ kind: 'loading' });
+                  setReloadVersion((value) => value + 1);
+                }}
                 className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--accent-cta-bg)] px-3 text-12 font-medium text-[var(--accent-pure-cta-fg)]"
               >
                 <RefreshCcw size={14} />

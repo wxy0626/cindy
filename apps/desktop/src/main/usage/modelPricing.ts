@@ -29,7 +29,7 @@ import {
 import { currentLedgerCurrency, setActiveLedgerCurrency } from './ledgerCurrency.js';
 import { createLogger } from '../logger.js';
 import { getClientEndpoint } from '../clientEndpointsService.js';
-import { resolveOwnerScopedSecretStorageKey } from '../secrets/providerSecretStore.js';
+import { resolveOwnerScopedSecretStorageKeyForRead } from '../secrets/providerSecretStore.js';
 
 export { getModelPriceQuote } from '../../shared/modelPriceQuote.js';
 export type {
@@ -102,7 +102,11 @@ function resolveGatewayAccountCurrency(
 
 function currentKeyCacheIdentity(): string {
   try {
-    const physicalKey = resolveOwnerScopedSecretStorageKey(providerSecretStorageKey('xd'));
+    // 读语义走 ForRead:未登录时路由实际读到的是本机回落槽位的网关 key,
+    // 缓存身份必须跟随同一份文件,否则登录期配置的 key 变化检测会失灵。
+    const physicalKey = resolveOwnerScopedSecretStorageKeyForRead(
+      providerSecretStorageKey('xd'),
+    );
     if (!physicalKey) return 'key=missing';
     const file = path.join(app.getPath('userData'), 'safe-storage', `${physicalKey}.enc`);
     const stat = statSync(file, { bigint: true });

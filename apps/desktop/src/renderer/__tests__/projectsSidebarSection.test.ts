@@ -107,7 +107,12 @@ describe('Projects sidebar section', () => {
     expect(projectNodeSource).toContain("{statusFilter === 'archived' ? (");
     expect(projectNodeSource).toContain("statusFilter !== 'archived'");
     expect(projectNodeSource).toContain("t('ccAgent.sidebar.projectAction.deleteProject')");
-    expect(projectNodeSource).toContain("'text-[hsl(var(--destructive))]'");
+    // 危险项统一样式:静止红字,hover / 键盘 focus 红底白字(menuStyles)。两处
+    // 「删除项目」(展开侧栏 + rail 面板)都走 MENU_ITEM_DANGER_CLASS。
+    expect(projectNodeSource).toContain('className={MENU_ITEM_DANGER_CLASS}');
+    expect(projectNodeSource).not.toContain("'text-[hsl(var(--destructive))]'");
+    expect(sidebarUpperSource).toContain("import { MENU_ITEM_DANGER_CLASS } from './sidebar/menuStyles';");
+    expect(sidebarUpperSource.split('className={MENU_ITEM_DANGER_CLASS}').length - 1).toBe(1);
     expect(sidebarUpperSource).toContain('statusFilter={filter.status}');
     expect(sidebarUpperSource).toContain("const isArchivedView = statusFilter === 'archived'");
     expect(sidebarUpperSource).toContain('!isArchivedView');

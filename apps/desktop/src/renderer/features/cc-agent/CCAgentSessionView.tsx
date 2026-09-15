@@ -5418,48 +5418,53 @@ export function CCAgentSessionView({
                       )}
                     </Tip>
                   )}
-                  <TodaySpendChip
-                    vendorKey={normalizeDbAgentKind(displayAgentKind)}
-                    modelId={agentSwitchIntent?.model ?? session?.model ?? null}
-                    providerId={
-                      agentSwitchIntent
-                        ? agentSwitchIntent.providerId
-                        : (session?.providerId ?? null)
-                    }
-                    sessionId={sessionId}
-                    sessionInitialMoney={session?.totalMoney ?? null}
-                    sessionInitialCostUsd={session?.totalCostUsd ?? null}
-                    sessionInitialTokens={session?.totalTokenUsage ?? null}
-                    remoteHostId={session?.remoteHostId ?? null}
-                    deviceLinkDeviceId={remoteDeviceId ?? null}
-                  />
-                  <ContextCapacityRing
-                    sessionId={sessionId}
-                    contextTokens={agentStatus.contextTokens}
-                    model={agentSwitchIntent?.model ?? session?.model ?? ''}
-                    vendorKey={normalizeDbAgentKind(displayAgentKind)}
-                    sdkContextWindow={agentStatus.contextWindow}
-                    deviceId={remoteDeviceId}
-                    usage={cachedContextUsage}
-                    latestTurnDetails={latestTurnDetails}
-                    onCompact={
-                      // 按 agent 能力分流(#1927/#1933 review):claude-code 走 inputCoordinator,
-                      // 其余声明 manualCompact.supported(当前仅 pi)走 compact-session 通道;
-                      // codex 无手动 compact(上游自动压缩)保持纯展示。pi 的 SSH 远程会话
-                      // (remoteHostId)无 compact-session 路由 → 不开放(与 SessionContentHeader
-                      // 压缩菜单仅本地/device-link 一致);device-link 远程 pi 走隧道,照常开放。
-                      // pi 回合运行中会拒绝压缩 → compact-session 通道在 running 时禁用
-                      // (与 SessionContentHeader 的 runningSessionIds 一致,codex P1);
-                      // claude-input 保留旧行为(turn 中可走 inputCoordinator)。
-                      compactChannel !== null &&
-                      !(realAgentKind === 'pi' && !!session?.remoteHostId) &&
-                      session != null &&
-                      agentStatus.contextTokens > 0 &&
-                      !(compactChannel === 'compact-session' && agentStatus.isRunning)
-                        ? handleCompactRequest
-                        : undefined
-                    }
-                  />
+                  {/* 右侧分组:用量费用 chip 与上下文圆环必须相邻。此前二者是该
+                      justify-between 行的两个独立直接子元素,chip 被挤到底部中间,
+                      离圆环过远(user feedback 2026-09-14);gap-4 为用户校准的间距。 */}
+                  <div className="flex shrink-0 items-center gap-4">
+                    <TodaySpendChip
+                      vendorKey={normalizeDbAgentKind(displayAgentKind)}
+                      modelId={agentSwitchIntent?.model ?? session?.model ?? null}
+                      providerId={
+                        agentSwitchIntent
+                          ? agentSwitchIntent.providerId
+                          : (session?.providerId ?? null)
+                      }
+                      sessionId={sessionId}
+                      sessionInitialMoney={session?.totalMoney ?? null}
+                      sessionInitialCostUsd={session?.totalCostUsd ?? null}
+                      sessionInitialTokens={session?.totalTokenUsage ?? null}
+                      remoteHostId={session?.remoteHostId ?? null}
+                      deviceLinkDeviceId={remoteDeviceId ?? null}
+                    />
+                    <ContextCapacityRing
+                      sessionId={sessionId}
+                      contextTokens={agentStatus.contextTokens}
+                      model={agentSwitchIntent?.model ?? session?.model ?? ''}
+                      vendorKey={normalizeDbAgentKind(displayAgentKind)}
+                      sdkContextWindow={agentStatus.contextWindow}
+                      deviceId={remoteDeviceId}
+                      usage={cachedContextUsage}
+                      latestTurnDetails={latestTurnDetails}
+                      onCompact={
+                        // 按 agent 能力分流(#1927/#1933 review):claude-code 走 inputCoordinator,
+                        // 其余声明 manualCompact.supported(当前仅 pi)走 compact-session 通道;
+                        // codex 无手动 compact(上游自动压缩)保持纯展示。pi 的 SSH 远程会话
+                        // (remoteHostId)无 compact-session 路由 → 不开放(与 SessionContentHeader
+                        // 压缩菜单仅本地/device-link 一致);device-link 远程 pi 走隧道,照常开放。
+                        // pi 回合运行中会拒绝压缩 → compact-session 通道在 running 时禁用
+                        // (与 SessionContentHeader 的 runningSessionIds 一致,codex P1);
+                        // claude-input 保留旧行为(turn 中可走 inputCoordinator)。
+                        compactChannel !== null &&
+                        !(realAgentKind === 'pi' && !!session?.remoteHostId) &&
+                        session != null &&
+                        agentStatus.contextTokens > 0 &&
+                        !(compactChannel === 'compact-session' && agentStatus.isRunning)
+                          ? handleCompactRequest
+                          : undefined
+                      }
+                    />
+                  </div>
                 </div>
               ) : null}
             </div>

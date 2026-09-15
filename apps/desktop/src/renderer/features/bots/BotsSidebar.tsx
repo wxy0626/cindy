@@ -45,6 +45,7 @@ import {
 import { subscribeBotReadState } from './botReadState';
 import { partitionBotRoster } from './botRosterDisplay';
 import {
+  canonicalBotSession,
   canonicalBotSessionId,
   duplicateBotProfile,
   refreshBotProfiles,
@@ -66,6 +67,27 @@ const MESSAGE_REFRESH_DEBOUNCE_MS = 800;
  */
 const UNREAD_BADGE_CLASS =
   'flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-[var(--bot-unread-bg)] px-1 text-10 font-medium tabular-nums leading-none text-[var(--bot-unread-fg)]';
+
+/**
+ * 伙伴行的直达目标（切伙伴提速，2026-09-14）：内存投影已确认 canonical 会话可用
+ * （active 且无未完成引导）时直接进会话路由，跳过 BotsHomeView「读会话 → 再跳转」
+ * 的中转 —— 少一程 IPC、少一帧全屏 spinner（暗色下观感即黑屏闪烁）。
+ * 投影缺失/不可信时仍回 /bots/:botId，由 BotsHomeView 走完整的校验重建链路。
+ */
+function botChatRouteTarget(bot: BotProfile): string {
+  const invitationReady = !bot.invitation || bot.invitation.stage === 'ready';
+  const canonical = canonicalBotSession(bot);
+  if (
+    bot.status === 'active' &&
+    invitationReady &&
+    canonical &&
+    canonical.kind === 'chat' &&
+    canonical.status === 'active'
+  ) {
+    return `/bots/${bot.id}/session/${canonical.id}`;
+  }
+  return `/bots/${bot.id}`;
+}
 
 function BotsSidebarContent() {
   const { navigateToView } = useActiveMainView();
@@ -374,7 +396,7 @@ function BotsSidebarContent() {
                       __tests__/botsSidebarSpacing.test.ts。 */}
                   <button
                     type="button"
-                    onClick={() => navigate(`/bots/${bot.id}`)}
+                    onClick={() => navigate(botChatRouteTarget(bot))}
                     aria-current={selected ? 'page' : undefined}
                     onContextMenu={(event) => {
                       event.preventDefault();

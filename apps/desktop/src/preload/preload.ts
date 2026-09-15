@@ -2421,6 +2421,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 用户回消息撞 localDb not ready" 的 race。幂等,多次调用无副作用。
   appReadyForBot: (): Promise<{ ok: true }> => ipcRenderer.invoke('app:ready-for-bot'),
 
+  /** 主窗口主 frame 的 renderer root commit readiness 信号。 */
+  reportRootReady: (): Promise<{ ok: true }> => ipcRenderer.invoke('renderer:root-ready'),
+  /** 主窗口主 frame 的 LocalDbGate 完成 readiness 信号；带 dataOwnerId 供 main 做 owner 校验。 */
+  reportLocalDbReady: (ownerId?: string): Promise<{ ok: true }> =>
+    ipcRenderer.invoke('renderer:local-db-ready', ownerId),
+
   // ── IM Binding (feishu /ctr 接管 → desktop session 路由) ──
   // 整体接管态由 main/im/binding.ts 维护; renderer 用这套 API 实时知道
   // 某个 sessionId 是否被某 IM 用户接管 (用来渲染 mask + 收回按钮)。

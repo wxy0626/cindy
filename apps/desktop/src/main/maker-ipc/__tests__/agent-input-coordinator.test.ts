@@ -7065,6 +7065,154 @@ describe('AgentInputCoordinator steer transaction', () => {
     }
   });
 
+  it('chain-settled authoritative done reclaims a leftover superseded by later external turns', async () => {
+    const h = createHarness();
+    const sid = 'silent-stop-chain-settle-reclaim';
+    h.coordinator.enqueue(sid, makeItem('q-1', 'first'));
+    await flush();
+    expect(h.sendToAgent).toHaveBeenCalledTimes(1);
+
+    // 用户 turn 以 silent-stop 收尾(done 被 host 吞掉不通知 coordinator);随后
+    // 两次外部 auto-resume 直发把 turnGeneration 推进到 2,并留下当前代号的
+    // observed done。残留 activeTurn 仍绑定 dispatch 时的 generation 0。
+    h.setLiveRunning(false);
+    h.setLiveSessionPresent(true);
+    h.setRunning(false);
+    h.setTurnGeneration(2);
+    h.setObservedCurrentTurnTerminal({ kind: 'done', generation: 2 });
+
+    // settleSilentStopDone:turn lease 已校验无更新 turn,权威断言整条链结束 →
+    // 合成 done 携带收尸标记,不再被 unowned 守卫按代号不符拒收(2026-09-13 实证)。
+    h.coordinator.onTurnEvent(sid, 'done', undefined, undefined, {
+      assertsTurnChainSettled: true,
+    });
+    await flush();
+
+    // 尸体清掉后队列恢复派发(修复前:dispatch-boundary-busy 永久卡死,新消息
+    // 全部堵在队列里,停止按钮常亮)。
+    h.coordinator.enqueue(sid, makeItem('q-2', 'queued-after-chain'));
+    await flush();
+    expect(h.sendToAgent).toHaveBeenCalledTimes(2);
+    expect(h.sendToAgent.mock.calls[1]?.[1]).toEqual({
+      type: 'user',
+      content: 'queued-after-chain',
+    });
+  });
+
+  it('steer no-active-turn synthesis reclaims a leftover superseded by later external turns', async () => {
+    const h = createHarness();
+    const sid = 'steer-synthesis-reclaims-superseded-leftover';
+    h.coordinator.enqueue(sid, makeItem('q-1', 'first'));
+    await flush();
+    expect(h.sendToAgent).toHaveBeenCalledTimes(1);
+
+    // 与上例同一死锁现场:done 丢失 + 外部直发推进代号 + observed done 属新代号。
+    h.setLiveRunning(false);
+    h.setLiveSessionPresent(true);
+    h.setRunning(false);
+    h.setTurnGeneration(2);
+    h.setObservedCurrentTurnTerminal({ kind: 'done', generation: 2 });
+
+    // 用户对已卡死会话再发消息 → steer → maker-core 权威 NO_ACTIVE_TURN →
+    // 合成收尸 done(带 assertsTurnChainSettled)→ fallback 派发。
+    h.steerToAgent.mockRejectedValueOnce(new Error('[NO_ACTIVE_TURN] Session has no active turn'));
+    await expect(
+      h.coordinator.steer(sid, makeItem('q-2', 'urgent'), {
+        removeFromQueue: true,
+        touchUserSend: true,
+      }),
+    ).resolves.toBe(true);
+    await flush();
+
+    // 修复前:合成 done 被拒 → 尸体仍在 → fallback drain 被 dispatch-boundary-busy
+    // 挡住 → 每次发送空转一遍,会话永久卡死。修复后:一次发送即自愈。
+    expect(h.sendToAgent).toHaveBeenCalledTimes(2);
+    expect(h.sendToAgent.mock.calls[1]?.[1]).toEqual({ type: 'user', content: 'urgent' });
+  });
+
+  it('zombie sweeper force-reclaims a generation-mismatched leftover after the vendor-idle deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const h = createHarness();
+      const sid = 'zombie-sweeper-deadline';
+      h.coordinator.enqueue(sid, makeItem('q-1', 'first'));
+      await flush();
+      expect(h.sendToAgent).toHaveBeenCalledTimes(1);
+
+      // 与死锁现场同构:done 丢失 + 外部直发把代号推进到 2,全部同代回收路径 fail-closed。
+      h.setLiveRunning(false);
+      h.setRunning(false);
+      h.setTurnGeneration(2);
+      h.setObservedCurrentTurnTerminal({ kind: 'done', generation: 2 });
+
+      h.coordinator.enqueue(sid, makeItem('q-2', 'queued-behind-zombie'));
+      await flush();
+      expect(h.sendToAgent).toHaveBeenCalledTimes(1);
+
+      // 安全窗内不动:coordinator 不得凭短时矛盾自行猜测回收(7039 钉死的约定)。
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(h.sendToAgent).toHaveBeenCalledTimes(1);
+
+      // 矛盾持续超过 30s 安全窗 → 兜底收尸,队列恢复派发(无用户操作也自愈)。
+      await vi.advanceTimersByTimeAsync(30_000);
+      await flush();
+      expect(h.sendToAgent).toHaveBeenCalledTimes(2);
+      expect(h.sendToAgent.mock.calls[1]?.[1]).toEqual({
+        type: 'user',
+        content: 'queued-behind-zombie',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('zombie sweeper never touches a pre-dispatch activeTurn while the send is still in flight', async () => {
+    vi.useFakeTimers();
+    try {
+      const h = createHarness();
+      const sid = 'sweeper-skips-pre-dispatch';
+      const gate = deferred<void>();
+      const originalSend = h.sendToAgent.getMockImplementation();
+      h.sendToAgent.mockImplementationOnce((sessionId, message, createOpts, sendOpts) =>
+        gate.promise.then(() => originalSend!(sessionId, message, createOpts, sendOpts)),
+      );
+
+      h.coordinator.enqueue(sid, makeItem('q-1', 'in-flight'));
+      await flush();
+      expect(h.sendToAgent).toHaveBeenCalledTimes(1);
+
+      // send 在飞 = pre-dispatch 合法并发窗口(如 Pi gap),vendor 空闲是预期态,
+      // 兜底收尸绝不许碰它,否则会把合法 in-flight send 误杀。
+      h.setLiveRunning(false);
+      h.setRunning(false);
+      h.coordinator.enqueue(sid, makeItem('q-2', 'queued-behind'));
+      await flush();
+      await vi.advanceTimersByTimeAsync(35_000);
+      expect(h.sendToAgent).toHaveBeenCalledTimes(1);
+
+      // 窗口期未被破坏:send 正常完成(跨过 dispatched 边界)→ turn 正常收尾 →
+      // 队列继续派发。先轮询等派发链走完,否则 done 会撞上合法的 pre-dispatch
+      // stray-done 守卫。
+      gate.resolve();
+      for (let i = 0; i < 50 && h.onDispatchedUserTurn.mock.calls.length === 0; i += 1) {
+        await flush();
+      }
+      expect(h.onDispatchedUserTurn).toHaveBeenCalled();
+      // 真实 done 前必有 status:isRunning=false;harness 的 sendToAgent 完成时把
+      // tracker 置 running,这里对齐真实事件序再收 turn。
+      h.setRunning(false);
+      h.coordinator.onTurnEvent(sid, 'done');
+      await flush();
+      expect(h.sendToAgent).toHaveBeenCalledTimes(2);
+      expect(h.sendToAgent.mock.calls[1]?.[1]).toEqual({
+        type: 'user',
+        content: 'queued-behind',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('binds leftover reclaim to the reserved generation, not the post-await latest generation', async () => {
     vi.useFakeTimers();
     try {

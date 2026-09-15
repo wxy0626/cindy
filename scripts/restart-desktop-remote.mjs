@@ -5,6 +5,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// 最终启动耗时用绿色加粗高亮（启动优化 2026-09-15）：chalk 会自动处理 Windows
+// 控制台的 VT 序列启用，避免耗时数字淹没在普通日志里。
+import chalk from 'chalk';
 import {
   applyDesktopDevStartupConfig,
   DESKTOP_DEV_REGIONS,
@@ -28,7 +31,12 @@ const rootDir = path.resolve(__dirname, '..');
 const gracefulTimeoutMs = 3000;
 const forceTimeoutMs = 5000;
 const pollIntervalMs = 150;
-const startupReadyTimeoutMs = 120_000;
+// 启动就绪超时:2026-09-11 起默认保留 vite 缓存(--clean 才清),暖启动全链路
+// 通常 1 分钟上下;但 --clean / 首次启动 / vite 大版本升级后仍是冷启动全量预编译,
+// 叠加 auth→localDb 初始化链可达 2-3 分钟(同日实证),120s 处于刀口上必然超时
+// (2026-09-11 双击启动器 STARTUP_TIMEOUT 实证)。给 300s 留足余量;真正的失败
+// (AUTH_INIT_FAILED 等写 failed 状态)仍会提前抛出,不会傻等满额。
+const startupReadyTimeoutMs = 300_000;
 export const ISOLATED_AUTH_LAUNCH_PROOF_FILE = '.isolated-auth-launch-proof.json';
 const isolatedAuthLaunchProofTtlMs = 10 * 60_000;
 const forceKillLabel = process.platform === 'win32' ? 'taskkill /F /T' : 'kill -9';
@@ -343,9 +351,9 @@ function hasRepositoryCheckoutPath(command, checkoutPaths = repositoryWorktreePa
 // kill 作用域虽已限本 checkout，但祖先就是这份 checkout 时仍会把本脚本一起收掉。
 // 宿主是正式版或另一个 worktree 时不拦：杀不到那份祖先，隔离启动可以继续。
 function findDevAncestor() {
-  const processes = process.platform === 'win32' ? listWindowsProcesses() : listPosixProcesses();
+  const processes = listAllProcessesOnce();
   const byPid = new Map(processes.map((proc) => [proc.pid, proc]));
-  const checkoutPaths = repositoryWorktreePaths();
+  const checkoutPaths = repositoryWorktreePathsOnce();
   let cursor = byPid.get(process.pid)?.ppid ?? 0;
   for (let i = 0; cursor && i < 64; i += 1) {
     const ancestor = byPid.get(cursor);
@@ -432,6 +440,33 @@ function listDesktopDevProcesses() {
   const processes = process.platform === 'win32' ? listWindowsProcesses() : listPosixProcesses();
   const checkoutPaths = repositoryWorktreePaths();
   return processes.filter((proc) => isRepositoryDesktopDevProcess(proc, checkoutPaths));
+}
+
+// 启动提速:重启前置的三连扫(devAncestor 祖先链 / userData 冲突检测 / kill 目标
+// 枚举)此前各自独立跑一遍 Get-CimInstance + git worktree list,每次 1-4s,纯浪费。
+// 这些检查都发生在 kill 之前的同一窗口内,进程布局在此窗口内的变化毫无意义,
+// 共用一份快照即可。waitForDesktopDevProcessesToExit 的轮询走 listDesktopDevProcesses()
+// 实时枚举,不受此缓存影响(那里才是真正需要新数据的地方)。
+let preStartFullProcessSnapshot = null;
+let preStartWorktreePathsCache = null;
+
+/** 启动前置检查专用的全量进程快照(仅 kill 之前的检查共享)。 */
+function listAllProcessesOnce() {
+  preStartFullProcessSnapshot ??=
+    process.platform === 'win32' ? listWindowsProcesses() : listPosixProcesses();
+  return preStartFullProcessSnapshot;
+}
+
+/** 启动前置检查专用的 worktree 路径快照(git worktree list 结果在运行期内稳定)。 */
+function repositoryWorktreePathsOnce() {
+  preStartWorktreePathsCache ??= repositoryWorktreePaths();
+  return preStartWorktreePathsCache;
+}
+
+/** 与 listDesktopDevProcesses 相同的过滤,但消费启动期快照,不重新扫描系统。 */
+function listDesktopDevProcessesOnce() {
+  const checkoutPaths = repositoryWorktreePathsOnce();
+  return listAllProcessesOnce().filter((proc) => isRepositoryDesktopDevProcess(proc, checkoutPaths));
 }
 
 async function waitForDesktopDevProcessesToExit(timeoutMs, filter = () => true) {
@@ -923,7 +958,8 @@ export function devEnvPrefix(env = process.env, platform = process.platform) {
 function launchInSystemTerminal(mode) {
   if (process.platform === 'win32') {
     const command = `cd /d ${cmdDoubleQuote(rootDir)} && ${devEnvPrefix()}${packageManagerCommand(mode)}`;
-    try { fs.writeFileSync(path.join(rootDir, 'scripts', '.debug-dev-window-command.txt'), command); } catch {}
+    // 调试启动命令统一放在项目 .workbuddy，避免污染 scripts 目录。
+    try { fs.writeFileSync(path.join(rootDir, '.workbuddy', 'restart', 'debug-dev-window-command.txt'), command); } catch {}
     const script = [
       "Start-Process -FilePath 'cmd.exe'",
       `-ArgumentList @('/c', ${psSingleQuote(command)})`,
@@ -1029,12 +1065,116 @@ function attachStartupFailure(error, status) {
   return error;
 }
 
+// 启动耗时锚点（启动优化 2026-09-15）：脚本模块求值时刻 ≈ 双击/cmd 进入后
+// pnpm 拉起的时刻。与 waitForDesktopStartup 的 ready 时刻相减 = 用户感知的
+// 「双击 → 界面可操作」总耗时，直接打印到启动控制台。
+const launcherStartedAtMs = Date.now();
+
+// 读取 fork 写入的备货状态文件（plugin-vite-fork 在备货起止同步写入；
+// 缺失/损坏时返回 null，launcher 据此判断本轮是否有备货需要等待）。
+function readStockingStatus() {
+  try {
+    const stockingStatusPath = path.join(
+      rootDir,
+      'apps',
+      'desktop',
+      '.vite',
+      'build',
+      '.xdt-stamps',
+      'stocking-status.json',
+    );
+    const parsed = JSON.parse(fs.readFileSync(stockingStatusPath, 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function printStartupElapsed(label) {
+  const elapsedSec = (Date.now() - launcherStartedAtMs) / 1000;
+  // 绿色加粗：在成片普通日志里一眼看到最终启动耗时。
+  console.log(chalk.green.bold(`==> Startup time: ${elapsedSec.toFixed(1)}s (${label})`));
+}
+
+// ── 后台备货等待（启动优化 2026-09-15）────────────────────────────────────
+// server 模式首启时，fork 插件会在 postStart 后台重建 renderer prod 产物
+// （buildSingleRenderer），完成时刷新 stamp 并写 stocking-status 终态。
+// 此前 launcher ready 即返回，外层自动化任务的进程树终止会把 dev server 一并
+// 杀掉：实测 main_window 备货 7 次启动仅 1 次完成，stamp 长期陈旧，之后每轮
+// 都回落 server 模式（首屏 60s+），用户感知即「改一次代码一直一分多钟」。
+// 这里在 ready 后继续等待本轮备货完成/失败再返回（窗口此刻已可操作，等待
+// 不影响使用），保证下一轮必进快启。
+const stockingPollIntervalMs = 2000;
+const stockingTimeoutMs = 600_000;
+
+// 判断 Electron 主进程是否仍存活（未知 pid 时视为存活，避免误中断等待）。
+function isElectronPidAlive(pid) {
+  if (!pid || typeof pid !== 'number') return true;
+  const probe = spawnSync('tasklist', ['/FI', `PID eq ${pid}`, '/NH'], { encoding: 'utf8' });
+  if (probe.status !== 0) return true;
+  const pidColumns = String(probe.stdout ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/)[1])
+    .filter(Boolean);
+  return pidColumns.includes(String(pid));
+}
+
+// 等待本轮后台备货完成（基于 fork 写入的 stocking-status.json）；
+// 本轮没有安排备货（快启/产物新鲜）时立即返回。
+async function waitForBackgroundRendererStocking(status) {
+  const waitStartedAtMs = Date.now();
+  let sawRunning = false;
+  while (Date.now() - waitStartedAtMs < stockingTimeoutMs) {
+    const stockingStatus = readStockingStatus();
+    if (
+      stockingStatus?.state === 'running' &&
+      (stockingStatus.startedAt ?? 0) >= launcherStartedAtMs
+    ) {
+      // 本轮备货进行中：首次见到时打印等待提示。
+      if (!sawRunning) {
+        sawRunning = true;
+        console.log(
+          `==> Waiting for background renderer stocking${
+            stockingStatus.target ? ` (${stockingStatus.target})` : ''
+          } to finish…`,
+        );
+      }
+    } else if (sawRunning || (stockingStatus?.finishedAt ?? 0) >= launcherStartedAtMs) {
+      // 本轮备货已出终态。
+      if (stockingStatus?.state === 'failed') {
+        console.warn('==> Renderer stocking FAILED; see dev-window.log for details. Continuing.');
+      } else {
+        const finishedSec = stockingStatus?.durationMs
+          ? ` +${(stockingStatus.durationMs / 1000).toFixed(1)}s`
+          : '';
+        console.log(chalk.green(`==> Renderer stocking finished${finishedSec} (next launch fast-start)`));
+      }
+      return;
+    } else {
+      // 状态文件缺失/陈旧（快启或上一轮遗留），本轮无需等待。
+      return;
+    }
+    if (!isElectronPidAlive(status?.pid)) {
+      console.warn('==> Electron exited during stocking wait; skipping remaining wait.');
+      return;
+    }
+    await sleep(stockingPollIntervalMs);
+  }
+  console.warn(
+    `==> Renderer stocking wait timed out after ${Math.round(stockingTimeoutMs / 1000)}s; continuing.`,
+  );
+}
+
 export async function waitForDesktopStartup(statusPath, timeoutMs = startupReadyTimeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const status = readDesktopStartupStatus(statusPath);
     if (status?.state === 'ready') {
       console.log(`==> Desktop dev is ready (window + auth/local database, pid ${status.pid ?? 'unknown'}).`);
+      printStartupElapsed('launcher start → window + auth/database ready (UI operable)');
+      // ready 后等本轮后台备货完成再返回：否则进程树终止会打断备货，stamp
+      // 永不刷新，下一轮继续慢速 server 模式（见 waitForBackgroundRendererStocking 注释）。
+      await waitForBackgroundRendererStocking(status);
       fs.rmSync(statusPath, { force: true });
       return status;
     }
@@ -1092,10 +1232,16 @@ async function main() {
     argv = argv.map((arg) => (arg === rawIsolatedArg ? isolatedArg : arg));
     console.log(`==> Isolated sandbox from worktree: ${parseIsolationName(isolatedArg)}`);
   }
- const killOnly = argv.includes('--kill-only');
+  const killOnly = argv.includes('--kill-only');
   const fastSwitch = argv.includes('--fast-switch');
   const waitReady = argv.includes('--wait-ready');
   const preserveRunning = argv.includes('--preserve-running');
+  // --clean: 显式清 vite 缓存(白屏等缓存异常时的手动兜底)。2026-09-11 启动提速:
+  // 默认不再每次清缓存 —— node_modules/.vite 是 renderer 依赖预打包缓存,清掉后
+  // renderer 首载要重跑全量 optimizeDeps,实测两次启动 renderer 分别 35s/64s 才到
+  // localDb gate(见 apps/desktop/logs/main-2026-09-11.log);叠加 .vite 全量重删,
+  // 冷启动白白多花 30-70s。缓存损坏的恢复路径 = `pnpm run restart:desktop:remote -- --clean`。
+  const cleanCaches = argv.includes('--clean');
   const replaceRunningArg = argv.find((arg) => arg.startsWith('--replace-running-root='));
   const replaceRunningRoot = replaceRunningArg
     ? path.resolve(replaceRunningArg.slice('--replace-running-root='.length))
@@ -1142,7 +1288,7 @@ async function main() {
     throw new Error('--replace-running-root requires an absolute registered worktree path');
   }
   if (replaceRunningRoot) {
-    const registeredRoots = repositoryWorktreePaths().map((entry) => path.resolve(entry));
+    const registeredRoots = repositoryWorktreePathsOnce().map((entry) => path.resolve(entry));
     if (!registeredRoots.includes(replaceRunningRoot)) {
       throw new Error(`--replace-running-root is not a registered repository worktree: ${replaceRunningRoot}`);
     }
@@ -1327,7 +1473,7 @@ async function main() {
     console.log(`==> Isolated dev user data${isolationName ? ` (sandbox "${isolationName}")` : ''}: ${process.env.XDT_USER_DATA_DIR}`);
   }
   if (!preserveRunning) {
-    const conflicts = listDesktopDevProcesses().filter(
+    const conflicts = listDesktopDevProcessesOnce().filter(
       (proc) => !commandContainsPath(proc.command, rootDir)
         && commandUsesUserDataDir(proc.command, targetUserDataDir),
     );
@@ -1456,7 +1602,8 @@ async function main() {
 
   if (killOnly) return;
 
-  if (!preserveRunning && !fastSwitch) clearDesktopDevCaches(rootDir);
+  // 默认保留 vite 缓存(见上方 --clean 注释);fastSwitch / preserveRunning 语义不变。
+  if (!preserveRunning && !fastSwitch && cleanCaches) clearDesktopDevCaches(rootDir);
 
   let startupStatusPath = null;
   if (waitReady) {
@@ -1483,6 +1630,7 @@ async function main() {
       if (verdict.state !== 'ready') process.exit(1);
     } catch (error) {
       printDesktopDevVerdict(buildDesktopDevVerdictFromFailure(error, verdictContext));
+      printStartupElapsed('launcher start → failed/timeout');
       console.error(error instanceof Error ? error.message : error);
       process.exit(1);
     }

@@ -61,6 +61,7 @@ import {
 } from '../../../shared/appShortcuts';
 import { WORKLOUDER_CODEX_AGENT_SLOT_COUNT } from '../../../shared/workLouderCodex';
 import { setSessionOrdinalBadges } from './sidebar/sessionOrdinalBadges';
+import { MENU_ITEM_DANGER_CLASS } from './sidebar/menuStyles';
 import { useOwnTopNavScrollableRows, useSidebarCollapsedState } from '../feature-context';
 import { SidebarTopNav } from '@/components/sidebar/SidebarTopNav';
 import { SidebarFilterPopover } from './sidebar/SidebarFilterPopover';
@@ -3055,6 +3056,7 @@ function ExpandedView({
           : ''),
       confirmText: t('ccAgent.sidebar.bulkSelection.confirmDelete.confirm'),
       cancelText: t('ccAgent.sidebar.bulkSelection.confirmDelete.cancel'),
+      confirmVariant: 'destructive',
     });
     if (!ok) return;
 
@@ -3840,6 +3842,7 @@ function ExpandedView({
             ? t('ccAgent.sidebar.confirmDelete.cancel')
             : t('ccAgent.sidebar.confirmArchive.cancel')
         }
+        confirmVariant={confirm.action === 'delete' ? 'destructive' : 'default'}
         onConfirm={handleConfirm}
         onCancel={handleCancelConfirm}
       />
@@ -4838,7 +4841,7 @@ function RailPanels({
                         railPanelStore.closeAll();
                         onDeleteProject(menuTarget);
                       }}
-                      className="cursor-pointer text-sm text-[hsl(var(--destructive))] hover:bg-[var(--cmd-palette-item-hover)]"
+                      className={MENU_ITEM_DANGER_CLASS}
                     >
                       {t('ccAgent.sidebar.projectAction.deleteProject')}
                     </DropdownMenuItem>

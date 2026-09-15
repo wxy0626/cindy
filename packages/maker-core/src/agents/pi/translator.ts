@@ -162,6 +162,13 @@ export interface PiTranslateContext {
    * 不带上就会对 Pi 静默跳过这些钩子(codex review P1)。
    */
   finalAssistantText: string;
+  /**
+   * 本 turn 实际流向渲染器的非空文本增量累计(仅 text_delta 真正发出的可见部分;agent_start 重置)。
+   * sub provider 桥的 message_end 可能丢内容(渲染路径有文本、最终消息 content 全空),
+   * silent-stop 判定与 done.data.result 必须以"用户真实看到过文本"兜底,否则每次有回复
+   * 都会被误判空响应触发自动续跑(2026-09-13 4a188f14 三连回复事故)。
+   */
+  streamedAssistantText: string;
   /** Latest assistant stop reason for classifying the settled turn outcome. */
   finalAssistantStopReason: string | null;
   /**
@@ -244,6 +251,7 @@ export function createPiTranslateContext(logger: Logger): PiTranslateContext {
     thinkingBlocks: new Map(),
     streamStopTokenByIndex: new Map(),
     finalAssistantText: '',
+    streamedAssistantText: '',
     finalAssistantStopReason: null,
     turnWallClockStartedAt: 0,
     generationDurationMs: 0,
@@ -742,6 +750,8 @@ export function translatePiEvent(
       ctx.pendingPriceVariants = [];
       ctx.turnSettled = false;
       ctx.finalAssistantText = '';
+      // 与 finalAssistantText 同点清:流式增量只属于当前 turn,跨 turn 泄漏会让下一轮误判"有回复"。
+      ctx.streamedAssistantText = '';
       ctx.finalAssistantStopReason = null;
       ctx.pendingAssistantError = null;
       ctx.terminalAssistantErrorEmitted = false;
@@ -1016,6 +1026,9 @@ export function translatePiEvent(
       const outputLimited = !hostAbortRequested
         && !ctx.terminalAssistantErrorEmitted
         && ctx.finalAssistantStopReason === 'length';
+      // error/done 两个事件都要 turnDurationMs,wall-clock 只取一次:
+      // 两次独立 Date.now() 跨毫秒会让同一场结算的 usage 比对出现 ±1ms 抖动(测试 flaky)。
+      const settledAtMs = Date.now();
       const usage = {
         inputTokens: ctx.turnInput,
         outputTokens: ctx.turnOutput,
@@ -1030,7 +1043,7 @@ export function translatePiEvent(
           ? { durationMs: ctx.generationDurationMs }
           : {}),
         ...(ctx.turnWallClockStartedAt > 0
-          ? { turnDurationMs: Math.max(0, Date.now() - ctx.turnWallClockStartedAt) }
+          ? { turnDurationMs: Math.max(0, settledAtMs - ctx.turnWallClockStartedAt) }
           : {}),
       };
       const terminalError = pendingAssistantError ?? (outputLimited ? {
@@ -1062,7 +1075,10 @@ export function translatePiEvent(
         && !hostAbortRequested
         && pendingAssistantError === null
         && !ctx.terminalAssistantErrorEmitted
-        && ctx.finalAssistantText.trim().length === 0;
+        && ctx.finalAssistantText.trim().length === 0
+        // 桥丢 final message 内容时,流式增量是用户真实看到的回复;有增量就不算空响应,
+        // 否则每次有可见回复都会被判 silent-stop 触发自动续跑(2026-09-13 三连回复事故)。
+        && ctx.streamedAssistantText.trim().length === 0;
       if (silentStop) {
         ctx.logger.warn('pi turn settled without a user-facing assistant reply', {
           turnGeneration: ctx.turnGeneration,
@@ -1077,7 +1093,10 @@ export function translatePiEvent(
           // 本 turn 最终 assistant 回复文本。与 CC/Codex 的 done.data.result 对齐:
           // register.ts 的 will-assistant-message 出口钩子与 Orca worker 终态 finalText
           // 都读 done.data.result,不带上就会对 Pi 静默跳过这些钩子(codex review P1)。
-          result: outputLimited || outcome === 'completed' ? ctx.finalAssistantText : '',
+          // 桥丢 final message 内容时回退流式增量,保证钩子拿到用户真实看到的文本。
+          result: outputLimited || outcome === 'completed'
+            ? (ctx.finalAssistantText || ctx.streamedAssistantText)
+            : '',
           status: outcome,
           // Reuse the host's bounded silent-stop continuation guard. This
           // continues the same conversation after completed tools; it does not
@@ -1101,7 +1120,7 @@ export function translatePiEvent(
               ? { durationMs: ctx.generationDurationMs }
               : {}),
             ...(ctx.turnWallClockStartedAt > 0
-              ? { turnDurationMs: Math.max(0, Date.now() - ctx.turnWallClockStartedAt) }
+              ? { turnDurationMs: Math.max(0, settledAtMs - ctx.turnWallClockStartedAt) }
               : {}),
           },
         },
@@ -1285,6 +1304,8 @@ function handleAssistantDelta(
         const visible = holdStandaloneStopTokenDelta(buffer, delta.delta);
         ctx.streamStopTokenByIndex.set(contentIndex, buffer);
         if (visible && visible.length > 0) {
+          // 只累计真正发给渲染器的可见增量:这正是"用户看到过回复"的权威口径。
+          ctx.streamedAssistantText += visible;
           queue.push({ type: 'text', data: { text: visible, isFinal: false }, source: 'pi' });
         }
       }
