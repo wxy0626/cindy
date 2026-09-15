@@ -862,6 +862,12 @@
       "claudeCodeVersionLabel": "Claude Code version",
       "codexVersionLabel": "Codex version",
       "piVersionLabel": "Pi version",
+      "upstreamLatest": {
+        "label": "Latest upstream version",
+        "loading": "Checking…",
+        "unavailable": "Unavailable",
+        "newer": "Newer available"
+      },
       "logsDirLabel": "Logs directory",
       "openLogsDir": "Open",
       "openLogsDirTooltip": "Open the logs directory in the system file manager",

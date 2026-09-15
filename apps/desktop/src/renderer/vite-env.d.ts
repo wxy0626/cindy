@@ -3801,6 +3801,14 @@ interface ElectronAPI {
    */
   fetchReleaseNotesIndex: () => Promise<string[] | null>;
 
+  /**
+   * 上游发布版本（GitHub Releases，含 beta/预发布）。只用于提示"上游有哪些版本"，
+   * 不做任何自动更新；force=true 时跳过进程内 60s 缓存强制刷新。
+   */
+  fetchUpstreamReleases: (
+    force?: boolean,
+  ) => Promise<import('../main/upstreamReleaseService').UpstreamReleasesResult>;
+
   // ── Device Link (设备互联/跨设备远程控制) ─────────────────────────────
   remoteDesktop: import('../shared/remoteDesktop').RemoteDesktopApi;
   deviceLink: {

@@ -185,8 +185,11 @@ export async function fetchReleaseNotes(version: string): Promise<RawReleaseNote
 
   const request = (async () => {
     const platform = getPlatformKey();
+    // CDN 公告按明文版本命名（index.json 里只有 0.1.79 这类，无 -beta 后缀）；
+    // 请求版本带预发布后缀（开发版 v0.1.79-beta 等）时先剥掉再拼 URL。
+    const urlVersion = version.replace(/-.*$/, '');
     // Cache-bust to dodge stale CDN edges
-    const url = `${getBaseUrl()}/notice/${platform}/${version}.json?t=${Date.now()}`;
+    const url = `${getBaseUrl()}/notice/${platform}/${urlVersion}.json?t=${Date.now()}`;
     const json = await fetchCdnJson<RawReleaseNotes>(url);
     if (!json) return null;
     // A 200 payload with nothing renderable (e.g. a v2 document whose topics
@@ -237,4 +240,20 @@ export async function fetchReleaseNotesIndex(): Promise<string[] | null> {
   indexCache = versions;
   log.info('Fetched index OK: %d versions', versions.length);
   return versions;
+}
+
+/**
+ * 开发版公告版本解析（2026-09-15）：开发版的版号（0.0.0 或自打的 vX.Y.Z-beta）
+ * 在 CDN 上没有对应公告，直接请求必然 404，用户侧表现为"获取更新公告失败"。
+ * 这里在请求前对齐 CDN：版号去掉预发布后缀后若不在索引中，回落到索引里最新的
+ * 上游发布版本，让开发版也能查看上游最新版本日志。离线/索引不可用时原样返回。
+ */
+export async function resolveAvailableReleaseNotesVersion(requested: string): Promise<string> {
+  const normalized = requested.replace(/-.*$/, '');
+  const index = await fetchReleaseNotesIndex();
+  if (!index || index.length === 0) return normalized;
+  if (index.includes(normalized)) return normalized;
+  const newest = index[index.length - 1];
+  log.info('Release notes version fallback: %s -> %s (not on CDN)', requested, newest);
+  return newest;
 }

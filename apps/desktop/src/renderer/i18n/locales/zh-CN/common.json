@@ -862,6 +862,12 @@
       "claudeCodeVersionLabel": "Claude Code 版本号",
       "codexVersionLabel": "Codex 版本号",
       "piVersionLabel": "Pi 版本号",
+      "upstreamLatest": {
+        "label": "上游最新版本",
+        "loading": "检查中…",
+        "unavailable": "暂不可用",
+        "newer": "有新版本"
+      },
       "logsDirLabel": "日志目录",
       "openLogsDir": "打开",
       "openLogsDirTooltip": "在系统文件管理器中打开日志目录",

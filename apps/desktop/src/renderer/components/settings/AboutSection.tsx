@@ -23,6 +23,7 @@ import { extractIpcError } from '@/utils/ipcError';
 import { DefaultOverrideControls } from './DefaultOverrideControls';
 import { CURRENT_CINDY_REGION } from '../../../shared/brandRegion';
 import { LEGAL_LINKS } from '../../../shared/legalLinks';
+import type { UpstreamReleasesResult } from '../../../main/upstreamReleaseService';
 
 interface AgentVersionState {
   loading: boolean;
@@ -90,6 +91,57 @@ function renderVersion(state: AgentVersionState, t: (key: string) => string): st
   return t('settings.about.version.unknown');
 }
 
+/**
+ * 上游最新版本（GitHub Releases，含 beta）：只读提示，不做自动更新——
+ * 是否更新由用户自行决定，这里只负责"告诉你有版本"。
+ */
+export function UpstreamVersionRow() {
+  const { t } = useTranslation();
+  const [state, setState] = useState<{ loading: boolean; result: UpstreamReleasesResult | null }>({
+    loading: true,
+    result: null,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await window.electronAPI.fetchUpstreamReleases?.();
+        if (cancelled) return;
+        setState({ loading: false, result: result ?? null });
+      } catch {
+        if (!cancelled) setState({ loading: false, result: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const { loading, result } = state;
+  const latest = result?.latest ?? null;
+  const value = loading
+    ? t('settings.about.upstreamLatest.loading')
+    : latest
+      ? `${latest.tag}${
+          latest.publishedAt ? ` · ${latest.publishedAt.slice(0, 10)}` : ''
+        }${result?.hasNewer ? ` · ${t('settings.about.upstreamLatest.newer')}` : ''}`
+      : t('settings.about.upstreamLatest.unavailable');
+
+  return (
+    <InfoRow
+      label={t('settings.about.upstreamLatest.label')}
+      value={value}
+      title={
+        latest?.url
+          ? `${latest.url}${result?.hasNewer ? ` · ${t('settings.about.upstreamLatest.newer')}` : ''}`
+          : value
+      }
+      dim={loading || !latest}
+    />
+  );
+}
+
 export function AgentVersionsRows() {
   const { t } = useTranslation();
   const claudeCode = useAgentBinaryVersion('claude-code');
@@ -152,6 +204,8 @@ export function AboutSection() {
             <Divider />
           </>
         )}
+        <UpstreamVersionRow />
+        <Divider />
         <AutoUpdateToggleRow />
         <Divider />
         <AnalyticsToggleRow />

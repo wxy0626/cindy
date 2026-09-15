@@ -4255,6 +4255,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fetchReleaseNotesIndex: (): Promise<string[] | null> =>
     ipcRenderer.invoke('release-notes:fetch-index'),
 
+  /** 上游发布版本（GitHub Releases，含 beta/预发布）。只提示不自动更新。 */
+  fetchUpstreamReleases: (force?: boolean) =>
+    ipcRenderer.invoke('upstream-releases:fetch', force === true),
+
   // ── Worktree (worktree-parallel-sessions F1 / F4 / F5 / F6) ──
   // renderer 端 7 个 IPC：create / detect-cwd / get-for-session / list-all /
   // reveal / suggest-name / list-branches。删除 / 孤儿扫描刻意不暴露——

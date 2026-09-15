@@ -193,6 +193,77 @@ async function shutdownMaker(): Promise<{ piSessionFailures: number }> {
   return { piSessionFailures };
 }
 
+/**
+ * 直接读 .git 目录解析最高版本标签（2026-09-15）：Windows 上 git 常常不在
+ * Electron 继承的 PATH 里（本机只有会话内 PortableGit），execFileSync('git')
+ * 直接 ENOENT，导致开发版回落到 0.0.0 —— 关于页显示 0.0.0、公告请求 0.0.0.json
+ * 必然 404。这里用纯文件系统读取 packed-refs 与松散 refs/tags，无需 git 可执行文件。
+ */
+function readHighestVersionTagFromGitDir(): string | null {
+  const appPath = app.getAppPath();
+  let gitDir: string | null = null;
+  let cursor = appPath;
+  for (let depth = 0; depth < 6; depth += 1) {
+    const candidate = path.join(cursor, '.git');
+    if (fs.existsSync(candidate)) {
+      gitDir = candidate;
+      break;
+    }
+    const parent = path.dirname(cursor);
+    if (!parent || parent === cursor) break;
+    cursor = parent;
+  }
+  if (!gitDir) return null;
+
+  const tags: string[] = [];
+  const collect = (name: string): void => {
+    if (/^v?\d+\.\d+\.\d+[0-9A-Za-z.-]*$/.test(name)) tags.push(name);
+  };
+  try {
+    const packedPath = path.join(gitDir, 'packed-refs');
+    if (fs.existsSync(packedPath)) {
+      for (const line of fs.readFileSync(packedPath, 'utf8').split('\n')) {
+        const match = /^[0-9a-f]{7,40}\s+refs\/tags\/(.+)$/.exec(line.trim());
+        if (match) collect(match[1]);
+      }
+    }
+    const looseDir = path.join(gitDir, 'refs', 'tags');
+    if (fs.existsSync(looseDir)) {
+      const walk = (dir: string): void => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const child = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(child);
+          else collect(entry.name);
+        }
+      };
+      walk(looseDir);
+    }
+  } catch {
+    return null;
+  }
+  if (tags.length === 0) return null;
+  const weight = (tag: string): [number, number, number, number] => {
+    const [core = '', pre = ''] = tag.replace(/^v/, '').split('-');
+    const [major = '0', minor = '0', patch = '0'] = core.split('.');
+    // 预发布版本权重低于同版本正式版。
+    return [
+      Number.parseInt(major, 10) || 0,
+      Number.parseInt(minor, 10) || 0,
+      Number.parseInt(patch, 10) || 0,
+      pre ? 0 : 1,
+    ];
+  };
+  tags.sort((a, b) => {
+    const left = weight(a);
+    const right = weight(b);
+    for (let i = 0; i < 4; i += 1) {
+      if (left[i] !== right[i]) return left[i] - right[i];
+    }
+    return 0;
+  });
+  return tags[tags.length - 1] ?? null;
+}
+
 function readGitText(args: string[]): string | null {
   try {
     const value = execFileSync('git', args, {
@@ -237,7 +308,10 @@ function getAppDisplayVersionInfo(): AppDisplayVersionInfo {
       'v[0-9]*',
       'origin/main',
     ]),
-    headTag: readGitText(['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', 'HEAD']),
+    // git 不在 PATH 时用纯文件系统解析本地标签兜底，避免开发版显示 0.0.0。
+    headTag:
+      readGitText(['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', 'HEAD']) ??
+      readHighestVersionTagFromGitDir(),
   });
   const branch = readGitText(['branch', '--show-current']);
   const sha = readGitText(['rev-parse', '--short=7', 'HEAD']);
@@ -393,7 +467,12 @@ import { resolveShellOpenPathTarget } from './shellOpenPath';
 import { handleOpenFileInBrowser } from './openFileInBrowser';
 import { createWindowsFileUrlOpener } from './windowsFileUrlOpener';
 import { cindyGhostSchemePrivilege } from './cindy-brain/runtime/electronSandboxAdapter';
-import { fetchReleaseNotes, fetchReleaseNotesIndex } from './releaseNotesService';
+import {
+  fetchReleaseNotes,
+  fetchReleaseNotesIndex,
+  resolveAvailableReleaseNotesVersion,
+} from './releaseNotesService';
+import { fetchUpstreamReleases as fetchUpstreamReleasesFromService } from './upstreamReleaseService';
 import { resolveWorkspacePathCached, resolveWorkspacePathBatchCached } from './pathResolver';
 import { registerLocalDbIpc } from './localDb/ipc/registerAll';
 import { resolveSessionContextWindow } from '../shared/sessionContextWindow';
@@ -5593,7 +5672,12 @@ const registerIpcHandlers = () => {
   // Release notes (per-version, fetched from CDN). Platform is resolved
   // inside the service so renderer never needs to pass it.
   ipcMain.handle('release-notes:fetch', async (_event, version: string) => {
-    return fetchReleaseNotes(version);
+    // 开发版版号（0.0.0 或自打的 X.Y.Z-beta）在 CDN 上没有对应公告，直接请求必然
+    // 404 —— 回落到 CDN 上最新的上游发布版本，让"查看版本日志"在开发版也能用。
+    const requested = app.isPackaged
+      ? version
+      : await resolveAvailableReleaseNotesVersion(version);
+    return fetchReleaseNotes(requested);
   });
 
   // Release notes index — sorted list of every version with a notice on the
@@ -5601,6 +5685,12 @@ const registerIpcHandlers = () => {
   // upgrade and pull every intermediate notice.
   ipcMain.handle('release-notes:fetch-index', async () => {
     return fetchReleaseNotesIndex();
+  });
+
+  // 上游发布版本（GitHub Releases，含 beta）：只提示不自动更新，用户自行决定。
+  ipcMain.handle('upstream-releases:fetch', async (_event, force?: boolean) => {
+    const currentVersion = getAppDisplayVersionInfo().version || null;
+    return fetchUpstreamReleasesFromService({ currentVersion, force: force === true });
   });
 
   // safeStorage IPC handlers
