@@ -650,6 +650,7 @@
       },
       "trayMenu": {
         "show": "打开 Cindy",
+        "restart": "重启程序",
         "quit": "退出 Cindy"
       },
       "trayError": {

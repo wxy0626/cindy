@@ -862,6 +862,12 @@
       "claudeCodeVersionLabel": "Claude Code バージョン",
       "codexVersionLabel": "Codex バージョン",
       "piVersionLabel": "Pi バージョン",
+      "upstreamLatest": {
+        "label": "上流の最新バージョン",
+        "loading": "確認中…",
+        "unavailable": "利用不可",
+        "newer": "新しいバージョンあり"
+      },
       "logsDirLabel": "ログディレクトリ",
       "openLogsDir": "開く",
       "openLogsDirTooltip": "システムのファイルマネージャーでログディレクトリを開く",

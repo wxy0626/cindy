@@ -28,6 +28,20 @@ const PLURAL_SUFFIXES = ['_zero', '_one', '_two', '_few', '_many', '_other'] as 
  * 记录在案以免阻断 device-link 工作;后续按文件 owner 逐条补齐后从这里删除。
  */
 const KNOWN_MISSING: ReadonlySet<string> = new Set([
+  // 2026-09-15 登记：settings.providers 下 imagesKey / usage / xai 资产用量等键
+  // 在源码里有静态 t() 引用，但 5 个语言文件都没有对应文案（连 en 都没有），
+  // 用户在界面上会看到裸 key。均非本次改动引入（属 providers 特性的遗漏），
+  // 归该特性 owner 补齐后从这里删除。
+  'settings.providers.imagesKey.clear',
+  'settings.providers.imagesKey.label',
+  'settings.providers.imagesKey.placeholder',
+  'settings.providers.imagesKey.save',
+  'settings.providers.imagesKey.toast.clearFailed',
+  'settings.providers.imagesKey.toast.cleared',
+  'settings.providers.imagesKey.toast.saveFailed',
+  'settings.providers.imagesKey.toast.saved',
+  'settings.providers.usage.percentUsed',
+  'settings.providers.xai.asset.weeklyUsed',
 ]);
 
 function loadLocales(): Record<string, unknown>[] {

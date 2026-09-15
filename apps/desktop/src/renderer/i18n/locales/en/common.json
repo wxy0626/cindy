@@ -650,6 +650,7 @@
       },
       "trayMenu": {
         "show": "Open Cindy",
+        "restart": "Restart Cindy",
         "quit": "Quit Cindy"
       },
       "trayError": {

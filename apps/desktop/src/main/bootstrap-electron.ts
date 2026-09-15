@@ -3270,18 +3270,55 @@ const activeWindowsTrayMenus = new Set<Menu>();
 const windowsTrayLog = createLogger('windows-tray');
 const CLOSE_BEHAVIOR_PROMPT_FALLBACK_DELAY_MS = 2_000;
 
+/**
+ * 开发版托盘「重启程序」（2026-09-15 用户要求）：以与快捷方式一致的参数拉起重启
+ * 协调器（scripts/desktop-restart-runner.mjs --wait-ready --isolated=dev --isolated-auth），
+ * 协调器先清掉本 checkout 的旧 dev 进程再拉起新会话；随后本实例主动退出。
+ * 正式包（app.isPackaged）不出现该入口，行为与之前完全一致。
+ */
+function restartDevelopmentApp(): void {
+  if (app.isPackaged) return;
+  const repoRootDir = path.resolve(app.getAppPath(), '..', '..');
+  const restartRunner = path.join(repoRootDir, 'scripts', 'desktop-restart-runner.mjs');
+  windowsTrayLog.info('tray restart requested (dev)', { restartRunner });
+  try {
+    const child = spawn(
+      process.execPath,
+      [restartRunner, '--wait-ready', '--isolated=dev', '--isolated-auth'],
+      { cwd: repoRootDir, detached: true, stdio: 'ignore', windowsHide: false },
+    );
+    child.unref();
+  } catch (error) {
+    windowsTrayLog.error('tray restart failed to spawn restart runner', error);
+    return;
+  }
+  // 放行窗口真正销毁后退出本实例；残留进程由协调器的清理阶段收尾。
+  isQuitting = true;
+  app.quit();
+}
+
 function buildWindowsTrayMenu(): Menu {
-  return Menu.buildFromTemplate([
+  const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: t('settings.windowBehavior.trayMenu.show'),
       click: () => focusMainWindow(),
     },
     { type: 'separator' },
-    {
-      label: t('settings.windowBehavior.trayMenu.quit'),
-      click: () => quitFromWindowsTray(),
-    },
-  ]);
+  ];
+  if (!app.isPackaged) {
+    template.push(
+      {
+        label: t('settings.windowBehavior.trayMenu.restart'),
+        click: () => restartDevelopmentApp(),
+      },
+      { type: 'separator' },
+    );
+  }
+  template.push({
+    label: t('settings.windowBehavior.trayMenu.quit'),
+    click: () => quitFromWindowsTray(),
+  });
+  return Menu.buildFromTemplate(template);
 }
 
 /** 语言切换后丢弃缓存的菜单,下一次右键按新语言重建。 */
