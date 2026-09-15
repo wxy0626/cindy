@@ -3282,6 +3282,12 @@ function restartDevelopmentApp(): void {
   const restartRunner = path.join(repoRootDir, 'scripts', 'desktop-restart-runner.mjs');
   windowsTrayLog.info('tray restart requested (dev)', { restartRunner });
   try {
+    // 协调器输出写到日志文件而不是丢弃:之前 stdio:'ignore' 让"重启没起来"
+    // 这类问题完全无法排查(进程无声消失)。追加写,便于事后看本次重启的过程。
+    const restartLogDir = path.join(repoRootDir, '.workbuddy', 'restart');
+    fs.mkdirSync(restartLogDir, { recursive: true });
+    const restartLogPath = path.join(restartLogDir, 'tray-restart-runner.log');
+    const restartLogFd = fs.openSync(restartLogPath, 'a');
     const child = spawn(
       process.execPath,
       [restartRunner, '--wait-ready', '--isolated=dev', '--isolated-auth'],
@@ -3291,12 +3297,17 @@ function restartDevelopmentApp(): void {
       {
         cwd: repoRootDir,
         detached: true,
-        stdio: 'ignore',
+        // stdin 忽略；stdout/stderr 归档到日志，便于诊断重启失败。
+        stdio: ['ignore', restartLogFd, restartLogFd],
         windowsHide: true,
         env: { ...process.env, XDT_DEV_LAUNCH_HEADLESS: '1' },
       },
     );
     child.unref();
+    // 父进程退出后 fd 不再需要，避免句柄泄漏。
+    child.on('spawn', () => fs.closeSync(restartLogFd));
+    child.on('error', () => fs.closeSync(restartLogFd));
+    windowsTrayLog.info('tray restart runner spawned', { restartLogPath });
   } catch (error) {
     windowsTrayLog.error('tray restart failed to spawn restart runner', error);
     return;

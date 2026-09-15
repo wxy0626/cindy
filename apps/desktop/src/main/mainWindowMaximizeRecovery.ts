@@ -86,6 +86,8 @@ export interface MaximizeRecoveryNativeWindow extends MaximizeRecoveryWindow {
   hookWindowMessage(message: number, callback: (wParam: Buffer, lParam: Buffer) => void): void;
   unhookWindowMessage(message: number): void;
   webContents: {
+    // 关窗后 webContents 同样是销毁对象,清理前需先判定(见 dispose 内注释)。
+    isDestroyed(): boolean;
     on(
       event: 'before-input-event',
       listener: (event: unknown, input: MaximizeRecoveryInput) => void,
@@ -161,9 +163,15 @@ export function installMainWindowNativeRestoreIntent(
   win.webContents.on('before-input-event', onBeforeInputEvent);
 
   return (): void => {
+    // 关窗/退出时本函数由 mainWindow 的 'closed' 回调触发,此时 win 与
+    // webContents 都已是销毁对象:再调 unhookWindowMessage / removeListener
+    // 会抛 "Object has been destroyed",未捕获异常会触发全局兜底直接杀进程,
+    // 退出流程走不完(表现为退出卡顿,要等硬杀看门狗)。这里先判销毁再清理。
+    if (win.isDestroyed()) return;
     win.removeListener('will-move', onWillMove);
     win.removeListener('will-resize', onWillResize);
     win.unhookWindowMessage(WM_SYSCOMMAND);
+    if (win.webContents.isDestroyed()) return;
     win.webContents.removeListener('before-mouse-event', onBeforeMouseEvent);
     win.webContents.removeListener('before-input-event', onBeforeInputEvent);
   };

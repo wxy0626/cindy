@@ -442,6 +442,8 @@ describe('installMainWindowNativeRestoreIntent', () => {
       ),
       unhookWindowMessage,
       webContents: {
+        // 真实 webContents 有 isDestroyed();清理函数会先判销毁再解绑。
+        isDestroyed: () => false,
         on: vi.fn((event: string, listener: Listener) => webContentsListeners.set(event, listener)),
         removeListener: removeWebContentsListener,
       },
@@ -504,6 +506,21 @@ describe('installMainWindowNativeRestoreIntent', () => {
     expect(h.windowListeners.size).toBe(0);
     expect(h.webContentsListeners.size).toBe(0);
     expect(h.windowMessageListeners.size).toBe(0);
+  });
+
+  it('dispose after the window was destroyed does not throw', () => {
+    // 回归:关窗后 mainWindow 的 'closed' 回调会调 dispose,此时 win/webContents
+    // 都已销毁。早期实现直接 unhookWindowMessage 会抛
+    // "Object has been destroyed",未捕获异常触发全局兜底杀进程,退出流程走不完
+    // (表现为退出卡顿+重启拉不起新实例)。
+    const h = createNativeHarness();
+    const notify = vi.fn();
+    const dispose = installMainWindowNativeRestoreIntent(h.win, notify, 'win32');
+
+    (h.win as unknown as { isDestroyed: () => boolean }).isDestroyed = () => true;
+    // 销毁后调用不应抛错;抛错即回归。
+    expect(() => dispose()).not.toThrow();
+    expect(h.unhookWindowMessage).not.toHaveBeenCalled();
   });
 
   it('ignores unrelated input and non-Windows platforms', () => {
