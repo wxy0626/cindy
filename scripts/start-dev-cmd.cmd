@@ -22,7 +22,15 @@ rem 直接启动并等待 ready,不再嵌套 restart:desktop:remote,避免与已
 "%NODE_EXE%" "%PROJECT_DIR%\scripts\start-desktop-dev.mjs"
 set "EXIT_CODE=%ERRORLEVEL%"
 echo.
-if not "%EXIT_CODE%"=="0" echo ERROR: startup failed with exit code %EXIT_CODE%
-if "%EXIT_CODE%"=="0" echo Cindy development version startup command completed.
-pause
-exit /b %EXIT_CODE%
+rem 2026-09-15 用户要求:退出/重启后不要残留命令行控制台。
+rem 只有启动失败才停下来让用户看错误;正常退出(用户关了应用或点了托盘"重启程序")
+rem 直接关掉窗口。注意用 exit 而不是 exit /b —— 本脚本通常被 `cmd /k` 拉起,
+rem exit /b 只会回到 /k 的提示符、窗口照样留着,exit 才会真正关闭 cmd 进程。
+if not "%EXIT_CODE%"=="0" (
+  echo ERROR: startup failed with exit code %EXIT_CODE%
+  echo.
+  pause
+  exit /b %EXIT_CODE%
+)
+echo Cindy development version startup command completed.
+exit 0

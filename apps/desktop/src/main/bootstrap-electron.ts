@@ -3285,7 +3285,9 @@ function restartDevelopmentApp(): void {
     const child = spawn(
       process.execPath,
       [restartRunner, '--wait-ready', '--isolated=dev', '--isolated-auth'],
-      { cwd: repoRootDir, detached: true, stdio: 'ignore', windowsHide: false },
+      // windowsHide: node.exe 是控制台程序，detached 时不隐藏会额外弹一个黑窗；
+      // 新会话自己的控制台由启动器（launchInSystemTerminal）按需打开。
+      { cwd: repoRootDir, detached: true, stdio: 'ignore', windowsHide: true },
     );
     child.unref();
   } catch (error) {
