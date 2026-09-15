@@ -45,6 +45,11 @@ const args = stripDesktopDevRegionArgs(rawArgs);
 // Dev 启动提速（2026-09-13）：Electron main 进程的 V8 编译缓存（Node 22.8+ 特性）——
 // 35MB main bundle 的解析/求值二次启动大幅提速。默认注入；已有值不覆盖。
 process.env.NODE_COMPILE_CACHE ??= 'E:\\AI\\cindy-harness\\.workbuddy\\tmp\\node-compile-cache';
+// Dev 启动提速（2026-09-14）：构建目标切换到项目 rolldown-vite 后，rolldown 默认拆
+// chunk + 动态 import 会产出多 chunk 产物，plugin-vite / Electron 期望单文件 CJS
+// 入口（多 chunk 实测挂启动早期）。dev 下默认强制单文件 inlineDynamicImports；
+// 已有值不覆盖；仅影响 dev 启动链，打包路径不受本脚本影响。
+process.env.XDT_MAIN_INLINE_SINGLE ??= '1';
 const env = {
   ...process.env,
   XDT_DESKTOP_DEV_MODE: 'remote',
@@ -59,9 +64,19 @@ console.log(`[boot-timing] dev-remote-env spawn ${command} @ ${new Date().toISOS
 // Windows 下 electron-forge 等 .cmd shim 需要经 shell 解析;shell 模式下 Node 不转义
 // args 数组(DEP0190),这里自行做最小引号处理(实际参数均为简单 token,含空格时兜底)。
 const quote = (a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a);
+// 启动提速（2026-09-15）：默认 start 改走 forge-start-direct 直启入口，绕过
+// CLI 的 "Checking your system"（pnpm --version 子进程等，~1.5-2.5s）。
+// 仅命令形态为 `electron-forge start ...` 时重定向；inspect 等变体仍走原 CLI。
+let spawnCommand = command;
+let spawnArgs = args;
+if (command === 'electron-forge' && args[0] === 'start') {
+  spawnCommand = process.execPath;
+  spawnArgs = [path.join('scripts', 'forge-start-direct.mjs'), ...args.slice(1)];
+  console.log('[boot-timing] forge-start-direct bypass CLI system check');
+}
 const child = isWindows
-  ? spawn([command, ...args].map(quote).join(' '), { stdio: 'inherit', env, shell: true })
-  : spawn(command, args, { stdio: 'inherit', env });
+  ? spawn([spawnCommand, ...spawnArgs].map(quote).join(' '), { stdio: 'inherit', env, shell: true })
+  : spawn(spawnCommand, spawnArgs, { stdio: 'inherit', env });
 
 child.on('exit', (code, signal) => {
   if (signal) {
