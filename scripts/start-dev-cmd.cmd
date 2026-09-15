@@ -36,4 +36,8 @@ if not "%EXIT_CODE%"=="0" (
   exit /b %EXIT_CODE%
 )
 echo Cindy development version startup command completed.
+rem Close the dedicated outer shell when this script was launched in a terminal tab.
+rem Only target a parent command line containing Cindy and a batch script; never
+rem terminate an unrelated interactive terminal opened by the user.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$self=Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID); $parent=Get-CimInstance Win32_Process -Filter ('ProcessId='+$self.ParentProcessId); if ($parent.Name -ieq 'cmd.exe' -and $parent.CommandLine -match '(?i)cindy.*\.cmd') { Stop-Process -Id $parent.ProcessId }" >nul 2>&1
 exit
