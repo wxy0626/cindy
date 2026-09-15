@@ -702,6 +702,57 @@ describe('installQuitHandler render-process-gone', () => {
   });
 });
 
+describe('installQuitHandler watchdog arming (clean before-quit vs abnormal)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** 装好 handler 后把 app.on 捕到的指定事件回调挖出来。 */
+  async function grabAppOnHandler(eventName: string) {
+    const { installQuitHandler } = await freshLifecycle();
+    installQuitHandler(50);
+    const { app } = await import('electron');
+    const onMock = vi.mocked(app.on);
+    const call = (onMock.mock.calls as unknown as Array<[string, unknown]>).find(
+      ([event]) => event === eventName,
+    );
+    expect(call).toBeDefined();
+    return { handler: call![1] as unknown as (...args: unknown[]) => void, app };
+  }
+
+  it('clean before-quit arms watchdog ONLY after disposers (no early spawn — cmd /k terminal not held 20s)', async () => {
+    const { handler, app } = await grabAppOnHandler('before-quit');
+    handler({ preventDefault: vi.fn() });
+    // 退出热路径刚启动 (disposer 还在跑): 不应早布防 20s detached wscript —— 旧实现
+    // 在这里 spawn, 会把 `cmd /k` 开发终端拖住满 20s。
+    expect(mocks.spawn).not.toHaveBeenCalled();
+    // disposer 跑完、app.exit(0) 前才布防 —— 干净退出进程立即死亡, 不留长活后代。
+    await vi.waitFor(() => expect(app.exit).toHaveBeenCalledWith(0));
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it('uncaughtException (abnormal) arms watchdog EARLY, before disposers run', async () => {
+    const snapshot = snapshotProcessListeners([
+      'SIGINT',
+      'SIGTERM',
+      'exit',
+      'uncaughtException',
+      'unhandledRejection',
+    ]);
+    const { installQuitHandler } = await freshLifecycle();
+    installQuitHandler(50);
+    const [handleUncaughtException] = snapshot.added('uncaughtException');
+    expect(handleUncaughtException).toBeTypeOf('function');
+    // 普通崩溃错误走退出分支: 同步、在 disposer 跑完之前就早布防 watchdog 兜底
+    // (异常路径必须保留外部 kill -9 补刀, 干净退出才延迟到 app.exit 前)。
+    handleUncaughtException(new Error('crash'), 'uncaughtException');
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    const { app } = await import('electron');
+    await vi.waitFor(() => expect(app.exit).toHaveBeenCalledWith(1));
+    snapshot.restore();
+  });
+});
+
 describe('installQuitHandler', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -488,13 +488,13 @@ function notifyFatalShutdown(reason: string): void {
 function beginShutdown(timeoutMs: number, reason: string): Promise<void> {
   if (_disposeStarted) return _disposeStarted;
   _isDisposing = true;
-  // watchdog 必须是 shutdown 的第一个动作 (review P1): log 与 noteShutdownBegin
-  // 都是同步盘 IO (日志文件 / run-marker 的 mkdirSync+writeFileSync), 落在坏盘
-  // 或网络盘上可能无限阻塞 —— 那正是 watchdog 要兜的挂死形态, 不能让布防
-  // 排在它们后面。spawn 本身不做盘写 (win32 的 watchdog 脚本已在启动期由
-  // installQuitHandler 预生成; 布防期只做存在性校验——脚本被外部删除时
-  // prepareShutdownWatchdogScript 会清缓存并重建, 启动期写盘失败则直接走缺席标记)。
-  armShutdownHardKillWatchdog();
+  // 注意: 此处**不再**布防外部硬杀 watchdog。beginShutdown 是所有退出入口共享的
+  // 同步起点, 而「正常 before-quit」必须在 disposer 全部跑完、准备 app.exit 前才
+  // 布防 (见 before-quit handler 的 .finally)——否则每次干净退出都会在进入退出热路径
+  // 的开头 spawn 一个 20s 的 detached wscript 后代, 把 `cmd /k` 开发终端拖住 20s
+  // (实机实证: before-quit → runQuitDisposers completed 约 0.8s, 终端却要等满 20s)。
+  // 异常入口 (uncaughtException / render-process-gone / 信号) 在进入本函数前各自已
+  // 早布防 (见对应 handler), 两条路径都靠 _watchdogArmed 幂等兜底, 不会重复 spawn。
   log.info(`beginShutdown timeoutMs=${timeoutMs} reason=${reason}`);
   noteShutdownBegin(reason);
   // 致命崩溃的观察者派发排在 disposer chain **之前**: 崩溃现场的待补传标记必须在清理链
@@ -551,14 +551,19 @@ export function installQuitHandler(timeoutMs = 2000): void {
   // ── Layer 1: graceful quit (before-quit) ────────────────────────────────
   // preventDefault 阻断默认 quit, 等 disposer chain 跑完再 app.exit(0)。
   app.on('before-quit', (e) => {
-    // arm-first(review P1):本 handler 必然走向退出,而下面第一行 log 就是
-    // 同步盘 IO——日志落在坏盘/网络盘上时会在布防前就挂死,watchdog 形同虚设。
-    // 幂等,与 beginShutdown 里的布防互为兜底。
-    armShutdownHardKillWatchdog();
     log.info('before-quit received');
     if (_isDisposing) return;
     e.preventDefault();
-    void beginShutdown(timeoutMs, 'before-quit').finally(() => app.exit(0));
+    void beginShutdown(timeoutMs, 'before-quit').finally(() => {
+      // 干净退出兜底: 只在 disposer 全部跑完、准备 app.exit(0) 的最后一刻才布防
+      // 20s 外部硬杀 watchdog。早布防(原本在 beginShutdown 开头)会在退出热路径刚
+      // 启动时就留下 detached wscript 后代, 把 `cmd /k` 开发终端拖住满 20s; 延迟到
+      // 此刻, 干净退出 (~0.8s) 进程立即死亡, 不留下长活后代, 终端随之关闭。若
+      // app.exit() 在 native teardown 卡死, 这里仍是有效的 kill -9 补刀兜底。与异常
+      // 入口的早布防互不冲突: _watchdogArmed 幂等, 本调用在异常路径已是 no-op。
+      armShutdownHardKillWatchdog();
+      app.exit(0);
+    });
   });
 
   // ── Layer 2: Unix process signals ───────────────────────────────────────
