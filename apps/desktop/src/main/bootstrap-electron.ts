@@ -3285,9 +3285,16 @@ function restartDevelopmentApp(): void {
     const child = spawn(
       process.execPath,
       [restartRunner, '--wait-ready', '--isolated=dev', '--isolated-auth'],
-      // windowsHide: node.exe 是控制台程序，detached 时不隐藏会额外弹一个黑窗；
-      // 新会话自己的控制台由启动器（launchInSystemTerminal）按需打开。
-      { cwd: repoRootDir, detached: true, stdio: 'ignore', windowsHide: true },
+      // 无窗口重启 + 隐藏本进程控制台：XDT_DEV_LAUNCH_HEADLESS 让启动器不再新建
+      // 控制台窗口（否则点 N 次重启就累计 N 个窗口），dev 输出改写到
+      // .workbuddy/restart/dev-console.log；node.exe 自身也是控制台程序，需隐藏。
+      {
+        cwd: repoRootDir,
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+        env: { ...process.env, XDT_DEV_LAUNCH_HEADLESS: '1' },
+      },
     );
     child.unref();
   } catch (error) {

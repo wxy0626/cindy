@@ -997,6 +997,29 @@ function launchInSystemTerminal(mode) {
 function startDesktopDev(mode) {
   console.log(`==> Starting desktop ${mode} dev...`);
 
+  // 2026-09-15：无窗口模式（XDT_DEV_LAUNCH_HEADLESS=1，托盘「重启程序」使用）。
+  // 默认无 TTY 时走 launchInSystemTerminal 新建一个控制台窗口——那样点 N 次重启
+  // 就会累计 N 个窗口。无窗口模式改为由本进程直接托管 runner，输出重定向到
+  // .workbuddy/restart/dev-console.log，既不弹窗也不丢日志。
+  const headlessLaunch = process.env.XDT_DEV_LAUNCH_HEADLESS === '1';
+  if (headlessLaunch) {
+    const consoleLogPath = path.join(rootDir, '.workbuddy', 'restart', 'dev-console.log');
+    fs.mkdirSync(path.dirname(consoleLogPath), { recursive: true });
+    const consoleLogFd = fs.openSync(consoleLogPath, 'a');
+    console.log(`==> Headless dev launch: console output -> ${consoleLogPath}`);
+    const headlessChild = spawn(
+      process.execPath,
+      [path.join(rootDir, 'scripts', 'desktop-dev-runner.mjs'), mode],
+      { cwd: rootDir, stdio: ['ignore', consoleLogFd, consoleLogFd], windowsHide: true, env: process.env },
+    );
+    headlessChild.on('exit', (code, signal) => {
+      if (process.env.XDT_DESKTOP_DEV_STARTUP_STATUS_FILE) return;
+      if (signal) process.kill(process.pid, signal);
+      process.exit(code ?? 0);
+    });
+    return;
+  }
+
   if (!hasInteractiveTty() && (process.platform === 'win32' || process.platform === 'darwin')) {
     launchInSystemTerminal(mode);
     return;
