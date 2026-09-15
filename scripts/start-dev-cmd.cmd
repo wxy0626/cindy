@@ -36,8 +36,6 @@ if not "%EXIT_CODE%"=="0" (
   exit /b %EXIT_CODE%
 )
 echo Cindy development version startup command completed.
-rem Close the dedicated outer shell when this script was launched in a terminal tab.
-rem Only target a parent command line containing Cindy and a batch script; never
-rem terminate an unrelated interactive terminal opened by the user.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID); $rows=@(); $close=$null; for($i=0;$p -and $i -lt 8;$i++){ $rows += ('name='+$p.Name+' pid='+$p.ProcessId+' ppid='+$p.ParentProcessId+' cmd='+$p.CommandLine); if($p.Name -ieq 'cmd.exe' -and $p.CommandLine -match '(?i)cindy.*\.cmd'){ $close=$p.ProcessId }; $p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$p.ParentProcessId) }; $rows | Out-File -FilePath (Join-Path (Get-Location) '.workbuddy\restart\outer-shell-chain.log') -Encoding utf8; if($close){ Stop-Process -Id $close }" >nul 2>&1
+rem The app has already exited cleanly at this point; do not run external cleanup
+rem commands here because a hung shell helper would keep the terminal tab open.
 exit
