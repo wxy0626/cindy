@@ -36,4 +36,4 @@ if not "%EXIT_CODE%"=="0" (
   exit /b %EXIT_CODE%
 )
 echo Cindy development version startup command completed.
-exit 0
+exit
