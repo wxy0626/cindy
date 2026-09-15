@@ -19,6 +19,12 @@ export interface WindowsTrayQuitDependencies {
 /** Tray surface needed to confirm the JS-driven menu still has a live icon. */
 export interface WindowsTrayMenuHost {
   isDestroyed(): boolean;
+  /**
+   * 原生托盘菜单弹出入口。Electron 35+ 起 `Menu.popup()` 不带 window 参数时
+   * 菜单不会在点空处自动关闭（必须再右键或选一项）,而 Tray.popUpContextMenu
+   * 走系统通知区域的原生菜单,点击别处自动收起。
+   */
+  popUpContextMenu(menu: unknown): void;
 }
 
 /** 判断 Windows 启动时是否创建托盘图标;关闭策略只决定关窗动作,不决定图标存在。 */
@@ -31,7 +37,11 @@ export function shouldCreateWindowsTrayAtStartup(
 
 /** Menu surface used to let Electron choose the native cursor position. */
 export interface WindowsTrayPopupMenu {
-  popup(options: { callback(): void }): void;
+  /**
+   * 菜单关闭事件(点击别处/Esc/选中某项都会触发),用于释放活动菜单引用。
+   * 取代原 Menu.popup 的 callback —— 后者在 Electron 35+ 已不再可靠。
+   */
+  once(event: 'menu-will-close', listener: () => void): unknown;
 }
 
 /** Dependencies for the JS-driven tray menu popup. */
@@ -57,6 +67,11 @@ export interface WindowsTrayMenuPopupDependencies<TMenu extends WindowsTrayPopup
  * 而且 `setContextMenu` 一旦设置,`right-click` 事件按设计不再 emit
  * (electron#5058,维护者明确说是预期行为),所以两种方式不能并存做双保险:
  * 设了它,这里的兜底就永远不会被触发。
+ *
+ * ⚠️ 也不要用 `menu.popup()` 弹出。Electron 35+ 起,不传 window 坐标的
+ * `menu.popup()` 弹出的菜单**不会**在点击别处时自动关闭(必须再右键一次或选中
+ * 某一项),行为退化;`tray.popUpContextMenu(menu)` 是"一次性弹出",既不接管
+ * right-click 事件(上面的诊断日志仍然有效),又保留系统原生菜单的自动收起。
  */
 export function popUpWindowsTrayMenu<TMenu extends WindowsTrayPopupMenu>(
   deps: WindowsTrayMenuPopupDependencies<TMenu>,
@@ -81,9 +96,13 @@ export function popUpWindowsTrayMenu<TMenu extends WindowsTrayPopupMenu>(
       deps.releaseActiveMenu(menu);
     };
     deps.retainActiveMenu(menu);
+    // 关闭时释放引用:原生菜单在点空处/Esc/选中某项后都会触发该事件。
+    // 重复弹出同一菜单对象时会重复监听,故用 once;releaseMenu 本身幂等。
+    menu.once('menu-will-close', releaseMenu);
     try {
-      // Omit window and coordinates so Windows uses the native cursor position.
-      menu.popup({ callback: releaseMenu });
+      // 走托盘的原生弹出:系统会在点击别处/Esc 时自动收起菜单。
+      // Menu.popup() 无 window 参数时在 Electron 35+ 不会自动关闭,故不用它。
+      tray.popUpContextMenu(menu);
     } catch (error) {
       releaseMenu();
       throw error;

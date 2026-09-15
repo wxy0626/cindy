@@ -111,18 +111,32 @@ describe('Windows tray startup', () => {
   });
 });
 
-/** Tray fake for the JS-driven menu popup (`setContextMenu` is deliberately unused). */
+/** 托盘 fake:走原生 popUpContextMenu(不用 setContextMenu,避免吞掉 right-click)。 */
 function makeTrayMenuHost(): WindowsTrayMenuHost & { destroyed: boolean } {
   return {
     destroyed: false,
     isDestroyed() {
       return this.destroyed;
     },
+    popUpContextMenu: vi.fn(),
   };
 }
 
-function makePopupMenu(id: string): WindowsTrayPopupMenu & { id: string } {
-  return { id, popup: vi.fn() };
+/** 菜单 fake:记录 menu-will-close 监听,便于模拟点空处关闭。 */
+function makePopupMenu(id: string): WindowsTrayPopupMenu & {
+  id: string;
+  emitMenuWillClose(): void;
+} {
+  let closeListener: (() => void) | null = null;
+  return {
+    id,
+    once: vi.fn((_event, listener: () => void) => {
+      closeListener = listener;
+    }),
+    emitMenuWillClose() {
+      closeListener?.();
+    },
+  };
 }
 
 describe('Windows tray menu popup', () => {
@@ -151,12 +165,10 @@ describe('Windows tray menu popup', () => {
     expect(buildMenu).toHaveBeenCalledTimes(1);
     expect(retained).toBe(built);
     expect(activeMenus.has(built)).toBe(true);
-    const firstPopupOptions = vi.mocked(built.popup).mock.calls[0][0];
-    expect(firstPopupOptions).toEqual({ callback: expect.any(Function) });
-    expect(firstPopupOptions).not.toHaveProperty('window');
-    expect(firstPopupOptions).not.toHaveProperty('x');
-    expect(firstPopupOptions).not.toHaveProperty('y');
-    firstPopupOptions.callback();
+    // 原生托盘弹出入口:点击别处/Esc 由系统自动收起菜单。
+    expect(vi.mocked(tray.popUpContextMenu).mock.calls[0][0]).toBe(built);
+    // 菜单关闭(点空处)后释放活动引用。
+    built.emitMenuWillClose();
     expect(activeMenus.has(built)).toBe(false);
 
     // 第二次右键复用同一个菜单对象。
@@ -173,7 +185,7 @@ describe('Windows tray menu popup', () => {
       }),
     ).toBe(true);
     expect(buildMenu).toHaveBeenCalledTimes(1);
-    expect(built.popup).toHaveBeenCalledTimes(2);
+    expect(tray.popUpContextMenu).toHaveBeenCalledTimes(2);
   });
 
   it('keeps an open menu alive while rebuilding after a language change', () => {
@@ -213,8 +225,9 @@ describe('Windows tray menu popup', () => {
 
     expect(buildMenu).toHaveBeenCalledTimes(2);
     expect(activeMenus.size).toBe(2);
+    // 两个菜单都关闭(例如语言切换前后各弹出过一次)后活动引用清零。
     for (const [menu] of retainMenu.mock.calls) {
-      vi.mocked(menu.popup).mock.calls[0][0].callback();
+      (menu as ReturnType<typeof makePopupMenu>).emitMenuWillClose();
     }
     expect(activeMenus.size).toBe(0);
   });
@@ -267,7 +280,8 @@ describe('Windows tray menu popup', () => {
     const tray = makeTrayMenuHost();
     const failure = new Error('popup rejected by the shell');
     const menu = makePopupMenu('failing');
-    menu.popup = vi.fn(() => {
+    // 原生弹出失败(例如托盘图标被系统回收)时应走 onError 并释放活动引用。
+    tray.popUpContextMenu = vi.fn(() => {
       throw failure;
     });
     const onError = vi.fn();
