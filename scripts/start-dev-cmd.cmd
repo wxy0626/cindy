@@ -39,5 +39,5 @@ echo Cindy development version startup command completed.
 rem Close the dedicated outer shell when this script was launched in a terminal tab.
 rem Only target a parent command line containing Cindy and a batch script; never
 rem terminate an unrelated interactive terminal opened by the user.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$self=Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID); $parent=Get-CimInstance Win32_Process -Filter ('ProcessId='+$self.ParentProcessId); if ($parent.Name -ieq 'cmd.exe' -and $parent.CommandLine -match '(?i)cindy.*\.cmd') { Stop-Process -Id $parent.ProcessId }" >nul 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID); $rows=@(); $close=$null; for($i=0;$p -and $i -lt 8;$i++){ $rows += ('name='+$p.Name+' pid='+$p.ProcessId+' ppid='+$p.ParentProcessId+' cmd='+$p.CommandLine); if($p.Name -ieq 'cmd.exe' -and $p.CommandLine -match '(?i)cindy.*\.cmd'){ $close=$p.ProcessId }; $p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$p.ParentProcessId) }; $rows | Out-File -FilePath (Join-Path (Get-Location) '.workbuddy\restart\outer-shell-chain.log') -Encoding utf8; if($close){ Stop-Process -Id $close }" >nul 2>&1
 exit
