@@ -272,87 +272,13 @@ void (async () => {
       `app-graph-ready uptimeMs=${Math.round(performance.now())}`,
     );
     root.render(
-      <ThemeProvider syncWindowVibrancy={false}>
-        <ComputerPermissionBackdrop />
-      </ThemeProvider>,
+      <TopLevelErrorBoundary>
+        <App />
+      </TopLevelErrorBoundary>,
     );
-    return;
-  }
-
-  if (isComputerPermissionGuide) {
-    const { ComputerPermissionGuideWindow } = await import(
-      './components/settings/ComputerPermissionGuideWindow'
-    );
-    root.render(
-      <ThemeProvider syncWindowVibrancy={false}>
-        <LocaleProvider>
-          <ComputerPermissionGuideWindow />
-        </LocaleProvider>
-      </ThemeProvider>,
-    );
-    return;
-  }
-
-  if (isVoiceInputDictionaryToast) {
-    const { VoiceInputDictionaryToast } = await import('./voice-input/VoiceInputDictionaryToast');
-    root.render(
-      <ThemeProvider syncWindowVibrancy={false}>
-        <LocaleProvider>
-          <VoiceInputDictionaryToast />
-        </LocaleProvider>
-      </ThemeProvider>,
-    );
-    return;
-  }
-
-  if (isVoiceInputOverlay) {
-    const { VoiceInputOverlay } = await import('./voice-input/VoiceInputOverlay');
-    root.render(
-      <ThemeProvider syncWindowVibrancy={false}>
-        <LocaleProvider>
-          <ConfirmDialogProvider>
-            <VoiceInputOverlay />
-          </ConfirmDialogProvider>
-        </LocaleProvider>
-      </ThemeProvider>,
-    );
-    return;
-  }
-
-  // Install the RSB control listener before any child Settings effect can ask
-  // main for health. It is renderer-process scoped and must survive collapsed
-  // or unmounted sidebar UI. Only the primary and dedicated sidebar windows
-  // can own RSB tabs; other full-app windows must not publish an empty pool
-  // snapshot into the primary registry.
-  if (!isGhostPanelWindow() && !isSecondaryWindow()) {
-    const disposeRsbBrowserBridge = initRsbBrowserBridge();
-    import.meta.hot?.dispose(disposeRsbBrowserBridge);
-  }
-
-  // 主视图挂载前完成 memory 与 Git safety 真值同步及旧配置迁移，确保用户可交互的
-  // toggle、回退入口不会在镜像迁移完成前和启动快照并发。浮窗不消费这些设置，跳过
-  // 同步以免多个 renderer 争写共享 localStorage。
-  await bootstrapMemorySettingsFromMain();
-  await bootstrapGitSafetySettingsFromMain();
-
-  // TapDB 在线活跃上报 — 只在主视图启用,避免 voice-input 浮窗的弹出被算成 PV。
-  // 这里只挂"同意闸":SDK 是否初始化由 main 的 analytics-settings 决定,用户没
-  // 同意过《隐私政策》时一个字节都不会发出去(见 analytics/tapdbClient.ts)。
-  initTapdb();
-
-  // 顶层 boundary:App 内 RouterProvider 之上的 provider 链渲染崩溃时兜底
-  // (路由子树的崩溃仍由 router.tsx 的 errorElement 就近接住)。
-  // App 必须延迟到辅助窗口分流之后再加载:完整 App 的 useApiKey 等模块会在
-  // ghost/secondary renderer 启动时触发 safe-storage-read,被 main 正确拒绝并制造噪声。
-  const { App } = await import('./App');
-  root.render(
-    <TopLevelErrorBoundary>
-      <App />
-    </TopLevelErrorBoundary>,
-  );
-  // renderer root ready 改由 App 首次 commit 的 effect 上报（见 App.tsx），
-  // root.render() 同步返回时 React 尚未提交，此处上报会早于真实可渲染。
-  scheduleDeferredInitialization();
+    // renderer root ready 改由 App 首次 commit 的 effect 上报（见 App.tsx），
+    // root.render() 同步返回时 React 尚未提交，此处上报会早于真实可渲染。
+    scheduleDeferredInitialization();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error ? error.stack : undefined;

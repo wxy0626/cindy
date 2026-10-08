@@ -1674,25 +1674,22 @@ function XaiHeader({
     </div>
   ) : (
     <PillButton
-      label={
-        loggingIn ? t('settings.providers.button.cancel') : t('settings.providers.button.authorize')
-      }
-    : {
-        label: t(
-          loggingIn ? 'settings.providers.button.cancel' : 'settings.providers.button.authorize',
-        ),
-        onClick: () => {
-          if (loggingIn) {
-            loginAttempt.current += 1;
-            void window.electronAPI.maker.xaiOAuthCancel();
-            setLoggingIn(false);
-            setDeviceLogin(false);
-            setDeviceCode(null);
-          } else {
-            void handleLogin('browser');
-          }
-        },
-      };
+      label={t(
+        loggingIn ? 'settings.providers.button.cancel' : 'settings.providers.button.authorize',
+      )}
+      onClick={() => {
+        if (loggingIn) {
+          loginAttempt.current += 1;
+          void window.electronAPI.maker.xaiOAuthCancel();
+          setLoggingIn(false);
+          setDeviceLogin(false);
+          setDeviceCode(null);
+        } else {
+          void handleLogin('browser');
+        }
+      }}
+    />
+  );
 
   return (
     <DetailHeader
@@ -1842,29 +1839,9 @@ function GenericOAuthHeader({
         } else {
           void handleLogin();
         }
-      : {
-          label: t(
-            loggingIn
-              ? 'settings.providers.button.cancel'
-              : reconnectRequired
-                ? 'settings.providers.openai.reconnect'
-                : deviceFlow
-                  ? 'settings.providers.wizard.authorizeWithDeviceCode'
-                  : 'settings.providers.button.authorize',
-          ),
-          onClick: () => {
-            if (loggingIn) {
-              loginAttempt.current += 1;
-              cancelOwnedLogin();
-              clearDeviceCode();
-              setLoggingIn(false);
-              setXaiDeviceLogin(false);
-            } else {
-              void handleLogin();
-            }
-          },
-          disabled: busy,
-        };
+      }}
+    />
+  );
   const detail =
     loggingIn && (deviceFlow || xaiDeviceLogin) ? (
       <OAuthDeviceCodeCard deviceCode={deviceCode} />
@@ -2501,13 +2478,7 @@ function CustomProviderHeader({
         onEdit={onEdit}
         onDelete={onDelete}
       />
-      <RowIconButton
-        icon={<Trash2 size={16} />}
-        label={t('settings.providers.custom.deleteAria')}
-        onClick={onDelete}
-      />
-    </div>
-  );
+    );
   return (
     <DetailHeader
       children={children}
@@ -2645,16 +2616,24 @@ function ListRow({
           aria-current={selected}
           className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pl-3 pr-2.5 text-left"
         >
-          {providerIcon(provider, 14)}
-        </div>
-        <span
-          className="min-w-0 flex-1 truncate text-13 font-medium"
-          style={{
-            color: provider.suspended ? 'var(--text-tertiary)' : 'var(--settings-section-title)',
-          }}
-        >
-          {title}
-        </span>
+          <div
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+            style={{
+              backgroundColor: 'var(--settings-integration-avatar-bg)',
+              border: '1px solid var(--settings-integration-avatar-border)',
+              color: 'var(--settings-integration-avatar-icon)',
+            }}
+          >
+            {providerIcon(provider, 14)}
+          </div>
+          <span
+            className="min-w-0 flex-1 truncate text-13 font-medium"
+            style={{
+              color: provider.suspended ? 'var(--text-tertiary)' : 'var(--settings-section-title)',
+            }}
+          >
+            {title}
+          </span>
         {reconnectRequired ? (
           <span
             className="shrink-0 select-none text-11"
@@ -2675,14 +2654,6 @@ function ListRow({
             >
               {t('settings.providers.models.modelCount', { count: modelCount })}
             </span>
-          ) : (
-            modelCount !== null && (
-              <span
-                className="shrink-0 text-11 tabular-nums"
-                style={{ color: 'var(--text-tertiary)' }}
-              >
-                {t('settings.providers.models.modelCount', { count: modelCount })}
-              </span>
             )
           )}
           <span

@@ -2264,43 +2264,14 @@ export function getMaker(): Maker {
       for (const win of BrowserWindow.getAllWindows()) {
         if (win.isDestroyed()) continue;
         try {
-          // **必须先退役旧 host**，再清目录（PR #1076 review 第三轮）。
-          //
-          // 凭证失效与 logout / login 是同一类 auth 边界，却是三条路径里唯一没有退役 host 的
-          // ——于是旧 host 上在途的 `model/list` 会在目录被清空之后带着已失效账号的清单回来。
-          // 拦得住它的判据本来就有：CodexAgent 在把结果交给宿主前会校验
-          // `this.hosts.get(key) !== host`（见 agents/codex/index.ts 的 model/list 收尾），
-          // 只是这条路径从没让那个校验生效过。退役即补齐对称性，不需要在写入侧再加一层闸门。
-          await codexAgent.forceDisposeLocalHostForAuthChange(
-            `Codex credential invalidated: ${reason}`,
-          );
-          clearChatgptBridgeCredentialCache();
-          await refreshDiscoveredCodexModels(false);
-        } catch (e) {
-          // 目录刷新是失效广播的附加收口，不能因其异常让 renderer 错过“请重新登录”。
-          desktopMakerLogger.warn('Codex invalidation catalog cleanup failed', {
-            error: e instanceof Error ? e.message : String(e),
-          });
+          win.webContents.send(MAKER_PUSH.AUTH_STATE_CHANGED, payload);
+        } catch {
+          /* no-op */
         }
-        const payload = {
-          agentKind: 'codex' as const,
-          authenticated: false,
-          errorReason: reason,
-          credentialScope,
-          ...(oauthWritesBlocked ? { oauthWritesBlocked: true } : {}),
-        };
-        for (const win of BrowserWindow.getAllWindows()) {
-          if (win.isDestroyed()) continue;
-          try {
-            win.webContents.send(MAKER_PUSH.AUTH_STATE_CHANGED, payload);
-          } catch {
-            /* no-op */
-          }
-        }
-        // 轮 27 HIGH-1:凭证失效广播同属认证边界。
-        invalidatePiEnvironment();
-      },
-    );
+      }
+      // 轮 27 HIGH-1:凭证失效广播同属认证边界。
+      invalidatePiEnvironment();
+    });
     // Claude 同款:订阅 refresh token 被服务端作废(invalid_grant)时,adapter.invalidate()
     // 清态后经这里广播,UI 立刻进「请重新登录」而不是连环 401 的假连接状态。
     desktopClaudeAuthAdapter.setOnInvalidatedBroadcast((reason) => {
@@ -2428,120 +2399,6 @@ export function getMaker(): Maker {
           model,
           sessionId,
         ),
-      // 远端 Pi:给 session 标 remoteHostId 的, PiAgent 通过这个钩子拿远端
-      // transport — SSH 连接复用 ConnectionPool (remote-ssh feature 起的),
-      // 这里包一层 RemoteHost + SshPiTransport (execStream 直桥远端 pi --mode rpc)。
-      // 远端机器没在 pool / 未连接 → 抛错, PiAgent 把它当 startSession 失败传上去。
-      getRemotePiTransport: async (
-        remoteHostId,
-        {
-          binaryPath: _localBinaryPath,
-          remoteBinaryPath: providedRemoteBinaryPath,
-          args,
-          cwd,
-          env,
-          logger,
-          sessionId,
-          hostProxyForwards,
-        },
-        registerLocalAgentProcess: ({ pid, kind, role }) => registerAgentProcess(pid, kind, role),
-        reviewAutoPermissionAction,
-        capabilityAdditions: {
-          availableModels: deriveAvailableModels(getDesktopSelectableCatalog(), 'pi'),
-        },
-        resolvePiRuntimeModelDescriptor: (providerId, modelId) =>
-          resolvePiRuntimeModelDescriptor(getDesktopSelectableCatalog(), providerId, modelId, {
-            localOverrides: getLocalCatalogOverridesSnapshot(),
-          }),
-        resolvePiGatewayModelDescriptor: (providerId, modelId) => {
-          // `cindy` 始终是 XD Gateway 路由；其成员、能力与显式 API 都由 Model Access
-          // 决定，不能随当前订阅/BYOM provider 命中同 id 的另一条目录记录。
-          return resolvePiRuntimeModelDescriptor(
-            getDesktopSelectableCatalog(),
-            resolvePiGatewayDescriptorProviderId(providerId),
-            modelId,
-            { localOverrides: getLocalCatalogOverridesSnapshot() },
-          );
-        },
-        mcpProviders: piMcpProviders,
-        makerMemory: makerMemoryManager,
-        // Fence in-flight startups at the durable package edge, but do not close
-        // the current caller before maker-core queues its host-owned receipt and
-        // sends the extension response. The settled callback below retires only
-        // the exact local runtimes captured at the mutation's latest byte edge.
-        onPiManagedPackageMutationCommitted: async (phase = 'commit') => {
-          const maker = _maker;
-          if (!maker) return;
-          const snapshot = await captureLocalPiPackageRuntimeInvalidationSnapshot(maker);
-          if (phase === 'post-build' && pendingPiPackageRuntimeSnapshots.length > 0) {
-            // The mutation lock prevents another commit edge from interleaving.
-            // Replace the earlier snapshot so settled retirement includes every
-            // runtime admitted while optional package bytes were being written.
-            pendingPiPackageRuntimeSnapshots[pendingPiPackageRuntimeSnapshots.length - 1] =
-              snapshot;
-          } else {
-            pendingPiPackageRuntimeSnapshots.push(snapshot);
-          }
-        },
-        onPiManagedPackageMutationSettled: async (callerSessionId, publishOutcome) => {
-          const partial = () =>
-            publishOutcome({
-              runtimeConvergence: 'partial',
-              recoveryAction: 'restart-cindy-to-refresh-packages',
-            });
-          const maker = _maker;
-          const snapshot = pendingPiPackageRuntimeSnapshots.shift();
-          if (!maker || !snapshot) {
-            partial();
-            return;
-          }
-          const callerEntries = snapshot.entries.filter(
-            ({ session }) => session.id === callerSessionId,
-          );
-          const siblingEntries = snapshot.entries.filter(
-            ({ session }) => session.id !== callerSessionId,
-          );
-          let siblingFailed = false;
-          try {
-            const siblingResult = await invalidateLocalPiPackageRuntimeSnapshot(maker, {
-              entries: siblingEntries,
-            });
-            siblingFailed = siblingResult.failedSessionIds.length > 0;
-          } catch {
-            siblingFailed = true;
-          }
-          const initiallyPartial =
-            siblingFailed ||
-            callerEntries.length === 0 ||
-            callerEntries.some(({ metadataFailed }) => metadataFailed);
-          if (initiallyPartial) partial();
-          else publishOutcome({ runtimeConvergence: 'complete' });
-
-          if (callerEntries.length === 0) return;
-          try {
-            const callerResult = await invalidateLocalPiPackageRuntimeSnapshot(maker, {
-              entries: callerEntries,
-            });
-            if (!initiallyPartial && callerResult.failedSessionIds.length > 0) partial();
-          } catch {
-            if (!initiallyPartial) partial();
-          }
-        },
-        getGhostRosterPrompt,
-        // 仅为命中视觉桥目标的 Pi 模型注册 Layer C 工具。
-        resolvePiVisionBridgeEnv: (model) =>
-          buildPiVisionBridgeEnv(
-            {
-              getProviderById: (providerId) =>
-                getActiveCatalog().providers.find((provider) => provider.id === providerId) ?? null,
-              readCustomProviderKey,
-              readGatewayKey: readClaudeApiKey,
-              resolveBackendRoute: (providerId, modelId) =>
-                resolveVisionBackendRoute(providerId, modelId, effectiveXdGatewayBaseUrl() || null),
-              fetch: outboundFetch,
-            },
-            model,
-          ),
         // 远端 Pi:给 session 标 remoteHostId 的, PiAgent 通过这个钩子拿远端
         // transport — SSH 连接复用 ConnectionPool (remote-ssh feature 起的),
         // 这里包一层 RemoteHost + SshPiTransport (execStream 直桥远端 pi --mode rpc)。
