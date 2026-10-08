@@ -51,6 +51,8 @@ export interface GhostPluginListItem {
   mainViewTitle: string | null;
   /** 声明了由 Host 承载、但可从插件 UI 主动进入的能力。 */
   retirement?: InstalledGhost['retirement'];
+  /** 声明了 Host 侧的 iOS Simulator 能力入口。 */
+  hostCapability?: 'ios-simulator' | null;
   oauthAuthorizationExpired?: boolean;
   trust?: GhostTrustInfo;
   iconDataUrl?: string;
@@ -64,13 +66,16 @@ export interface GhostPluginListItem {
  * - `manage`:纯工具型(Agent 对话中自动调用)→ 无主按钮。
  * 停靠形态(left/right)的面板由布局树承载,不算 panel 主动作。
  */
-export type GhostPrimaryAction = 'panel' | 'command' | 'manage';
+export type GhostPrimaryAction = 'panel' | 'command' | 'capability' | 'manage';
 
 export function ghostPrimaryAction(
-  item: Pick<GhostPluginListItem, 'tabPanel' | 'canUse'>,
+  item: Pick<GhostPluginListItem, 'tabPanel' | 'canUse'> & {
+    hostCapability?: GhostPluginListItem['hostCapability'];
+  },
 ): GhostPrimaryAction {
   if (item.tabPanel) return 'panel';
   if (item.canUse) return 'command';
+  if (item.hostCapability) return 'capability';
   return 'manage';
 }
 export interface GhostPluginDetail extends GhostPluginListItem {
@@ -283,6 +288,7 @@ export function toGhostPluginListItem(
     hasMainView: manifest.mainView !== undefined,
     mainViewTitle: manifest.mainView ? (manifest.mainView.title ?? manifest.name) : null,
     retirement: ghost.retirement,
+    hostCapability: manifest.iosSimulator === true ? 'ios-simulator' : null,
     oauthAuthorizationExpired: ghost.oauthAuthorizationExpired !== undefined,
     trust: ghost.trust ?? {
       level: 'unverified',

@@ -38,14 +38,101 @@ installScrollbarAutoHide();
 // 隐藏期动画闸门需要在首屏前安装，避免窗口启动即隐藏时漏掉冻结状态。
 const disposeHiddenAnimationGate = installHiddenAnimationGate();
 
-migrateLegacyVoiceInputRendererStorage();
-void syncVoiceInputGlobalShortcut(getVoiceInputSettings().shortcut);
-void bootstrapSilentEncryptedRetryFromMain();
-// 对话语义索引开关 —— 先同步 signed-out 镜像；AuthContext 提交稳定 owner 后会切换
-// owner 分区并重拉 Main 真值，迟到的启动响应会被 revision fence 丢弃。
-void bootstrapChatEmbeddingFromMain();
-// LSP Beta 开关 (Phase 1) — admin-only, 默认 false; 同款镜像同步方式。
-void bootstrapLspModeFromMain();
+let disposeForegroundRecoveryDiagnostics: (() => void) | undefined;
+let disposeRenderLoopWatchdog: (() => void) | undefined;
+let disposePerformanceTimelineCleanupInterval: (() => void) | undefined;
+let disposeInteractionJankProbe: (() => void) | undefined;
+let cancelDeferredInitialization: (() => void) | undefined;
+
+// 这些初始化只同步 renderer 镜像或采集诊断，不参与首屏渲染。放到首个 root.render
+// 之后的空闲任务，避免 IPC/监听器安装和首屏模块求值竞争主线程。
+const scheduleDeferredInitialization = (): void => {
+  let idleId: number | undefined;
+  let timeoutId: number | undefined;
+  let cancelled = false;
+  const run = async (): Promise<void> => {
+    if (cancelled) return;
+    try {
+      // .tsx 中泛型箭头函数必须写 <T,> 尾逗号，否则 <T> 会被 TS 解析为 JSX 标签导致整仓 typecheck 失败。
+      const loadDeferred = async <T,>(name: string, load: () => Promise<T>): Promise<T | null> => {
+        try {
+          return await load();
+        } catch (error) {
+          window.electronAPI?.logToMain?.(
+            'warn',
+            'renderer/boot',
+            `deferred-import-failed stage=${name} elapsedMs=${Math.round(performance.now())} error=${String(error)}`,
+          );
+          return null;
+        }
+      };
+      // 非关键模块（voice/settings/embedding/lsp/git/diagnostics/watchdog/jank）
+      // 并行加载（A/B 基线 2026-09-15）：与「串行+yield」变体对照。二者都只在
+      // 首个 root.render 后的空闲窗口执行，不阻塞首屏；HMR dispose 语义保留。
+      const [voiceSettings, silentRetry, chatEmbedding, lspMode, gitSafety, diagnostics, renderLoop, jank] =
+        await Promise.all([
+          loadDeferred('voice-settings', () => import('./hooks/useVoiceInputSettings')),
+          loadDeferred('silent-retry', () => import('./lib/silentEncryptedRetryStore')),
+          loadDeferred('chat-embedding', () => import('./lib/chatEmbeddingStore')),
+          loadDeferred('lsp-mode', () => import('./lib/lspModeStore')),
+          loadDeferred('git-safety', () => import('./lib/gitSafetySettingsStore')),
+          loadDeferred('diagnostics', () => import('./lib/foregroundRecoveryDiagnostics')),
+          loadDeferred('render-loop', () => import('./lib/renderLoopWatchdog')),
+          import.meta.env.DEV && !isVoiceInputOverlay && !isVoiceInputDictionaryToast
+            ? loadDeferred('interaction-jank', () => import('./lib/interactionJankProbe'))
+            : Promise.resolve(null),
+        ]);
+      if (cancelled) return;
+      if (voiceSettings) {
+        voiceSettings.migrateLegacyVoiceInputRendererStorage();
+        void voiceSettings.syncVoiceInputGlobalShortcut(
+          voiceSettings.getVoiceInputSettings().shortcut,
+        );
+      }
+      void silentRetry?.bootstrapSilentEncryptedRetryFromMain();
+      void chatEmbedding?.bootstrapChatEmbeddingFromMain();
+      void lspMode?.bootstrapLspModeFromMain();
+      void gitSafety?.bootstrapGitSafetySettingsFromMain();
+      if (diagnostics) {
+        disposeForegroundRecoveryDiagnostics = diagnostics.installForegroundRecoveryDiagnostics();
+        if (import.meta.env.DEV) {
+          disposePerformanceTimelineCleanupInterval =
+            diagnostics.installPerformanceTimelineCleanupInterval();
+        }
+      }
+      if (renderLoop) disposeRenderLoopWatchdog = renderLoop.installRenderLoopWatchdog();
+      if (jank) disposeInteractionJankProbe = jank.installInteractionJankProbe();
+    } catch (error) {
+      window.electronAPI?.logToMain?.(
+        'warn',
+        'renderer/boot',
+        `deferred-init-failed elapsedMs=${Math.round(performance.now())} error=${String(error)}`,
+      );
+    }
+  };
+  const requestIdleCallback = (
+    window as Window & {
+      requestIdleCallback?: (cb: () => void, options?: { timeout?: number }) => number;
+    }
+  ).requestIdleCallback;
+  if (requestIdleCallback) {
+    idleId = requestIdleCallback(run, { timeout: 2000 });
+  } else {
+    timeoutId = window.setTimeout(run, 0);
+  }
+  cancelDeferredInitialization = () => {
+    cancelled = true;
+    if (idleId !== undefined) {
+      const cancelIdleCallback = (
+        window as Window & {
+          cancelIdleCallback?: (id: number) => void;
+        }
+      ).cancelIdleCallback;
+      cancelIdleCallback?.(idleId);
+    }
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  };
+};
 
 const view = new URLSearchParams(window.location.search).get('view');
 const isVoiceInputOverlay = view === 'voice-input-overlay';
@@ -271,14 +358,14 @@ void (async () => {
       'renderer/boot',
       `app-graph-ready uptimeMs=${Math.round(performance.now())}`,
     );
-    root.render(
-      <TopLevelErrorBoundary>
-        <App />
-      </TopLevelErrorBoundary>,
-    );
-    // renderer root ready 改由 App 首次 commit 的 effect 上报（见 App.tsx），
-    // root.render() 同步返回时 React 尚未提交，此处上报会早于真实可渲染。
-    scheduleDeferredInitialization();
+  root.render(
+    <TopLevelErrorBoundary>
+      <App />
+    </TopLevelErrorBoundary>,
+  );
+  // renderer root ready 改由 App 首次 commit 的 effect 上报（见 App.tsx），
+  // root.render() 同步返回时 React 尚未提交，此处上报会早于真实可渲染。
+  scheduleDeferredInitialization();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error ? error.stack : undefined;

@@ -34,10 +34,12 @@ import {
   ShieldAlert,
   SlidersHorizontal,
   Sparkles,
+  Store,
   Upload,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+import { WINDOW_NO_DRAG_STYLE } from '@/components/layout/windowDrag';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog-provider';
 import {
   DropdownMenu,
@@ -98,20 +100,22 @@ import {
   ghostWebviewOwnerKey,
   ghostPrimaryAction,
   marketPresentationForInstalledGhost,
+  installedVisibleCount,
   nextOpenPanelIdForOwner,
   sortInstalledForDisplay,
   type GhostPluginListItem,
 } from './lib/ghostPluginViewModel';
 import { MyPublishesSection } from './MyPublishesSection';
+import { ignoredRoundStorageKey, isBatchFinished, updateRoundKey } from './lib/updateAllModel';
 import {
   getUpdateAllBatchState,
   reconcileUpdateAllBatch,
   setUpdateAllBatchHooks,
+  startUpdateAllBatch,
   subscribeUpdateAllBatch,
 } from './lib/updateAllController';
 import { formatSetupGateDescription } from './lib/ghostSetupGateModel';
 import {
-  CatalogSourceSwitcher,
   PLUGIN_MANAGEMENT_CARD_GRID_CLASS,
   PLUGIN_INSTALLED_CARD_GRID_CLASS,
   PluginManagementLayout,
@@ -138,6 +142,7 @@ import {
   pluginUpdateForInstalledVersion,
   type PluginPresentationOrigin,
 } from './lib/pluginMarketPresentation';
+import { AddMarketplaceDialog } from './AddMarketplaceDialog';
 import { pluginMarketErrorKey } from './lib/pluginMarketErrorKey';
 import { usePluginIconRefresh } from './lib/usePluginIconRefresh';
 import { usePluginMarketIcon } from './lib/usePluginMarketIcon';
@@ -145,15 +150,25 @@ import { usePluginMarketForegroundRefresh } from './lib/usePluginMarketForegroun
 import { usePluginMarketLocaleRefresh } from './lib/usePluginMarketLocaleRefresh';
 import './plugin-motion.css';
 
-/** 旧布局辅助导出仍使用的默认可见数量。 */
-const MAX_VISIBLE_INSTALLED_PLUGINS = 8;
-
+const PLUGIN_CATALOG_TOOLBAR_CLASS =
+  'plugin-catalog-toolbar mb-5 flex items-center justify-between gap-4';
+type PluginPresentationFilter = 'all' | PluginPresentationOrigin;
 type PresentedGhostPluginItem = GhostPluginListItem & {
   origin: PluginPresentationOrigin;
   /** 市场存在更新时的市场记录;列表卡片据此显示更新徽标与直达入口。 */
   marketUpdate: PluginMarketItem | null;
 };
 
+/** 推荐区来源过滤:本地装的必然在已安装区,不设「本地」档(设计定稿)。 */
+const RECOMMENDED_FILTERS: readonly PluginPresentationFilter[] = [
+  'all',
+  'public',
+  'organization',
+  'custom',
+];
+
+/** 已安装区默认只展开一屏内的前 8 个，其余通过显式操作渐进展示。 */
+const MAX_VISIBLE_INSTALLED_PLUGINS = 8;
 /** 折叠入口只预览前三个隐藏插件，避免头像堆叠反过来抢占操作文案。 */
 const MAX_COLLAPSED_INSTALLED_PLUGIN_PREVIEWS = 3;
 
@@ -357,6 +372,15 @@ export function shouldOpenInstalledDetailAfterMarketSuccess(isUpdate: boolean): 
   return !isUpdate;
 }
 
+/** 读「忽略本轮更新」的持久值(键按数据归属分桶,见 ignoredRoundStorageKey)。 */
+function readIgnoredRound(storageKey: string): string {
+  try {
+    return window.localStorage.getItem(storageKey) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Ghost-backed Plugin page.
  *
@@ -461,12 +485,19 @@ export function GhostPluginPage({
     .join('\0');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [installedExpanded, setInstalledExpanded] = useState(false);
+  const installedOverflowId = useId();
   const [marketSnapshot, setMarketSnapshot] = useState<PluginMarketSnapshot | null>(null);
   const [openPanelId, setOpenPanelId] = useState<string | null>(null);
   // 数据归属键:面板宿主按它失效(定义要早于消费点)。
   const panelOwnerKey = ghostWebviewOwnerKey(mode, dataOwnerId);
-  // 当前已安装清单都是应用随带插件，首屏直接落在内置插件。
-  const [catalogSource, setCatalogSource] = useState<'external' | 'internal'>('internal');
+  const ignoredRoundKey = ignoredRoundStorageKey(mode, dataOwnerId);
+  const [ignoredRound, setIgnoredRound] = useState(() => readIgnoredRound(ignoredRoundKey));
+  // 账号 / 本地云模式切换:换桶重读,不把上一个身份的「忽略本轮」带进来。
+  useEffect(() => {
+    setIgnoredRound(readIgnoredRound(ignoredRoundKey));
+  }, [ignoredRoundKey]);
+  const [originFilter, setOriginFilter] = useState<PluginPresentationFilter>('all');
   const [marketDetail, setMarketDetail] = useState<PluginMarketDetail | null>(null);
   // 列表与详情是互斥分支;列表节点会卸载,返回时需显式恢复进入前的滚动位置。
   const pluginCatalogVisible = marketDetail === null && selectedId === null;
@@ -661,6 +692,11 @@ export function GhostPluginPage({
   }, [searchParams, setSearchParams]);
   // 引用稳定:批次对账 effect 以它为依赖,裸 `?? []` 每次渲染都是新数组会空转。
   const marketItems = useMemo(() => marketSnapshot?.items ?? [], [marketSnapshot]);
+  const customSourceNames = useMemo(
+    () => marketSnapshot?.customSourceNames ?? [],
+    [marketSnapshot?.customSourceNames],
+  );
+  const [addMarketplaceOpen, setAddMarketplaceOpen] = useState(false);
   const marketByGhostId = useMemo(() => {
     const map = new Map<string, PluginMarketItem>();
     for (const item of marketItems) {
@@ -694,42 +730,87 @@ export function GhostPluginPage({
     [ghosts, marketByGhostId],
   );
   const installedItems = useMemo(
-    () => {
-      const visibleItems = showEnterprise
+    () =>
+      showEnterprise
         ? allInstalledItems
-        : allInstalledItems.filter(
-            (item) => item.builtin || item.origin !== 'organization',
-          );
-      // 当前安装快照均为项目随应用提供的插件；外部插件只从未安装市场项产生。
-      return catalogSource === 'internal' ? visibleItems : [];
-    },
-    [allInstalledItems, catalogSource, showEnterprise],
+        : allInstalledItems.filter((item) => item.origin !== 'organization'),
+    [allInstalledItems, showEnterprise],
   );
   const searchedInstalledItems = useMemo(
     () => filterGhostPluginItems(installedItems, query),
     [installedItems, query],
   );
-  const handleSelectMarket = useCallback(async (pluginId: string) => {
-    const detail = await window.electronAPI.pluginMarket.detail(pluginId).catch(() => null);
-    if (detail) setMarketDetail(detail);
-  }, []);
-  const handleMarketBack = useCallback(() => {
-    cancelPendingPluginSuggestion(recommendationNonce ?? undefined);
-    requestPluginCatalogScrollRestore();
-    marketDetailRequestRef.current += 1;
-    setMarketDetail(null);
-  }, [recommendationNonce, requestPluginCatalogScrollRestore]);
-  // 当前目录中的自带插件直接属于内置插件列表，不显示为外部插件。
-  const builtinCatalogItems = useMemo(
+  const searchedAvailableMarketItems = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    return marketItems.filter((item) => {
+      if (item.installState === 'installed' || item.installState === 'update-available') {
+        return false;
+      }
+      if (!showEnterprise && pluginPresentationOrigin(item) === 'organization') return false;
+      return `${item.name} ${item.description ?? ''} ${item.ghostId} ${item.author ?? ''}`
+        .toLocaleLowerCase()
+        .includes(normalizedQuery);
+    });
+  }, [marketItems, query, showEnterprise]);
+  const recommendedFilters = useMemo(
     () =>
-      catalogSource === 'internal'
-        ? marketItems.filter(
-            (item) =>
-              item.installState !== 'installed' && item.installState !== 'update-available',
-          )
-        : [],
-    [catalogSource, marketItems],
+      RECOMMENDED_FILTERS.filter((filter) => {
+        if (filter === 'organization') return showEnterprise;
+        // 未添加任何自定义市场时不显示"自定义"档(与组织档的隐藏模式一致)。
+        if (filter === 'custom') return customSourceNames.length > 0;
+        return true;
+      }),
+    [customSourceNames.length, showEnterprise],
   );
+  const effectiveOriginFilter =
+    !showEnterprise && originFilter === 'organization'
+      ? 'all'
+      : originFilter === 'custom' && customSourceNames.length === 0
+        ? 'all'
+        : originFilter;
+  const availableMarketItems = useMemo(
+    () =>
+      effectiveOriginFilter === 'all'
+        ? searchedAvailableMarketItems
+        : searchedAvailableMarketItems.filter(
+            (item) => pluginPresentationOrigin(item) === effectiveOriginFilter,
+          ),
+    [effectiveOriginFilter, searchedAvailableMarketItems],
+  );
+  // 「自定义」档内按来源市场分组(≥2 个源时展示小标题);组顺序沿用市场添加顺序。
+  const customGroups = useMemo(() => {
+    if (effectiveOriginFilter !== 'custom') return null;
+    const groups = new Map<string, PluginMarketItem[]>();
+    for (const item of availableMarketItems) {
+      const key = item.sourceMarketName ?? '';
+      const list = groups.get(key);
+      if (list) {
+        list.push(item);
+      } else {
+        groups.set(key, [item]);
+      }
+    }
+    return [...groups.entries()].sort((a, b) => {
+      const aIndex = customSourceNames.indexOf(a[0]);
+      const bIndex = customSourceNames.indexOf(b[0]);
+      return (
+        (aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex) -
+        (bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex)
+      );
+    });
+  }, [availableMarketItems, customSourceNames, effectiveOriginFilter]);
+  const recommendedCounts = useMemo(() => {
+    const counts: Record<PluginPresentationOrigin, number> = {
+      public: 0,
+      organization: 0,
+      local: 0,
+      custom: 0,
+    };
+    for (const item of searchedAvailableMarketItems) {
+      counts[pluginPresentationOrigin(item)] += 1;
+    }
+    return counts;
+  }, [searchedAvailableMarketItems]);
 
   // ── 已安装区排序:未读通知(新→旧) → 最近使用 → 基础序,实时计算 ──
   // 反应式而非冻结快照:排序信号变化即重排。安全边界——`markUsed` 只在对话里
@@ -742,6 +823,13 @@ export function GhostPluginPage({
     () => new Map(unreadEntries.map((entry) => [entry.ghostId, entry.at])),
     [unreadEntries],
   );
+  // 切账号/模式收起折叠区:换 owner 的已装集合不同,上一个身份的展开态不带过去。
+  const collapseOwnerKeyRef = useRef(panelOwnerKey);
+  useEffect(() => {
+    if (collapseOwnerKeyRef.current === panelOwnerKey) return;
+    collapseOwnerKeyRef.current = panelOwnerKey;
+    setInstalledExpanded(false);
+  }, [panelOwnerKey]);
   const displayInstalledItems = useMemo(
     () =>
       sortInstalledForDisplay(searchedInstalledItems, {
@@ -750,6 +838,36 @@ export function GhostPluginPage({
       }),
     [searchedInstalledItems, recentGhostIds, unreadAtById],
   );
+  // 未读通知永不折叠:可见窗口至少 MAX_VISIBLE_INSTALLED_PLUGINS 个,并容纳全部
+  // 未读——未读已排在最前,按未读数量扩窗即可保证它们都落在可见区(更新可被折叠)。
+  const visibleInstalledCount = useMemo(
+    () => installedVisibleCount(displayInstalledItems, unreadAtById, MAX_VISIBLE_INSTALLED_PLUGINS),
+    [displayInstalledItems, unreadAtById],
+  );
+  const primaryInstalledItems = useMemo(
+    () => displayInstalledItems.slice(0, visibleInstalledCount),
+    [displayInstalledItems, visibleInstalledCount],
+  );
+  const additionalInstalledItems = useMemo(
+    () => displayInstalledItems.slice(visibleInstalledCount),
+    [displayInstalledItems, visibleInstalledCount],
+  );
+  const hiddenInstalledCount = Math.max(0, displayInstalledItems.length - visibleInstalledCount);
+
+  // ── 更新横幅与批量更新：作为自动更新失败／忙碌跳过后的手动重试入口 ──
+  const updatableInstalledItems = useMemo(
+    () => installedItems.filter((item) => item.marketUpdate !== null),
+    [installedItems],
+  );
+  const currentRoundKey = useMemo(() => updateRoundKey(marketItems), [marketItems]);
+  const handleIgnoreRound = useCallback(() => {
+    try {
+      window.localStorage.setItem(ignoredRoundKey, currentRoundKey);
+    } catch {
+      // localStorage 不可用时仅本次会话内生效。
+    }
+    setIgnoredRound(currentRoundKey);
+  }, [currentRoundKey, ignoredRoundKey]);
 
   // 批次状态住在模块级控制器里(生命周期长于本页:关弹窗离开 /plugins
   // 后批次继续跑),页面只订阅快照。真实包校验与落位由统一安装事务负责。
@@ -763,6 +881,13 @@ export function GhostPluginPage({
   useEffect(() => {
     reconcileUpdateAllBatch(marketItems);
   }, [ghosts, marketItems, mode, dataOwnerId]);
+  // 有未完结批次时横幅必须在场:它是重开批量进度弹窗的唯一入口,
+  // 「忽略本轮」不得顺带藏掉正在执行的批次。
+  const hasUnfinishedBatch = updateRows !== null && !isBatchFinished(updateRows);
+  const bannerVisible =
+    hasUnfinishedBatch ||
+    (updatableInstalledItems.length > 0 &&
+      (currentRoundKey === '' || ignoredRound !== currentRoundKey));
   const selectedGhost = selectedId
     ? (ghosts.find((ghost) => ghost.manifest.id === selectedId) ?? null)
     : null;
@@ -984,6 +1109,22 @@ export function GhostPluginPage({
       }),
     [refreshMarket],
   );
+  const handleUpdateAll = useCallback(() => {
+    const current = getUpdateAllBatchState();
+    // 运行中或还有未完成项的批次:重开弹窗查看进度,不重建批次。
+    if (current.running || (current.rows !== null && !isBatchFinished(current.rows))) {
+      setUpdateDialogOpen(true);
+      return;
+    }
+    // 单项更新持有 market lease 期间不许开新批次:此刻的市场快照还把那个
+    // 插件标成 update-available,批次会把它一并收进去重复装一遍。
+    if (marketBusyLockRef.current !== null) return;
+    startUpdateAllBatch(
+      updatableInstalledItems.flatMap((item) => (item.marketUpdate ? [item.marketUpdate] : [])),
+    );
+    setUpdateDialogOpen(true);
+  }, [updatableInstalledItems]);
+
   const handlePublish = useCallback(async () => {
     const picked = await window.electronAPI.ghosts.pickFile().catch(() => null);
     if (!picked || 'canceled' in picked) return;
@@ -1178,6 +1319,41 @@ export function GhostPluginPage({
       );
     }
   }, [confirm, refreshMarket, selectedDetail, selectedMarketInstall, t]);
+
+  const handleSelectMarket = useCallback(
+    async (pluginId: string) => {
+      // 与 handleMarketUpdate 共用同一互斥锁:更新进行中不叠加其它市场操作。
+      const marketBusyLease = acquireMarketBusy(pluginId);
+      if (!marketBusyLease) return;
+      capturePluginCatalogScroll();
+      const requestId = ++marketDetailRequestRef.current;
+      try {
+        const detail = await window.electronAPI.pluginMarket.detail(pluginId);
+        if (
+          requestId === marketDetailRequestRef.current &&
+          isMarketBusyLeaseActive(marketBusyLease)
+        ) {
+          setMarketDetail(detail);
+        }
+      } catch (error) {
+        if (
+          requestId === marketDetailRequestRef.current &&
+          isMarketBusyLeaseActive(marketBusyLease)
+        ) {
+          toast.error(t(pluginMarketErrorKey(error)));
+        }
+      } finally {
+        releaseMarketBusy(marketBusyLease);
+      }
+    },
+    [acquireMarketBusy, capturePluginCatalogScroll, isMarketBusyLeaseActive, releaseMarketBusy, t],
+  );
+  const handleMarketBack = useCallback(() => {
+    cancelPendingPluginSuggestion(recommendationNonce ?? undefined);
+    requestPluginCatalogScrollRestore();
+    marketDetailRequestRef.current += 1;
+    setMarketDetail(null);
+  }, [recommendationNonce, requestPluginCatalogScrollRestore]);
 
   const refreshVisibleMarketDetail = useCallback(async (pluginId: string) => {
     // A background icon renewal may observe navigation, but must never invalidate a
@@ -1511,6 +1687,7 @@ export function GhostPluginPage({
         <GhostPluginActions
           onInstall={() => void handleInstall()}
           onCreateWithCindy={handleCreateWithCindy}
+          onAddMarketplace={() => setAddMarketplaceOpen(true)}
         />
       }
     >
@@ -1543,14 +1720,6 @@ export function GhostPluginPage({
                 </p>
               </div>
             </header>
-
-            <CatalogSourceSwitcher
-              activeSource={catalogSource}
-              externalLabel={t('settings.ghosts.page.externalTab')}
-              internalLabel={t('settings.ghosts.page.internalTab')}
-              ariaLabel={t('settings.ghosts.page.sourceTabsAria')}
-              onChange={setCatalogSource}
-            />
 
             <MyPublishesSectionVisibilityGate
               visible={SHOW_MY_PUBLISHES_SECTION && showEnterprise}
@@ -1587,6 +1756,15 @@ export function GhostPluginPage({
             ) : null}
 
             <section className="plugin-motion-page-section mt-6 min-w-0">
+              <div className="mb-4 flex items-baseline gap-2">
+                <h2 className="text-20 font-medium text-[var(--text-primary)]">
+                  {t('settings.ghosts.page.installedSection')}
+                </h2>
+                <span className="text-13 tabular-nums text-[var(--text-tertiary)]">
+                  {searchedInstalledItems.length}
+                </span>
+              </div>
+
               {legacyRecoveryStatus ? (
                 <LegacyGhostRecoveryNotice
                   status={legacyRecoveryStatus}
@@ -1709,20 +1887,15 @@ export function GhostPluginPage({
                   ) : null}
                 </div>
               ) : null}
-              {builtinCatalogItems.length > 0 ? (
-                <div className={cn('plugin-motion-stagger mt-4', PLUGIN_MANAGEMENT_CARD_GRID_CLASS)}>
-                  {builtinCatalogItems.map((item) => (
-                    <MarketPluginCard
-                      key={item.pluginId}
-                      item={item}
-                      busy={marketBusyId !== null}
-                      pending={marketBusyId === item.pluginId}
-                      onSelect={() => void handleSelectMarket(item.pluginId)}
-                      onInstall={undefined}
-                      onIconLoadError={handleMarketIconLoadError}
-                    />
-                  ))}
-                </div>
+              {hiddenInstalledCount > 0 ? (
+                <InstalledPluginDisclosure
+                  expanded={installedExpanded}
+                  controlsId={installedOverflowId}
+                  totalCount={displayInstalledItems.length}
+                  previewItems={additionalInstalledItems}
+                  onToggle={() => setInstalledExpanded((expanded) => !expanded)}
+                  onIconLoadError={handleMarketIconLoadError}
+                />
               ) : null}
             </section>
 
@@ -1860,6 +2033,11 @@ export function GhostPluginPage({
         </main>
         {panelAside}
       </div>
+      <AddMarketplaceDialog
+        open={addMarketplaceOpen}
+        onOpenChange={setAddMarketplaceOpen}
+        onSourcesChanged={() => void refreshMarket()}
+      />
       {updateRows ? (
         <UpdateAllDialog
           open={updateDialogOpen}
@@ -2059,9 +2237,11 @@ export function MarketPluginCard({
 function GhostPluginActions({
   onInstall,
   onCreateWithCindy,
+  onAddMarketplace,
 }: {
   onInstall: () => void;
   onCreateWithCindy: () => void;
+  onAddMarketplace: () => void;
 }) {
   const { t } = useTranslation();
 

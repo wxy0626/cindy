@@ -5306,8 +5306,15 @@ async function runColdStartRefreshFlow(
           activeAuthRealm = storedRealm;
         }
         accessToken = refreshData.accessToken;
-        currentUser = mapMembershipToAuthUser(refreshData.membership);
+        currentUser = mapMembershipToAuthUser(
+          refreshData.membership,
+          undefined,
+          readStoredAccountLabel(storedRealm, refreshData.membership.id),
+        );
+        // 跨 realm 冷启动恢复也要推进 owner 代数（与 completeLogin 一致）：
+        // 否则其它 realm 提交后进程内缓存不失效（authLoginFlowReset 回归守护）。
         loginFlowState = { step: 'completed', membership: refreshData.membership };
+        credentialStoreHealth.noteRecovered();
         commitCloudAppSession(currentUser.id, authRealmChanged);
         persistedRefreshTokenNeedsIdentityCheck = false;
         clearReplacementIntegrationReloadTimers();
@@ -5679,6 +5686,11 @@ async function completeLogin(
                 passiveLocalSignOut = false;
                 foreignDeviceLocalSignOut = false;
                 currentUser = nextUser;
+                // 无论六项是否全关，都记录明确结果；null 代表本次登录明确拒绝共享。
+                localProjectSyncPoliciesByUser.set(
+                  nextUser.id,
+                  localProjectSyncPolicy ? { ...localProjectSyncPolicy } : null,
+                );
                 credentialStoreHealth.noteRecovered();
                 if (!isPassiveSharedUserDataInstance()) {
                   canaryFlagStore.clear();
@@ -5893,8 +5905,7 @@ async function runLoginAction(action: DesktopLoginAction): Promise<DesktopLoginA
     // loadLoginProviders clears transient login state. Pin a new personal login
     // afterwards so account selection and binding cannot inherit the active
     // organization's realm. The active account remains untouched until commit.
-    // Keep the confirmed SSO realm if a personal code request fails and returns to method choice.
-    if (startsBuildRealmFlow && action.type !== 'request-code') pendingAuthRealm = loginRealm;
+    // pendingAuthRealm 仅用于企业 SSO 跨区域确认；普通登录始终沿用当前运行区域。
     if (action.type === 'start-browser' && action.kind === 'social') handledLoginEmail = null;
 
     if (action.type === 'discover') {
@@ -5978,7 +5989,7 @@ async function runLoginAction(action: DesktopLoginAction): Promise<DesktopLoginA
           ? maskPhoneAccount(action.identifier)
           : action.identifier.trim();
       assertLoginFlowCurrent(actionLoginFlowEpoch);
-      pendingAuthRealm = AUTH_REGION;
+      pendingAuthRealm = loginRealm;
       discoveredMethods = [];
       loginFlowState = reduceAuthFlow(loginFlowState, {
         type: 'code-requested',

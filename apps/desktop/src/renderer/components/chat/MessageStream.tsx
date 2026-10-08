@@ -1428,6 +1428,37 @@ export function isSubagentInternalMessage(message: ChatMessage): boolean {
 }
 
 /**
+ * 当前可见用户 turn 是否已经产出正文。Bot composer 用它把「正在思考」限制在
+ * 首字到来之前；子代理内部行、系统卡、空 assistant 和合成续跑行都不参与判断。
+ */
+export function hasBotAssistantOutputInCurrentTurn(
+  messages: readonly ChatMessage[],
+): boolean {
+  let currentTurnStart = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (isSubagentInternalMessage(message)) continue;
+    if (message.role === 'user' && message.delivery !== 'steer' && !message.isSyntheticTrigger) {
+      currentTurnStart = index;
+      break;
+    }
+  }
+  if (currentTurnStart < 0) return false;
+  for (let index = currentTurnStart + 1; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (isSubagentInternalMessage(message)) continue;
+    if (
+      message.role === 'assistant' &&
+      !message.systemCardType &&
+      message.content.trim().length > 0
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * 「用户实际看得见的那份消息序列」——剔除子代理内部行后的视图。
  *
  * 所有**面向可见 UI 的派生**都必须吃这一份,不能各自去扫原始数组:turn 边界、

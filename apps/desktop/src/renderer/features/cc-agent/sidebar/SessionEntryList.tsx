@@ -74,10 +74,6 @@ export interface SessionEntryListProps {
   foldExemptSessionIds?: ReadonlySet<string>;
   /** 父级 SectionCollapse 的折叠态;用于收起动画结束后复位「显示全部」。 */
   sectionCollapsed?: boolean;
-  /** 外部受控的「显示全部」状态;不传时由列表内部自管。 */
-  showAll?: boolean;
-  /** 外部受控时的切换回调,父级可跨卸载保存用户选择。 */
-  onShowAllChange?: (next: boolean) => void;
   /** 项目置顶到列表模式时，项目内会话复用满宽列表卡片；其它场景保持紧凑文字行。 */
   sessionVariant?: 'text' | 'list';
   /**
@@ -211,13 +207,7 @@ export function SessionEntryList({
   ...props
 }: SessionEntryListProps) {
   const { t } = useTranslation();
-  const [internalShowAll, setInternalShowAll] = useCollapsibleShowAll(sectionCollapsed);
-  // 受控模式由父级保存「显示全部」，否则沿用内部状态（含段落收起后复位）。
-  const showAll = controlledShowAll ?? internalShowAll;
-  const setShowAll = (next: boolean) => {
-    if (onShowAllChange) onShowAllChange(next);
-    else setInternalShowAll(next);
-  };
+  const [showAll, setShowAll] = useCollapsibleShowAll(sectionCollapsed);
   const entries = useMemo(
     () => groupAutomationSidebarEntries(sessions, { notifications, scheduleSessionIndex }),
     [notifications, scheduleSessionIndex, sessions],

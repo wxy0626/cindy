@@ -138,99 +138,6 @@ const MANUAL_PROJECT_SORT_HANDLE = '[data-project-header]';
 /** 标题行里的按钮、以及子任务区,都不能当成"拖整个项目"的起点。 */
 const MANUAL_PROJECT_SORT_FILTER = 'button, input, textarea, select, a, [data-no-drag]';
 
-/** 带标题的 Bot/对话分组，复用项目内会话行与折叠策略。 */
-function SessionGroupNode({
-  sessions, collapsed, onToggle, onCreateDialogue, groupIcon, groupTitle, createLabel,
-  isCreateDisabled, parentSectionCollapsed, disableSessionCollapse, activeSessionId,
-  runningSessionIds, attachedSessionIds, notifications, scheduleSessionIndex, selectedSessionIds,
-  onSessionClick, onAction, onRename, onTogglePin, onMoveSession, projectOptions,
-  onScheduleAction, sessionVariant,
-}: {
-  sessions: Session[];
-  collapsed: boolean;
-  onToggle: () => void;
-  onCreateDialogue: () => void;
-  groupIcon?: ReactNode;
-  groupTitle?: string;
-  createLabel?: string;
-  isCreateDisabled: boolean;
-  parentSectionCollapsed: boolean;
-  disableSessionCollapse: boolean;
-  activeSessionId?: string;
-  runningSessionIds: ReadonlySet<string>;
-  attachedSessionIds: ReadonlySet<string>;
-  notifications: ReadonlySet<string>;
-  scheduleSessionIndex: ReadonlyMap<string, AutomationScheduleSessionInfo>;
-  selectedSessionIds?: ReadonlySet<string>;
-  onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: SessionAction) => void;
-  onRename: (id: string, title: string) => void;
-  onTogglePin: (id: string, currentlyPinned: boolean) => void;
-  onMoveSession?: (id: string, target: SessionMoveTarget) => void;
-  projectOptions?: readonly FolderPickerOption[];
-  onScheduleAction: (group: AutomationSessionGroup, action: AutomationScheduleAction) => void;
-  sessionVariant: 'text' | 'list';
-}) {
-  const { t } = useTranslation();
-  const Chevron = collapsed ? ChevronRight : ChevronDown;
-  return (
-    <div className="relative flex w-full select-none flex-col" data-no-drag>
-      <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={!collapsed}
-        onClick={onToggle}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggle(); }
-        }}
-        className="group flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-full pl-3 pr-1 text-sm font-normal text-[var(--sidebar-list-muted)] transition-colors hover:bg-sidebar-item-hover"
-      >
-        {groupIcon ?? <MessagesSquare size={15} strokeWidth={1.8} className="shrink-0" />}
-        <span className="min-w-0 flex-1 truncate">{groupTitle ?? t('ccAgent.sidebar.dialogues')}</span>
-        <Chevron size={13} className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
-        <Tip text={createLabel ?? t('ccAgent.sidebar.newDialogue')}>
-          <button
-            type="button"
-            aria-label={createLabel ?? t('ccAgent.sidebar.newDialogue')}
-            disabled={isCreateDisabled}
-            onClick={(event) => { event.stopPropagation(); onCreateDialogue(); }}
-            onPointerDown={(event) => event.stopPropagation()}
-            className="flex size-5 shrink-0 items-center justify-center rounded-md text-sidebar-action-icon hover:bg-sidebar-item-hover disabled:opacity-50"
-          >
-            <SquarePen size={14} strokeWidth={2} />
-          </button>
-        </Tip>
-      </div>
-      <SectionCollapse collapsed={collapsed} data-no-drag>
-        <div className={cn('flex flex-col gap-0.5 pt-0.5 pb-1.5 pr-0', sessionVariant === 'list' ? 'pl-3' : 'pl-0')}>
-          <SessionEntryList
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            runningSessionIds={runningSessionIds}
-            attachedSessionIds={attachedSessionIds}
-            notifications={notifications}
-            scheduleSessionIndex={scheduleSessionIndex}
-            selectedSessionIds={selectedSessionIds}
-            onSessionClick={onSessionClick}
-            onAction={onAction}
-            onRename={onRename}
-            onTogglePin={onTogglePin}
-            onMoveSession={onMoveSession}
-            projectOptions={projectOptions}
-            onScheduleAction={onScheduleAction}
-            indented
-            collapsible
-            collapseLimit={getProjectSessionCollapseLimit()}
-            disableCollapse={disableSessionCollapse}
-            sectionCollapsed={parentSectionCollapsed || collapsed}
-            sessionVariant={sessionVariant}
-          />
-        </div>
-      </SectionCollapse>
-    </div>
-  );
-}
-
 /** 设备段折叠/对话组折叠共用的段 key:本机段 'local',远程段用 deviceId。 */
 const deviceSectionKey = (deviceId: string | null) => deviceId ?? 'local';
 // 单段保留既有伙伴 key;设备分组与对话组同样按段独立记忆,不依赖任务顺序或组名。
@@ -252,6 +159,7 @@ export function holdSidebarViewedPriority(
 ): void {
   holdViewedPriorityRank(viewedPriorityHold, sessionId, ctx);
 }
+
 /** 顶层条目折叠的「显示全部 N 项」页脚(单段路径与设备分组的每段共用同一份样式)。 */
 function ShowAllEntriesButton({ count, onClick }: { count: number; onClick: () => void }) {
   const { t } = useTranslation();
@@ -327,7 +235,7 @@ export interface ProjectsSectionProps {
   onToggleProjectPin: (project: ProjectNodeData, currentlyPinned: boolean) => void;
   onRenameProject: (project: ProjectNodeData, alias: string) => Promise<void>;
   onRemoveFromSidebar: (project: ProjectNodeData) => void;
-  /** 项目级归档/删除；可选会话集合供默认“对话”项目分组复用同一入口。 */
+  /** 归档视图中的项目级删除；只删除项目下的已归档任务，不删除磁盘目录。 */
   onDeleteProject: (project: ProjectNodeData, sessions?: Session[]) => void;
   onCollapseAll: () => void;
   onExpandAll: () => void;
@@ -349,7 +257,7 @@ export interface ProjectsSectionProps {
   /** 进入 workdir 文件浏览模式 (vscode-style file tree + body viewer)。 */
   onBrowseFiles: (project: ProjectNodeData) => void;
   /** 右键菜单 → 归档该 project 下所有非执行中的 session（带二次确认）。 */
-  onArchiveAll: (project: ProjectNodeData, sessions?: Session[]) => void;
+  onArchiveAll: (project: ProjectNodeData) => void;
   /**
    * E 期「按设备分组」:远程设备的展示顺序与名称/在线状态(设备切换栏同源)。
    * null / 空数组 = 没有远程设备连接 → 设备分组选项隐藏、不切段。
@@ -451,8 +359,8 @@ export function ProjectsSection({
     filter.groupBy === 'project' && displayedProjectOrder.projectOrder === 'custom';
   const projectDragEnabled = customProjectOrder;
   const projectKeysForOrderBaseline = allProjectKeysForOrder;
-  // 段级收起已随「项目 / 归档 = 分段滑块」取消(2026-09-03 用户定稿):
-  // 状态切换在段头滑块,机器范围走小箭头;「想要紧凑」由右侧「收起所有分组」承接。
+  // 段级收起已随「全部任务 = 范围下拉」取消(2026-08-13 用户定稿):标题的点击
+  // 语义让给机器范围切换;「想要紧凑」由右侧「收起所有分组」承接。
   const [showAllProjects, setShowAllProjects] = useCollapsibleShowAll(false);
   const [makeCreateOpen, setMakeCreateOpen] = useState(false);
   // 设备段各自的「显示全部」(2026-08-13 复核 P2:共用一个标志会让点任一段的
@@ -781,10 +689,8 @@ export function ProjectsSection({
     return splitEntriesByDevice(mixedEntries, [...(remoteDeviceIndex?.keys() ?? [])], {
       onlineDeviceIds: onlineDeviceSectionIds(remoteDeviceIndex, selectedMachineId),
       sortBy: filter.sortBy,
-      // 设备切段必须使用当前真正展示的项目顺序；单设备 host 可能以 host ledger
-      // 覆盖 viewer ledger，继续读取 filter 会把刚拖好的项目重新按活动时间排回去。
-      projectOrder: displayedProjectOrder.projectOrder,
-      manualProjectOrder: displayedProjectOrder.manualProjectOrder,
+      projectOrder: filter.projectOrder,
+      manualProjectOrder: filter.manualProjectOrder,
       priorityContext,
     });
   }, [
@@ -794,26 +700,16 @@ export function ProjectsSection({
     remoteDeviceIndex,
     selectedMachineId,
     filter.sortBy,
-    displayedProjectOrder,
+    filter.projectOrder,
+    filter.manualProjectOrder,
     priorityContext,
   ]);
   // 设备段折叠(E 期):本机段 key 'local'。
   const [collapsedDevices, setCollapsedDevices] = useState<ReadonlySet<string>>(new Set());
-  // 项目 / 对话组内「显示全部」的段级快照：折叠动画结束后子列表会卸载，
-  // 状态提到这里才能保证批量折叠再展开时恢复用户选择。
-  const [sessionShowAllKeys, setSessionShowAllKeys] = useState<ReadonlySet<string>>(new Set());
-  const setSessionShowAll = useCallback((key: string, next: boolean) => {
-    setSessionShowAllKeys((prev) => {
-      const nextSet = new Set(prev);
-      if (next) nextSet.add(key);
-      else nextSet.delete(key);
-      return nextSet;
-    });
-  }, []);
-  // 「对话」组折叠:与项目行同级的独立分组状态,由组头自行切换、不参与
-  // 「收起所有分组」批量操作(2026-09-03 用户定稿)。按分组 key 记忆——
-  // 单一列表只有一个组(DIALOGUE_GROUP_ALL_KEY);按设备分组时每个设备段各有
-  // 一个对话组,折叠互相独立(2026-08-12 实机反馈:共用一个 boolean 会点一个全展开)。
+  // 「对话」组折叠:与项目行折叠同级的分组状态(用户裁决:对话组的折叠交互与
+  // 项目分组一致,含「收起所有分组」批量操作)。按分组 key 记忆——单一列表只有
+  // 一个组(DIALOGUE_GROUP_ALL_KEY);按设备分组时每个设备段各有一个对话组,
+  // 折叠互相独立(2026-08-12 实机反馈:共用一个 boolean 会点一个全展开)。
   // 持久化为显示类本地偏好。
   const [collapsedDialogueGroups, setCollapsedDialogueGroups] = useState<ReadonlySet<string>>(() =>
     loadDialogueGroupCollapsedKeys(),
@@ -927,7 +823,7 @@ export function ProjectsSection({
       );
       return;
     }
-    // expand-all:展开设备段与当前可见的项目文件夹。
+    // expand-all:全部层级展开(设备段 + 项目行 + 自动任务组 + 对话组)。
     setCollapsedDevices(new Set());
     onExpandAll();
     setDialogueCollapsed(visibleSessionGroupKeys, false);
@@ -1158,23 +1054,13 @@ export function ProjectsSection({
             targetDeviceOffline ? t('ccAgent.remoteSession.actionsUnavailable') : undefined
           }
           parentSectionCollapsed={false}
-          showAll={sessionShowAllKeys.has(`dialogue-group:${dialogueGroupKey}`)}
-          onShowAllChange={(next) =>
-            setSessionShowAll(`dialogue-group:${dialogueGroupKey}`, next)
-          }
+          disableSessionCollapse={disableSessionCollapse}
           activeSessionId={activeSessionId}
           runningSessionIds={runningSessionIds}
           attachedSessionIds={attachedSessionIds}
           notifications={notifications}
           scheduleSessionIndex={scheduleSessionIndex}
           selectedSessionIds={selectedSessionIds}
-          disableSessionCollapse={disableSessionCollapse}
-          onToggle={() => setDialogueCollapsed([dialogueGroupKey], !collapsedDialogueGroups.has(dialogueGroupKey))}
-          isProjectPinned={false}
-          onToggleProjectPin={() => undefined}
-          onRenameProject={async () => undefined}
-          onRemoveFromSidebar={() => undefined}
-          onDeleteProject={onDeleteProject}
           onSessionClick={onSessionClick}
           onAction={onAction}
           onRename={onRename}
@@ -1182,13 +1068,7 @@ export function ProjectsSection({
           onMoveSession={onMoveSession}
           projectOptions={projectOptions}
           onScheduleAction={onScheduleAction}
-          onCreateInProject={() => onCreateDialogue(dialogueDeviceTarget)}
-          onOpenConversationSearch={onOpenConversationSearch}
-          onOpenInExplorer={onOpenInExplorer}
-          onLinkCodexProject={onLinkCodexProject}
-          linkingCodexProject={false}
-          onBrowseFiles={onBrowseFiles}
-          onArchiveAll={onArchiveAll}
+          sessionVariant={mainSessionVariant}
         />
       );
     }
@@ -1517,7 +1397,7 @@ export function SessionGroupNode({
   scheduleSessionIndex: ReadonlyMap<string, AutomationScheduleSessionInfo>;
   selectedSessionIds?: ReadonlySet<string>;
   onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
+  onAction: (id: string, action: SessionAction) => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   onMoveSession?: (id: string, target: SessionMoveTarget) => void;

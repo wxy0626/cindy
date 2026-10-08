@@ -566,7 +566,7 @@ function LocalGroup({
                     <OfficialSkillBadge />
                   ) : (
                     <span className="shrink-0 text-10 text-[var(--text-tertiary)]">
-                      {source === 'skillhub'
+                      {source === 'skillhub' || source === 'internal'
                         ? t('skillhub.home.sourceSkillhub')
                         : t('skillhub.home.sourceLocal')}
                     </span>

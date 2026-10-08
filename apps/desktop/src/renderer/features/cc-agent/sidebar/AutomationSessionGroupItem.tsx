@@ -28,7 +28,7 @@ import { useAutomationGroupCollapsed } from '../hooks/useAutomationGroupCollapse
 import { formatSidebarFutureTime, formatSidebarTime } from '../lib/formatSidebarTime';
 import { scheduleFocusPath } from '@/features/scheduler/lib/scheduleSessionBinding';
 import { hasSessionSelectionModifier, SessionItem } from './SessionItem';
-import type { SessionClickHandler } from './SessionItem';
+import type { SessionAction, SessionClickHandler } from './SessionItem';
 import { MENU_ITEM_CLASS } from './menuStyles';
 import {
   useSessionAttentionUrgency,

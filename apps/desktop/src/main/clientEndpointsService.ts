@@ -79,6 +79,7 @@ import { resolveDesktopEndpointManifest } from './endpointManifestLoader';
 import { createLogger, getLogDir } from './logger';
 import { ENDPOINT_MANIFEST_BASE_URL, ENDPOINT_MANIFEST_PEER_BASE_URL } from '../shared/endpoints';
 import { resolvePreferredSystemLocale } from '../shared/locale';
+import { CURRENT_CINDY_REGION } from '../shared/brandRegion';
 import {
   captureCindyVersionOriginEndpoints,
   getCindyVersionEndpointOverride,
@@ -1008,7 +1009,7 @@ export async function initClientEndpoints(): Promise<boolean> {
         // dev 下 app.getAppPath() = apps/desktop;packaged 不走 file 分支,该值无消费。
         repoRoot: path.resolve(app.getAppPath(), '..', '..'),
       });
-  const manifestUrl = `${ENDPOINT_MANIFEST_BASE_URL}/${MANIFEST_FILE_NAME}`;
+  const manifestUrl = `${ACTIVE_MANIFEST_BASE_URL}/${MANIFEST_FILE_NAME}`;
   const sourceLabel = source.kind === 'cdn' ? manifestUrl : source.filePath;
   const dialogLocale = resolveDialogLocale();
   // 自检:写死的区域域名必须覆盖本构建实际使用的两个自举基址。域名迁移时忘了更新

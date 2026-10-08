@@ -1897,10 +1897,6 @@ export function getMaker(): Maker {
             );
           }
         }
-        const codexSubagentRoutingProfile = resolveCodexSubagentRoutingProfile(
-          storedSubagentModelSettings,
-          smartSubagentConfig,
-        );
         let customContextCatalogArgs: string[] = [];
         if (isCustomContext) {
           const modelId = ctx.customContextModel?.trim();

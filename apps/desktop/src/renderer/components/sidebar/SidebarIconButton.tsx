@@ -14,6 +14,7 @@ import { AttentionDot, type DotTone } from './AttentionDot';
 import '../ui/button.css';
 
 const BTN_BASE = 'cindy-button-frame flex shrink-0 items-center justify-center transition-colors';
+const GRID_GEOMETRY = 'h-[34px] w-[34px] rounded-[6px]';
 const RAIL_GEOMETRY = 'h-9 w-9 rounded-full';
 const IDLE = 'text-[hsl(var(--titlebar-icon))] enabled:hover:[--button-face-bg:var(--sidebar-item-hover)] enabled:active:[--button-face-bg:var(--sidebar-item-hover)]';
 const ACTIVE = '[--button-face-bg:var(--chat-input-chip-bg)] text-[var(--msg-assistant-text)]';
@@ -31,6 +32,8 @@ export interface SidebarIconButtonProps
   icon: LucideIcon;
   /** aria-label 与可见 tooltip 文案。 */
   label: string;
+  /** grid=展开态动作托盘；rail=78px 折叠态圆钮。 */
+  variant?: 'grid' | 'rail';
   active?: boolean;
   /** 右上角 attention 状态点(如自动化未读)。 */
   showDot?: boolean;
@@ -42,6 +45,7 @@ export interface SidebarIconButtonProps
 export function SidebarIconButton({
   icon: Icon,
   label,
+  variant = 'rail',
   active = false,
   showDot = false,
   dotTone = 'done',
@@ -59,7 +63,7 @@ export function SidebarIconButton({
       className={cn(
         BTN_BASE,
         badge && 'relative',
-        RAIL_GEOMETRY,
+        variant === 'grid' ? GRID_GEOMETRY : RAIL_GEOMETRY,
         active ? ACTIVE : IDLE,
         className,
       )}

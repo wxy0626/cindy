@@ -620,6 +620,8 @@ interface ChatInputProps {
   ) => Promise<boolean>;
   /** Cancel queue editing and restore the normal composer draft. */
   onQueueEditCancel?: () => void;
+  /** 兼容旧版调用点；当前队列编辑以 onQueueEditBegin/Submit/Cancel 为准。 */
+  onQueueEdit?: (clientId: string, newText: string) => void;
   /**
    * Same-turn 插话: a queued row can be delivered into the currently-running
    * turn without waiting for FIFO drain. This is a delivery choice only; the

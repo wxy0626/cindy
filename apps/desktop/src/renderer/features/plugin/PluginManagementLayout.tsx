@@ -82,6 +82,68 @@ export const PLUGIN_INSTALLED_CARD_GRID_CLASS = 'plugin-installed-card-grid grid
 
 const PLUGIN_MANAGEMENT_STACKED_MAX_WIDTH = 720;
 
+/** 外部 / 内部目录共用的二级滑块,保证插件与技能的交互和视觉一致。 */
+export function CatalogSourceSwitcher({
+  activeSource,
+  externalLabel,
+  internalLabel,
+  ariaLabel,
+  onChange,
+}: CatalogSourceSwitcherProps) {
+  return (
+    <div
+      className="plugin-motion-tabs inline-flex shrink-0 rounded-full border p-0.5 backdrop-blur-md"
+      role="tablist"
+      aria-label={ariaLabel}
+      style={{
+        ...WINDOW_NO_DRAG_STYLE,
+        background: 'color-mix(in srgb, var(--surface-chip) 62%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--border-default) 52%, transparent)',
+        boxShadow: 'inset 0 1px 0 color-mix(in srgb, var(--surface-elevated) 24%, transparent)',
+      }}
+    >
+      <TabButton
+        active={activeSource === 'external'}
+        label={externalLabel}
+        onClick={() => onChange('external')}
+      />
+      <TabButton
+        active={activeSource === 'internal'}
+        label={internalLabel}
+        onClick={() => onChange('internal')}
+      />
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        'plugin-management-tab h-8 min-w-[88px] select-none whitespace-nowrap rounded-full border border-transparent px-4 text-13 font-medium transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+        active
+          ? 'plugin-motion-selected text-[var(--text-primary)]'
+          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]',
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function PluginManagementLayout({
   activeTab,
   children,

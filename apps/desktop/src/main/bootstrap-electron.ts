@@ -399,6 +399,7 @@ import {
 } from './im';
 import { setTelegramRemoteSource } from './device-link/telegramRemoteControl';
 import * as authManager from './authManager';
+import { captureLocalProjectSyncSnapshot } from './localProjectSync.js';
 import { createAuthCredentialRecovery } from './authCredentialRecovery';
 import {
   evaluateRelaunchBusyActivity,
@@ -555,7 +556,11 @@ import { fetchUpstreamReleases as fetchUpstreamReleasesFromService } from './ups
 import { resolveWorkspacePathCached, resolveWorkspacePathBatchCached } from './pathResolver';
 import { registerLocalDbIpc } from './localDb/ipc/registerAll';
 import { resolveSessionContextWindow } from '../shared/sessionContextWindow';
-import { resumeDeletedPiSubagentCleanup } from './localDb/ipc/sessions';
+import { syncLocalSessionsOnce } from './localDb/crossOwnerSessionSync';
+import {
+  getSessionRowSnapshot,
+  resumeDeletedPiSubagentCleanup,
+} from './localDb/ipc/sessions';
 import {
   registerLegacyMigrationIpc,
   runLegacyUserDataMigrationForUser,
@@ -6199,7 +6204,7 @@ const registerIpcHandlers = () => {
         })
         .finally(() => authCredentialRecovery.request());
       await authManager.ensureStableOwnerPostCommitTasks('auth-initialize');
-      if (!app.isPackaged || isCindyVersionLaunchPending()) {
+      if (isPrimaryAuthRenderer && (!app.isPackaged || isCindyVersionLaunchPending())) {
         recordDesktopDevAuthStartupResult(state, pendingCompletion, () =>
           authManager.getAuthState(),
         );
@@ -6229,6 +6234,13 @@ const registerIpcHandlers = () => {
   });
 
   ipcMain.handle('auth:get-login-state', async () => authManager.getLoginState());
+
+  // 登录页手动选择中国版/国际版时，只切换当前进程的登录区域，不自动重启。
+  ipcMain.handle('auth:select-login-region', async (event, region: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    if (region !== 'cn' && region !== 'global') throw new Error('目标区域必须是 cn 或 global');
+    return authManager.selectLoginRegion(region);
+  });
 
   ipcMain.handle('auth:dispatch-login-action', async (event, action: unknown) => {
     assertTrustedAppRendererEvent(event);
@@ -6470,7 +6482,29 @@ const registerIpcHandlers = () => {
       //
       // 不进 device-link allowlist:updater 类 channel 按 allowlist 顶部注释属「永不放行」,
       // 且远程控制端不会代替用户点被控端的更新重启。
-      registerRelaunchBusyActivityIpc(readRelaunchActivitySources);
+      registerRelaunchBusyActivityIpc(() => ({
+        anySessionInTurn: () => anySessionInTurn(getMakerCore()),
+        listClaudeBackgroundSessions: () => listActiveClaudeBackgroundActivitySessions(),
+        anyGhostSessionBusy: () => getGhostSessionActivityTracker().anySessionBusy(),
+        // run_in_background 的 Bash 不调模型、也不折算 running,前两个来源都看不到它。
+        anyBackgroundBashRunning: () =>
+          getMakerCore()
+            .listActiveSessions()
+            .some((session) => session.listBackgroundTasks().length > 0),
+        // Cindy slot 的全部在途工作:异步(mode:'submit' 的图 / 视频)与同步代办各自独立记账,
+        // 都可能不伴随任何 turn 或 card-action,只查一半就漏一半。
+        anyCindySlotJobRunning: () => getGhostCindySlot().anyInflightWork(),
+        // Scope to this process: `pi-agent-home` is shared with a concurrent
+        // dev/packaged/`--passive` instance, and its running Subagents are not
+        // a reason to hold up *our* quit.
+        anyPiSubagentRunning: () =>
+          hasActivePiSubagentRunsSync(path.join(app.getPath('userData'), 'pi-agent-home'), {
+            hostPid: process.pid,
+          }),
+        // script 模式 / pre-run hook 阶段的 run 不创建 session,内存来源看不到它们。
+        anySchedulerRunRunning: () =>
+          readUpdateRelaunchScheduleBusy(getScheduleStorageIfInitialized()),
+      }));
       // getMakerCore() 首次调用触发 Maker 构造，同时发起自定义 MCP 初始加载。
       // await 确保第一个会话的 mcpProviders 数组已填入已保存的自定义 MCP（P2 冷启动竞态修复）。
       getMakerCore();

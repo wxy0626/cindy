@@ -6573,6 +6573,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         };
         error?: string;
         goalAction?: 'set' | 'cleared' | 'open-dialog';
+        learnRunId?: string;
       }) => void,
     ): (() => void) => {
       const channel = 'maker:desktop-command-triggered';

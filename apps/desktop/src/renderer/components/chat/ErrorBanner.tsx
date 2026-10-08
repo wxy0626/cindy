@@ -73,6 +73,8 @@ interface ErrorBannerProps {
   onCancel?: () => void;
   /** silent-stop 耗尽横幅「继续」:清横幅 + 发隐藏续跑指令(见 makerChatStore)。 */
   onSilentStopContinue?: () => void;
+  /** 账号用量限制：打开预填好的一次性 Automation，由用户确认后创建。 */
+  onContinueAfterUsageReset?: () => void;
   /** 账号限额等待中：额度重置后到这个时刻(unix ms)若无人处理，被控端自动继续任务。 */
   usageLimitWait?: { resumeAt: number } | null;
   /** 取消自动继续(错误与重试保留)。 */
@@ -131,6 +133,7 @@ export function ErrorBanner({
   onRetry,
   onCancel,
   onSilentStopContinue,
+  onContinueAfterUsageReset,
   usageLimitWait,
   onCancelUsageLimitWait,
   usageLimitRecovery,
@@ -764,6 +767,23 @@ export function ErrorBanner({
           {t('chat.errorBanner.silentStopContinue')}
         </button>
       )}
+      {onContinueAfterUsageReset &&
+        (agentKind !== 'codex' || usageLimitRecovery?.isAccountUsageLimit === true) && (
+          <button
+            type="button"
+            data-split-pane-route-action=""
+            onClick={onContinueAfterUsageReset}
+            className={cn(
+              'shrink-0 flex items-center gap-1 text-xs font-medium',
+              'text-[var(--error-fg)]',
+              'hover:opacity-70 transition-opacity',
+            )}
+            title={t('chat.errorBanner.continueAfterResetTitle')}
+          >
+            <Timer size={12} />
+            {t('chat.errorBanner.continueAfterReset')}
+          </button>
+        )}
       {usageLimitResumeAt && (
         // 额度重置后自动继续:只是告知,不是按钮;用户仍可重试、换模型或发新消息接手。
         <span

@@ -4717,6 +4717,7 @@ interface ElectronAPI {
           | import('@/lib/ccAgent.types').UsageHistorySession[]
         >;
       };
+      permanentDeleteArchived: (ids: string[]) => Promise<{ deleted: number }>;
       create: (body?: {
         id?: string;
         workingDir?: string;
@@ -5879,6 +5880,8 @@ interface ElectronAPI {
         error?: string;
         /** /goal 专用:动作('set'/'cleared'/'open-dialog'=打开新建目标弹窗)。 */
         goalAction?: 'set' | 'cleared' | 'open-dialog';
+        /** /learn 专用:启动成功时的 runId。 */
+        learnRunId?: string;
       }) => void,
     ) => () => void;
 

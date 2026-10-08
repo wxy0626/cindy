@@ -5,7 +5,8 @@
  * 明确 origin=installed 的技能归内部，其余扫描到的技能全部归外部。
  */
 
-export type SkillSource = 'internal' | 'external';
+// 兼容旧首页的 skillhub/local 展示值与当前 internal/external 分类值。
+export type SkillSource = 'skillhub' | 'local' | 'internal' | 'external';
 
 /**
  * 收敛成两档来源,供首页来源徽标使用。

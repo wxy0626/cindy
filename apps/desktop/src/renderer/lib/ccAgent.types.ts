@@ -10,7 +10,7 @@ import type {
   MessageSourceDevice,
   MessageSourcePlugin,
 } from '@cindy/maker-shared/message-source';
-import type { ToolLoopErrorDetails } from '@cindy/maker-core';
+import type { ContextUsageData, ToolLoopErrorDetails } from '@cindy/maker-core';
 
 export type SessionStatus = 'active' | 'archived' | 'deleted';
 export type WorkspaceKind = 'project' | 'dialogue';

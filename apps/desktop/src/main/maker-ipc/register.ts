@@ -335,6 +335,7 @@ import {
   listMessagesForAgentHandoff,
   findLatestUserMessageForRebuild,
   patchMessageAgentMeta,
+  patchMessageAgentMetaWithResult,
   readPiUserEntry,
   supersedeRetriedUserTurn,
   updateMessageContent,
@@ -19633,6 +19634,13 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
           !modelWindowRebuilt &&
           !coldPiRouteWithoutLiveWindowCheck
         ) {
+          if (!piSessionAfterRouteChange) {
+            restoreControlStores();
+            throwIpcError(
+              localModelWindowSwitchErrorCode('MODEL_WINDOW_TARGET_CONTEXT_UNKNOWN'),
+              'Pi target runtime could not be verified; runtime selection was not accepted',
+            );
+          }
           const reportedPiWindow = piSessionAfterRouteChange.getUsageSnapshot?.().contextWindow;
           if (typeof reportedPiWindow !== 'number' || !Number.isFinite(reportedPiWindow) || reportedPiWindow <= 0) {
             await closeRejectedPiRuntime('final context window was not verified');

@@ -42,7 +42,6 @@ import { buildProjectDeepLink } from '@/lib/deepLink';
 import { createLogger } from '@/lib/logger';
 import { SectionCollapse } from '../SectionCollapse';
 import { SessionEntryList } from '../SessionEntryList';
-import { useCollapsibleShowAll } from '../hooks/useCollapsibleShowAll';
 import type { SessionAction, SessionClickHandler } from '../SessionItem';
 import type { Session } from '@/lib/ccAgent.types';
 import type { ProjectNode as ProjectNodeData } from '../../lib/projectGrouping';
@@ -56,10 +55,11 @@ import type { SessionLampAggregate } from '../../lib/sessionLampAggregation';
 import type { FolderPickerOption } from '@/components/new-chat/FolderPickerPopover';
 import type { SessionMoveTarget } from '../sessionMoveTarget';
 import type { FilterStatus } from '../../hooks/useSidebarFilter';
-import { MENU_ITEM_CLASS } from '../menuStyles';
+import { MENU_ITEM_CLASS, MENU_ITEM_DANGER_CLASS } from '../menuStyles';
 import { RemoteProjectIcon } from '../RemoteProjectIcon';
 import { SidebarRightStatusIndicator } from '../SidebarRightStatusIndicator';
 import { isDeviceLinkWriteBlocked } from '../../lib/remoteSessionWriteGuard';
+import { projectBulkArchiveActionForStatus } from '../../lib/projectBulkArchiveAction';
 import { getRemoteProjectMachineIdentity } from '../../lib/remoteProjectIdentity';
 import type { CollapsedProjectAttentionTone } from '../projectCollapsedAttention';
 
@@ -69,21 +69,15 @@ export interface ProjectNodeProps {
   project: ProjectNodeData;
   /** Optional visible subset; project-level actions still receive the full project. */
   displaySessions?: ProjectNodeData['sessions'];
-  /** 默认“对话”项目分组使用的动作对象；不改变项目节点本身的展示数据。 */
-  actionSessions?: Session[];
   /** 置顶栏列表模式可让展开后的会话使用满宽列表行；普通项目默认仍是紧凑文字行。 */
   sessionVariant?: 'text' | 'list';
-  /** 当前会话状态筛选；归档视图显示项目删除，其他视图保留项目归档操作。 */
+  /** 当前会话状态筛选，决定项目菜单是批量归档还是批量恢复。 */
   statusFilter: FilterStatus;
   isCollapsed: boolean;
   /** 折叠时汇总子任务的红/绿状态点，放在行右侧状态槽(与会话行同一位置);展开态由子任务行各自展示。 */
   collapsedAttentionTone?: CollapsedProjectAttentionTone | null;
   /** 父级 Projects 段整体收起时,也要让项目内「显示全部」在动画后复位。 */
   parentSectionCollapsed: boolean;
-  /** 外部受控的「显示全部」状态；不传时项目内部自管（置顶段等旧宿主）。 */
-  showAll?: boolean;
-  /** 外部受控时的切换回调，主列表用它跨折叠保存用户选择。 */
-  onShowAllChange?: (next: boolean) => void;
   activeSessionId?: string;
   runningSessionIds: ReadonlySet<string>;
   /** /ctr 接管中的 sessionIds — SessionItem 用来切换左侧 icon */
@@ -125,7 +119,7 @@ export interface ProjectNodeProps {
   projectOptions?: readonly FolderPickerOption[];
   onScheduleAction: (group: AutomationSessionGroup, action: AutomationScheduleAction) => void;
   /** delayed-create:在该 project 的 workingDir 下进 transient draft route。 */
-  onCreateInProject?: (project: ProjectNodeData) => void;
+  onCreateInProject: (project: ProjectNodeData) => void;
   /** 用当前 project 锁定全局对话搜索入口。 */
   onOpenConversationSearch: (project: ProjectNodeData) => void;
   /** 在系统文件管理器中打开该 project 的 workingDir。 */
@@ -137,20 +131,17 @@ export interface ProjectNodeProps {
    *  到 /cc-agent/files/:sessionId。 */
   onBrowseFiles: (project: ProjectNodeData) => void;
   /** 右键菜单 → 归档该 project 下所有非执行中的 session（带二次确认）。 */
-  onArchiveAll: (project: ProjectNodeData, sessions?: Session[]) => void;
+  onArchiveAll: (project: ProjectNodeData) => void;
 }
 
 export const ProjectNode = memo(function ProjectNode({
   project,
   displaySessions,
-  actionSessions,
   sessionVariant = 'text',
   statusFilter,
   isCollapsed,
   collapsedAttentionTone = null,
   parentSectionCollapsed,
-  showAll: controlledShowAll,
-  onShowAllChange,
   activeSessionId,
   runningSessionIds,
   attachedSessionIds,
@@ -205,6 +196,7 @@ export const ProjectNode = memo(function ProjectNode({
         onToggleProjectPin={onToggleProjectPin}
         onRenameProject={onRenameProject}
         onRemoveFromSidebar={onRemoveFromSidebar}
+        onDeleteProject={onDeleteProject}
         onCreateInProject={onCreateInProject}
         onOpenConversationSearch={onOpenConversationSearch}
         onOpenInExplorer={onOpenInExplorer}
@@ -270,6 +262,7 @@ type ProjectHeaderProps = Pick<
   | 'onToggleProjectPin'
   | 'onRenameProject'
   | 'onRemoveFromSidebar'
+  | 'onDeleteProject'
   | 'onCreateInProject'
   | 'onOpenConversationSearch'
   | 'onOpenInExplorer'
@@ -291,6 +284,7 @@ const ProjectHeader = memo(function ProjectHeader({
   onToggleProjectPin,
   onRenameProject,
   onRemoveFromSidebar,
+  onDeleteProject,
   onCreateInProject,
   onOpenConversationSearch,
   onOpenInExplorer,
@@ -308,6 +302,7 @@ const ProjectHeader = memo(function ProjectHeader({
   const isDeviceLink = project.deviceLinkDeviceId != null;
   const remoteIdentity = getRemoteProjectMachineIdentity(project);
   const projectWritesBlocked = isDeviceLinkWriteBlocked(project);
+  const bulkArchiveAction = projectBulkArchiveActionForStatus(statusFilter);
   // 项目图标两态(2026-07 用户定稿,参考 MivoCanvas):收起 Folder / 展开 FolderOpen,
   // 常驻在标题左侧;展开/收起指示箭头移到标题右侧、hover 才渐显(见下方 Chevron)。
   const FolderIcon = isCollapsed ? Folder : FolderOpen;
@@ -374,7 +369,7 @@ const ProjectHeader = memo(function ProjectHeader({
       toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
       return;
     }
-    onCreateInProject?.(project);
+    onCreateInProject(project);
   }, [onCreateInProject, project, projectWritesBlocked, t]);
 
   const handleArchiveAll = useCallback(() => {
@@ -383,35 +378,23 @@ const ProjectHeader = memo(function ProjectHeader({
       return;
     }
     setMenuPos(null);
-    onArchiveAll(project, actionSessions);
-  }, [actionSessions, onArchiveAll, project, projectWritesBlocked, t]);
+    onArchiveAll(project);
+  }, [onArchiveAll, project, projectWritesBlocked, t]);
 
   const handleRemoveFromSidebar = useCallback(() => {
     setMenuPos(null);
     onRemoveFromSidebar(project);
   }, [onRemoveFromSidebar, project]);
 
-  // 归档视图的项目删除使用独立回调，避免误走活跃项目的侧栏移除逻辑。
+  // 归档视图中的项目级删除使用独立回调，避免误走活跃项目的侧栏移除逻辑。
   const handleDeleteProject = useCallback(() => {
     if (projectWritesBlocked) {
       toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
       return;
     }
     setMenuPos(null);
-    onDeleteProject(project, actionSessions);
-  }, [actionSessions, onDeleteProject, project, projectWritesBlocked, t]);
-
-  // 项目内「显示全部」默认由组件自管；置顶段等外部宿主收起时才复位。
-  // 主列表由 ProjectsSection 受控传入，项目/设备段折叠后重新展开也能恢复。
-  const [internalShowAll, setInternalShowAll] = useCollapsibleShowAll(parentSectionCollapsed);
-  const sessionShowAll = controlledShowAll ?? internalShowAll;
-  const handleSessionShowAllChange = useCallback(
-    (next: boolean) => {
-      if (onShowAllChange) onShowAllChange(next);
-      else setInternalShowAll(next);
-    },
-    [onShowAllChange],
-  );
+    onDeleteProject(project);
+  }, [onDeleteProject, project, projectWritesBlocked, t]);
 
   return (
     <>
@@ -735,19 +718,29 @@ const ProjectHeader = memo(function ProjectHeader({
                     {t('ccAgent.sidebar.projectAction.removeFromSidebar')}
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem
-                  disabled={projectWritesBlocked}
-                  onClick={() => {
-                    handleArchiveAll();
-                  }}
-                  className={MENU_ITEM_CLASS}
-                >
-                  {t(
-                    bulkArchiveAction === 'unarchive'
-                      ? 'ccAgent.sidebar.projectAction.unarchiveAll'
-                      : 'ccAgent.sidebar.projectAction.archivedAll',
-                  )}
-                </DropdownMenuItem>
+                {statusFilter === 'archived' ? (
+                  <DropdownMenuItem
+                    disabled={projectWritesBlocked}
+                    onClick={handleDeleteProject}
+                    className={MENU_ITEM_DANGER_CLASS}
+                  >
+                    {t('ccAgent.sidebar.projectAction.deleteProject')}
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem
+                    disabled={projectWritesBlocked}
+                    onClick={() => {
+                      handleArchiveAll();
+                    }}
+                    className={MENU_ITEM_CLASS}
+                  >
+                    {t(
+                      bulkArchiveAction === 'unarchive'
+                        ? 'ccAgent.sidebar.projectAction.unarchiveAll'
+                        : 'ccAgent.sidebar.projectAction.archivedAll',
+                    )}
+                  </DropdownMenuItem>
+                )}
               </>
             )}
           </MountedMenuContent>
