@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import {
   Fragment,
   useCallback,
@@ -34,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { MENU_ITEM_CLASS, MENU_ROW_CLASS } from './menuStyles';
 import { searchConversations } from '@/lib/conversationSearchService';
 import {
   mergeConversationSearchFanout,
@@ -149,27 +151,6 @@ const LAST_ACTIVITY_OPTIONS: ReadonlyArray<Option<ConversationSearchLastActivity
   { value: 'all', labelKey: 'ccAgent.sidebar.filterLastActivity.all' },
 ];
 
-const MENU_CONTENT_CLASS = cn(
-  'w-[248px] rounded-xl border border-[var(--cmd-palette-border)] bg-[var(--cmd-palette-bg)] p-1',
-  'text-[var(--cmd-palette-item-text)] shadow-[var(--shadow-menu)]',
-);
-
-const SUB_CONTENT_CLASS = cn(
-  'w-[240px] rounded-xl border border-[var(--cmd-palette-border)] bg-[var(--cmd-palette-bg)] p-1',
-  'text-[var(--cmd-palette-item-text)] shadow-[var(--shadow-menu)]',
-);
-
-const MENU_ROW_CLASS = cn(
-  'flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2 text-sm outline-none',
-  'text-[var(--cmd-palette-item-text)] transition-colors focus:bg-[var(--cmd-palette-item-hover)] data-[state=open]:bg-[var(--cmd-palette-item-hover)]',
-);
-
-const MENU_ITEM_CLASS = cn(
-  'flex h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2 text-sm outline-none',
-  'text-[var(--cmd-palette-item-text)] transition-colors focus:bg-[var(--cmd-palette-item-hover)]',
-  'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
-);
-
 export interface UseConversationSearchParams {
   /** 是否驱动搜索:popover 传 open,内联恒为 true。gate 掉搜索 effect 与结果重算。 */
   enabled: boolean;
@@ -233,8 +214,6 @@ export function useConversationSearch({
   const [status, setStatus] = useState<'idle' | 'searching' | 'done' | 'error'>('idle');
   const [response, setResponse] = useState<ConversationSearchResponse | null>(null);
   const requestSeqRef = useRef(0);
-  const semanticStartedSeqRef = useRef(0);
-  const remoteResultsRef = useRef<ConversationSearchResultItem[]>([]);
   const requestProjectKey = projectFilterRequest?.projectKey ?? null;
   const requestProjectName = projectFilterRequest?.projectName ?? null;
   const requestProjectSessionIds = projectFilterRequest?.sessionIds ?? EMPTY_SESSION_IDS;
@@ -267,7 +246,7 @@ export function useConversationSearch({
     ) {
       indexedSessionIds = lockedProjectSessionIds;
     }
-    if (indexedSessionIds.length > 0) return indexedSessionIds;
+    if (indexedSessionIds.length > 0) return [...new Set(indexedSessionIds)].sort();
     const selectedRemoteOnly =
       selectedProjects.some((project) => project.deviceLinkDeviceId != null) ||
       Boolean(lockedProjectDeviceId && lockedMatchesSelection);
@@ -328,6 +307,21 @@ export function useConversationSearch({
       }),
     [machineSelection, searchDevices, selectedProjectSessionIds, selectedProjectTargets],
   );
+  // Store refreshes rebuild arrays even when the actual search scope is unchanged.
+  const searchScopeKey = JSON.stringify({
+    origins: searchOrigins
+      .map((origin) => ({
+        ...origin,
+        sessionIds: origin.sessionIds ? [...origin.sessionIds].sort() : null,
+        workingDirs: origin.workingDirs ? [...origin.workingDirs].sort() : null,
+      }))
+      .sort((a, b) => {
+        const aKey = a.kind === 'local' ? '' : a.deviceId;
+        const bKey = b.kind === 'local' ? '' : b.deviceId;
+        return aKey.localeCompare(bKey);
+      }),
+    sessionIds: selectedProjectSessionIds,
+  });
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (statusFilter !== 'all') count += 1;
@@ -365,14 +359,16 @@ export function useConversationSearch({
   useEffect(() => {
     requestSeqRef.current += 1;
     const seq = requestSeqRef.current;
-    semanticStartedSeqRef.current = 0;
     if (!enabled || !trimmed) {
       setStatus('idle');
       setResponse(null);
       return;
     }
     setStatus('searching');
-    remoteResultsRef.current = [];
+    const scope = JSON.parse(searchScopeKey) as {
+      origins: ReturnType<typeof resolveConversationSearchOrigins>;
+      sessionIds: string[] | null;
+    };
     const request = {
       query: trimmed,
       limit: SEARCH_LIMIT,
@@ -382,80 +378,89 @@ export function useConversationSearch({
         status: statusFilter,
         agentKind: agentFilter,
         lastActivity: lastActivityFilter,
-        sessionIds: selectedProjectSessionIds,
+        sessionIds: scope.sessionIds,
       },
     } as const;
+    let keywordPage: ConversationSearchResponse | null = null;
+    let semanticPage: ConversationSearchResponse | null = null;
+    let keywordSettled = false;
+    const hasLocalOrigin = scope.origins.some((origin) => origin.kind === 'local');
+    let semanticSettled = !hasLocalOrigin;
+    const publishResults = () => {
+      if (seq !== requestSeqRef.current) return;
+      const localPage = semanticPage ?? keywordPage;
+      if (!localPage) {
+        if (keywordSettled && semanticSettled) setStatus('error');
+        return;
+      }
+      // Only a completed hybrid page supersedes local keyword hits. Remote
+      // hits always come from the keyword page, regardless of completion order.
+      const next = mergeConversationSearchFanout(
+        [
+          {
+            ...localPage,
+            results: localPage.results.filter((item) => !item.session.deviceLinkDeviceId),
+          },
+          {
+            query: trimmed,
+            results:
+              keywordPage?.remoteResults ??
+              keywordPage?.results.filter((item) => item.session.deviceLinkDeviceId) ??
+              [],
+            vectorUsed: false,
+            vectorSkipReason: null,
+            poolCapped: keywordPage?.poolCapped ?? false,
+          },
+        ],
+        SEARCH_LIMIT,
+        sortBy,
+      );
+      // Empty results are definitive only after every applicable stage settles.
+      // Either keyword or semantic search may still contribute a late hit.
+      if (next.results.length === 0 && (!keywordSettled || !semanticSettled)) return;
+      setResponse(next);
+      setStatus('done');
+    };
     const keywordTimer = window.setTimeout(() => {
-      searchConversations({
-        ...request,
-        semanticMode: 'keyword',
-      }, { origins: searchOrigins })
+      searchConversations(
+        {
+          ...request,
+          semanticMode: 'keyword',
+        },
+        { origins: scope.origins },
+      )
         .then((next) => {
-          if (seq !== requestSeqRef.current) return;
-          const remoteResults = next.remoteResults ?? next.results.filter((item) => item.session.deviceLinkDeviceId);
-          remoteResultsRef.current = remoteResults;
-          if (semanticStartedSeqRef.current === seq) {
-            setResponse((current) => mergeConversationSearchFanout([
-              {
-                query: trimmed,
-                results: (current?.results ?? []).filter((item) => !item.session.deviceLinkDeviceId),
-                vectorUsed: current?.vectorUsed === true,
-                vectorSkipReason: current?.vectorSkipReason ?? null,
-                poolCapped: current?.poolCapped === true,
-              },
-              {
-                query: trimmed,
-                results: remoteResults,
-                vectorUsed: false,
-                vectorSkipReason: null,
-                poolCapped: false,
-              },
-            ], SEARCH_LIMIT, sortBy));
-            setStatus('done');
-            return;
-          }
-          setResponse(next);
-          setStatus('done');
+          keywordPage = next;
         })
-        .catch(() => {
-          if (seq !== requestSeqRef.current) return;
-          if (semanticStartedSeqRef.current === seq) return;
-          setStatus('error');
+        .catch(() => {})
+        .finally(() => {
+          keywordSettled = true;
+          publishResults();
         });
     }, DEBOUNCE_MS);
     const semanticTimer = window.setTimeout(() => {
-      semanticStartedSeqRef.current = seq;
-      searchConversations({
-        ...request,
-        semanticMode: 'hybrid',
-      }, {
-        origins: searchOrigins,
-        reuseRemoteResults: remoteResultsRef.current,
-      })
+      if (!hasLocalOrigin) return;
+      searchConversations(
+        {
+          ...request,
+          semanticMode: 'hybrid',
+        },
+        {
+          origins: scope.origins,
+          reuseRemoteResults: [],
+        },
+      )
         .then((next) => {
-          if (seq !== requestSeqRef.current) return;
-          // Hybrid only refreshes local. Remotes stay on the keyword page;
-          // merge the latest ref here so a slower local hybrid cannot wipe
-          // hits that arrived after this request started.
-          setResponse(mergeConversationSearchFanout([
-            next,
-            {
-              query: trimmed,
-              results: remoteResultsRef.current,
-              vectorUsed: false,
-              vectorSkipReason: null,
-              poolCapped: false,
-            },
-          ], SEARCH_LIMIT, sortBy));
-          setStatus('done');
+          semanticPage = next;
         })
-        .catch(() => {
-          if (seq !== requestSeqRef.current) return;
-          semanticStartedSeqRef.current = 0;
-          setStatus((current) => current === 'searching' ? 'error' : current);
+        .catch(() => {})
+        .finally(() => {
+          semanticSettled = true;
+          publishResults();
         });
     }, SEMANTIC_SEARCH_DEBOUNCE_MS);
     return () => {
+      requestSeqRef.current += 1;
       window.clearTimeout(keywordTimer);
       window.clearTimeout(semanticTimer);
     };
@@ -463,9 +468,7 @@ export function useConversationSearch({
     agentFilter,
     lastActivityFilter,
     enabled,
-    searchOrigins,
-    selectedProjectSessionIds,
-    selectedProjectTargets,
+    searchScopeKey,
     sortBy,
     statusFilter,
     trimmed,
@@ -650,6 +653,8 @@ export interface ConversationSearchBoxProps {
   triggerClassName?: string;
   /** Popover open 态变化上报(供 SidebarActionBar 的 openChildCount 守卫;含程序化打开)。 */
   onOpenChange?: (open: boolean) => void;
+  /** 挂载即打开:rail 从「更多」打开未勾选的搜索时,图标随打开一起出现。 */
+  defaultOpen?: boolean;
 }
 
 /**
@@ -667,9 +672,10 @@ export function ConversationSearchBox({
   searchDevices = EMPTY_SEARCH_DEVICES,
   triggerClassName,
   onOpenChange,
+  defaultOpen = false,
 }: ConversationSearchBoxProps) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // search.reset 在 search 声明后才拿得到,但 handleResultChosen 需先于 search 定义(要作为
@@ -959,23 +965,26 @@ export function SearchFilterMenu({
           )}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="bottom" align="start" sideOffset={6} className={MENU_CONTENT_CLASS}>
+      <DropdownMenuContent side="bottom" align="start" sideOffset={6} className="w-[248px]">
         <div className="flex items-center gap-2 px-2 py-1.5">
           <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--cmd-palette-item-meta)]">
             {t('ccAgent.search.filter.label')}
           </span>
           {activeCount > 0 && (
-            <button
+            <Button
+              variant="secondary"
+              size="xxs"
+              compact
+              tone="quiet"
               type="button"
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 onReset();
               }}
-              className="shrink-0 rounded-full px-2 py-0.5 text-xs text-[var(--text-tertiary)] hover:bg-[var(--cmd-palette-item-hover)] hover:text-[var(--text-primary)]"
             >
               {t('ccAgent.search.filter.reset')}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -1107,7 +1116,7 @@ function MenuSubRow({
         </span>
         <ChevronDown size={14} className="-rotate-90 shrink-0 text-[var(--cmd-palette-item-meta)]" />
       </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent sideOffset={8} className={SUB_CONTENT_CLASS}>
+      <DropdownMenuSubContent sideOffset={8} className="w-[240px]">
         {children}
       </DropdownMenuSubContent>
     </DropdownMenuSub>

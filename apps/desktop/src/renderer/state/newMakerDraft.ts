@@ -19,6 +19,9 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import { isDataOwnerPushStampCurrent } from '@/contexts/dataOwnerGeneration';
+import { sameModelRoute, type AppDefaultModelSelection } from '../../shared/appDefaultModelSelection';
+import type { BotModelRoute } from '../../shared/botModelChain';
 
 import type { MakerVendor } from '@/lib/ccAgent.types';
 import { isSelectableVendor } from '@/lib/agentVendors';
@@ -103,6 +106,14 @@ export interface NewMakerDraft {
   deviceLinkDeviceId: string | null;
   /** device-link 目标设备友好名(草稿页横幅展示),与 deviceLinkDeviceId 同源。 */
   deviceLinkDeviceName: string | null;
+  /**
+   * Agent 在同账号另一台电脑上运行(任务、项目文件与命令仍在本机):那台电脑的 deviceId。
+   * 模型目录、Agent 登录与供应商都来自那台。与 remoteHostId / deviceLinkDeviceId 互斥;
+   * 与 deviceLinkDeviceId 同理**不跨重启持久化**(绑的是一台可能离线的活动设备)。
+   */
+  agentDeviceId: string | null;
+  /** agentDeviceId 那台电脑的友好名(展示用)。 */
+  agentDeviceName: string | null;
   /** 协同模式开关 + Worker 类型(草稿期持久化,Send 时由 enableOrca 消费)。 */
   collab: CollabDraft;
   /**
@@ -220,6 +231,8 @@ function makeDefault(): NewMakerDraft {
     remoteHostId: null,
     deviceLinkDeviceId: null,
     deviceLinkDeviceName: null,
+    agentDeviceId: null,
+    agentDeviceName: null,
     collab: defaultCollab(),
     worktreeEnabled: DEFAULT_WORKTREE_ENABLED,
     worktreePreferenceCustomized: false,
@@ -443,6 +456,8 @@ function sanitize(raw: unknown): NewMakerDraft {
     // device-link 目标**不跨重启恢复**:绑定的是活动设备,重启后可能已离线 → 一律置 null。
     deviceLinkDeviceId: null,
     deviceLinkDeviceName: null,
+    agentDeviceId: null,
+    agentDeviceName: null,
     collab,
     // worktree 勾选记忆:系统默认 + 显式 override 合成。注意历史残留的
     // wtEnabled/wtName/wtSourceBranch/wtBaseRepo 根字段(2026-07 前的短暂持久化实验)
@@ -746,6 +761,11 @@ export function getDraftForPreferenceSync(): NewMakerDraft {
     : persistedDraft;
 }
 
+/** Do not stamp a previous owner's draft during the auth namespace handoff. */
+export function getDraftForOwnerPreferenceSync(ownerId: string | null): NewMakerDraft | null {
+  return activeDataOwnerId === ownerId ? getDraftForPreferenceSync() : null;
+}
+
 /** Switch the persistent draft namespace together with the active data owner. */
 export function setNewMakerDraftOwner(ownerId: string | null): void {
   const normalized = typeof ownerId === 'string' && ownerId.trim().length > 0 ? ownerId : null;
@@ -835,6 +855,16 @@ export function patchDraft(patch: Partial<NewMakerDraft>): void {
     next.deviceLinkDeviceId = null;
     next.deviceLinkDeviceName = null;
   }
+  // 「Agent 在另一台电脑运行」只用于本机任务：任务本身建到远程设备或 SSH 主机时不成立。
+  if (next.deviceLinkDeviceId != null || next.remoteHostId != null) {
+    next.agentDeviceId = null;
+    next.agentDeviceName = null;
+  } else if ('agentDeviceId' in normalizedPatch) {
+    const agentDeviceId = normalizedPatch.agentDeviceId;
+    next.agentDeviceId =
+      typeof agentDeviceId === 'string' && agentDeviceId.trim().length > 0 ? agentDeviceId.trim() : null;
+    if (next.agentDeviceId == null) next.agentDeviceName = null;
+  }
   // 换目标设备(含本机 ↔ 被控设备、被控设备 A ↔ B)→ 丢掉 Worker 富配置,只留
   // enabled + worker。model / providerId / effort / fast 都是**设备作用域**的:被控端
   // 装的模型目录、连的供应商都是它自己那一套,原样透传过去会撞被控端 main 的精确
@@ -897,6 +927,40 @@ export function switchVendor(next: MakerVendor): void {
   };
   scheduleWrite({ preserveStoredDefaultTuplePreference: false });
   emit();
+}
+
+/** Explicit Bot-requested default uses the same persisted tuple, with owner/CAS and no partial writes. */
+export function applyAppDefaultModelSelection(selection: AppDefaultModelSelection): boolean {
+  if (!isDataOwnerPushStampCurrent(selection.ownerStamp)
+    || activeDataOwnerId !== selection.ownerStamp.dataOwnerId
+    || Date.now() > selection.expiresAt) return false;
+  const stored = readStoredDraftRecord();
+  const base = stored ? sanitize(stored) : currentDraft;
+  const prefs = base.lastByVendor[base.vendor];
+  const current: BotModelRoute | null = prefs.model ? {
+    harness: base.vendor === 'cc' || base.vendor === 'orca' ? 'claude' : base.vendor,
+    model: prefs.model, providerId: prefs.providerId ?? null, effort: prefs.effort ?? '',
+    fastMode: base.fastModeByModel[prefs.model] === true,
+  } : null;
+  if (!sameModelRoute(current, selection.expectedRoute) && !sameModelRoute(current, selection.route)) return false;
+  const route = selection.route;
+  const vendor = route.harness === 'claude' ? 'cc' : route.harness;
+  const next: NewMakerDraft = { ...base, vendor,
+    defaultTupleCustomized: true, defaultTupleSelectionCustomized: true,
+    modelChosenByVendor: { ...base.modelChosenByVendor, [vendor]: true },
+    lastByVendor: { ...base.lastByVendor, [vendor]: { ...base.lastByVendor[vendor],
+      model: route.model, providerId: route.providerId, effort: route.effort as Effort } },
+    effortByModel: { ...base.effortByModel, [route.model]: route.effort as Effort },
+    fastModeByModel: { ...base.fastModeByModel, [route.model]: route.fastMode },
+  };
+  try {
+    window.localStorage.setItem(storageKey(), JSON.stringify(next));
+  } catch { return false; }
+  currentDraft = { ...currentDraft, ...defaultTuplePreferenceOf(next),
+    effortByModel: next.effortByModel, fastModeByModel: next.fastModeByModel };
+  preferenceSyncFallback = null;
+  emit();
+  return true;
 }
 
 /**

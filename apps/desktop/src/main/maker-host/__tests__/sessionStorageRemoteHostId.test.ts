@@ -156,6 +156,22 @@ describe('DesktopSessionStorage.create remoteHostId 规范化', () => {
   });
 });
 
+describe('DesktopSessionStorage.create initial plan mode', () => {
+  beforeEach(() => {
+    h.captured = null;
+    h.rows.clear();
+  });
+
+  it.each([true, false, undefined])('persists %s in the task insert', async (planMode) => {
+    const storage = new DesktopSessionStorage();
+    await storage.create({
+      id: 'plan-session', title: 'Plan', workDir: '/repo', model: 'm', agentKind: 'codex', planMode,
+    });
+    expect(h.rows.size).toBe(1);
+    expect(h.rows.get('plan-session')).toMatchObject({ planModeEnabled: planMode ?? false });
+  });
+});
+
 describe('DesktopSessionStorage.create workspaceKind', () => {
   beforeEach(() => {
     h.captured = null;
@@ -215,6 +231,16 @@ describe('DesktopSessionStorage.create workingDir 规范化', () => {
   beforeEach(() => {
     h.captured = null;
     h.rows.clear();
+  });
+
+  it.each([undefined, 'ssh-host'])('stores the exact Worker directory identity (remote=%s)', async (remoteHostId) => {
+    const storage = new DesktopSessionStorage();
+    const created = await storage.create({
+      id: 'worker-space', title: 'Worker', workDir: '/repo ',
+      model: 'gpt-5.4', agentKind: 'codex', remoteHostId,
+    });
+    expect(h.captured?.workingDir).toBe('/repo ');
+    expect(created.workDir).toBe('/repo ');
   });
 
   it('Windows 反斜杠路径入库前归一为 storage spelling', async () => {

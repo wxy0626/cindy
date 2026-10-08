@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveCanonicalSessionPath } from '@cindy/mcps';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GHOST_MANIFEST_SUMMARY_MAX_CHARS,
@@ -114,6 +115,15 @@ function packGhostDir(
   options: Omit<NonNullable<Parameters<typeof packGhostDirRaw>[1]>, 'sessionWorkdir'> = {},
 ) {
   return packGhostDirRaw(dir, { sessionWorkdir: workDir, ...options });
+}
+
+async function hostAuthorizedOutside(dir: string, isCurrent: () => boolean = () => true) {
+  const authorizedDir = await resolveCanonicalSessionPath(path.parse(path.resolve(dir)).root, dir);
+  return {
+    allowOutsideWorkdir: true as const,
+    authorizedDir,
+    isCurrent,
+  };
 }
 
 async function expectSameExistingRealPath(actual: string, expected: string): Promise<void> {
@@ -365,6 +375,89 @@ describe('packGhostDir', () => {
         ok: false,
         errorCode: 'SOURCE_OUTSIDE_WORKDIR',
       });
+    } finally {
+      await fs.promises.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('packs a host-authorized source outside the session workdir', async () => {
+    const dir = await makeSrcDir({
+      'ghost.json': JSON.stringify(GOOD_MANIFEST),
+      'main.js': 'export default {}',
+    });
+    const outsideRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'cindy-forge-granted-'));
+    try {
+      const outsideDir = path.join(outsideRoot, 'src');
+      await fs.promises.cp(dir, outsideDir, { recursive: true });
+      const packed = await packGhostDirRaw(outsideDir, {
+        sessionWorkdir: workDir,
+        ...(await hostAuthorizedOutside(outsideDir)),
+      });
+      expect(packed).toMatchObject({ ok: true });
+      if (!packed.ok) return;
+      await expect(fs.promises.access(path.join(outsideDir, 'demo-1.0.0.cindy'))).resolves.toBeUndefined();
+
+      await expect(packGhostDirRaw(outsideDir, {
+        sessionWorkdir: workDir,
+        allowOutsideWorkdir: true,
+      })).resolves.toMatchObject({ ok: false, errorCode: 'SOURCE_OUTSIDE_WORKDIR' });
+      await expect(packGhostDirRaw(outsideDir, {
+        sessionWorkdir: workDir,
+        allowOutsideWorkdir: true,
+        authorizedDir: path.join(outsideRoot, 'other-src'),
+        isCurrent: () => true,
+      })).resolves.toMatchObject({ ok: false, errorCode: 'SOURCE_OUTSIDE_WORKDIR' });
+    } finally {
+      await fs.promises.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('still rejects Host-managed roots after outside-workdir authorization', async () => {
+    const managedRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'cindy-forge-managed-'));
+    try {
+      const installedDir = path.join(managedRoot, 'demo');
+      await fs.promises.mkdir(installedDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(installedDir, 'ghost.json'),
+        JSON.stringify(GOOD_MANIFEST),
+      );
+      await fs.promises.writeFile(path.join(installedDir, 'main.js'), '// installed');
+      await expect(
+        packGhostDirRaw(installedDir, {
+          sessionWorkdir: workDir,
+          forbiddenRootDirs: [managedRoot],
+          ...(await hostAuthorizedOutside(installedDir)),
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        errorCode: 'SOURCE_IS_INSTALLED_PLUGIN',
+      });
+    } finally {
+      await fs.promises.rm(managedRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not write a package after the outside grant expires', async () => {
+    const dir = await makeSrcDir({
+      'ghost.json': JSON.stringify(GOOD_MANIFEST),
+      'main.js': 'export default {}',
+    });
+    const outsideRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'cindy-forge-stale-grant-'));
+    try {
+      const outsideDir = path.join(outsideRoot, 'src');
+      await fs.promises.cp(dir, outsideDir, { recursive: true });
+      await expect(packGhostDirRaw(outsideDir, {
+        sessionWorkdir: workDir,
+        ...(await hostAuthorizedOutside(outsideDir, () => false)),
+      })).resolves.toMatchObject({ ok: false, errorCode: 'PERMISSION_DENIED' });
+      expect(fs.existsSync(path.join(outsideDir, 'demo-1.0.0.cindy'))).toBe(false);
+
+      let remaining = 1;
+      await expect(packGhostDirRaw(outsideDir, {
+        sessionWorkdir: workDir,
+        ...(await hostAuthorizedOutside(outsideDir, () => remaining-- > 0)),
+      })).resolves.toMatchObject({ ok: false, errorCode: 'PERMISSION_DENIED' });
+      expect(fs.existsSync(path.join(outsideDir, 'demo-1.0.0.cindy'))).toBe(false);
     } finally {
       await fs.promises.rm(outsideRoot, { recursive: true, force: true });
     }
@@ -1493,9 +1586,101 @@ describe('scaffoldGhostDir', () => {
       await fs.promises.rm(outside, { recursive: true, force: true });
     }
   });
+
+  it('scaffolds outside the session workdir only after host authorization', async () => {
+    const outsideRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'cindy-forge-scaffold-out-'));
+    const dir = path.join(outsideRoot, 'plugin');
+    try {
+      await expect(
+        scaffoldGhostDir(
+          { dir, template: 'plain', id: 'out-plugin', name: 'Out plugin' },
+          { sessionWorkdir: workDir },
+        ),
+      ).resolves.toMatchObject({ ok: false, errorCode: 'INVALID_INPUT' });
+      expect(fs.existsSync(dir)).toBe(false);
+
+      const authorizedDir = path.join(await fs.promises.realpath(outsideRoot), 'plugin');
+      await expect(
+        scaffoldGhostDir(
+          { dir, template: 'plain', id: 'out-plugin', name: 'Out plugin' },
+          { sessionWorkdir: workDir, allowOutsideWorkdir: true },
+        ),
+      ).resolves.toMatchObject({ ok: false, errorCode: 'INVALID_INPUT' });
+      expect(fs.existsSync(dir)).toBe(false);
+
+      await expect(
+        scaffoldGhostDir(
+          { dir, template: 'plain', id: 'out-plugin', name: 'Out plugin' },
+          { sessionWorkdir: workDir, ...(await hostAuthorizedOutside(authorizedDir)) },
+        ),
+      ).resolves.toMatchObject({ ok: true, dir: authorizedDir });
+      expect(fs.existsSync(path.join(authorizedDir, 'ghost.json'))).toBe(true);
+
+      const swapped = path.join(outsideRoot, 'swapped');
+      await expect(
+        scaffoldGhostDir(
+          { dir: swapped, template: 'plain', id: 'swap-plugin', name: 'Swap plugin' },
+          { sessionWorkdir: workDir, allowOutsideWorkdir: true, authorizedDir, isCurrent: () => true },
+        ),
+      ).resolves.toMatchObject({ ok: false, errorCode: 'INVALID_INPUT' });
+      expect(fs.existsSync(swapped)).toBe(false);
+
+      const staleDir = path.join(outsideRoot, 'stale-plugin');
+      const writeScaffold = vi.fn(testScaffoldWriter);
+      await expect(
+        scaffoldGhostDirRaw(
+          {
+            dir: staleDir,
+            template: 'plain',
+            id: 'stale-plugin',
+            name: 'Stale plugin',
+            minCindyVersion: '1.2.3',
+          },
+          {
+            sessionWorkdir: workDir,
+            ...(await hostAuthorizedOutside(staleDir, () => false)),
+            writeScaffold,
+          },
+        ),
+      ).resolves.toMatchObject({ ok: false, errorCode: 'PERMISSION_DENIED' });
+      expect(writeScaffold).not.toHaveBeenCalled();
+      expect(fs.existsSync(staleDir)).toBe(false);
+
+      const expiredAfterIdentity = path.join(outsideRoot, 'expired-after-identity');
+      const lateWriter = vi.fn(testScaffoldWriter);
+      let remaining = 1;
+      await expect(
+        scaffoldGhostDirRaw(
+          {
+            dir: expiredAfterIdentity,
+            template: 'plain',
+            id: 'expired-after-identity',
+            name: 'Expired after identity',
+            minCindyVersion: '1.2.3',
+          },
+          {
+            sessionWorkdir: workDir,
+            ...(await hostAuthorizedOutside(expiredAfterIdentity, () => remaining-- > 0)),
+            writeScaffold: lateWriter,
+          },
+        ),
+      ).resolves.toMatchObject({ ok: false, errorCode: 'PERMISSION_DENIED' });
+      expect(lateWriter).not.toHaveBeenCalled();
+      expect(fs.existsSync(expiredAfterIdentity)).toBe(false);
+    } finally {
+      await fs.promises.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('FORGE_GUIDE', () => {
+  it('账号业务元数据使用插件 KV，不声明 Host 昵称接口', () => {
+    expect(FORGE_GUIDE).toContain('昵称等自定义账号元数据由插件通过 `/kv` 保存');
+    expect(FORGE_GUIDE).toContain('执行仍传账号 id，不把昵称当作指令或授权');
+    expect(FORGE_GUIDE).not.toContain('/accounts/<accountId>/nickname');
+    expect(FORGE_GUIDE).not.toContain('accounts 中可选 nickname');
+  });
+
   it('documents the org-only token publish flow without exposing a file path handoff', () => {
     expect(FORGE_GUIDE).toContain("intent: 'publish'");
     expect(FORGE_GUIDE).toContain('一次性 `publishToken`');
@@ -1519,7 +1704,7 @@ describe('FORGE_GUIDE', () => {
 
   it('documents library capabilities as a sessionless support list with stable failure reasons', () => {
     expect(FORGE_GUIDE).toContain("op: 'capabilities'");
-    expect(FORGE_GUIDE).toContain("operations:['clipboardWrite','saveAs']");
+    expect(FORGE_GUIDE).toContain("operations:['clipboardWrite','saveAs','staging.begin'");
     expect(FORGE_GUIDE).toContain('不等于此刻有窗口 / 已授权 / 库可用');
     expect(FORGE_GUIDE).toContain('全部字符串');
     expect(FORGE_GUIDE).toContain('数组内混入');
@@ -1605,6 +1790,16 @@ describe('FORGE_GUIDE', () => {
     ]) {
       expect(skillSection).toContain(marker);
     }
+  });
+
+  it('Manual-only 插件可发现，已下线 Host 能力不再宣传', () => {
+    const manualSection = FORGE_GUIDE.slice(
+      FORGE_GUIDE.indexOf('## 3.6 manual:'), FORGE_GUIDE.indexOf('## 4. main.js'),
+    );
+    expect(manualSection).toContain('Manual-only');
+    expect(manualSection).toContain('不需要声明虚假工具');
+    expect(manualSection).toContain('首个支持 Manual-only 发现与读取的 Cindy 正式版本');
+    expect(FORGE_GUIDE).not.toContain('cindy_ios_simulator');
   });
 
   it('manual 发布契约按顺序锁定 Cindy 版本门槛与旧客户端回退', () => {
@@ -1857,6 +2052,8 @@ describe('FORGE_GUIDE', () => {
       'gh-cli',
       'gh auth token',
       'hostAvailable',
+      'hostManagedSetup',
+      '字段缺失或为 false 时保留旧版设置页的连接提示',
       // 多连接(connections,2026-07-14):声明形态 / 设置页协议 / 主机受信确认。
       'connections',
       '/connections',
@@ -1865,8 +2062,9 @@ describe('FORGE_GUIDE', () => {
       'CONFIRM_DENIED',
       'uploadDir',
       'dir_deposit',
-      // 目录/保存交接的权限档契约:本地 Full Access 自动，其余/远程确认。
+      // 目录/保存交接沿用会话档位:Full 自动、Auto 审阅、Ask/远程确认。
       '本地 Full Access 会话则自动过户、不弹卡',
+      'Auto 交当前会话统一审阅',
       '远程会话仍由用户确认',
       // fs 槽(2026-07-14):三档代写(私有目录/工作目录/save 票据)。
       'fs-request',
@@ -1933,19 +2131,13 @@ describe('FORGE_GUIDE', () => {
       '捆绑 Agent Skills(skill 能力)',
       'skill.items',
       'SKILL.md',
-      '~/.agents/skills',
+      '不写入用户的全局技能目录',
       '逐字一致',
       '不受插件沙箱约束',
       // 工作区会话(workspace):目录亲选/确认卡授权,判重复用。
       '创建工作区会话(workspace 能力)',
       'cindy.workspace',
       "kind: 'ensure-session'",
-      // 2026-08-06 iOS Simulator 插件能力:只读脱敏状态与 Host 面板入口。
-      '内置 iOS 模拟器(iosSimulator 能力)',
-      'cindy.iosSimulator.request',
-      'caps.capabilities.pluginVideo === false',
-      'caps.capabilities.pluginInput === false',
-      '如果插件整体离开 `iosSimulator` 就无法完成任何工作',
       // 一级插件主视图:v3 直接字段、locale 与沙箱边界。
       '一级主视图(mainView 能力)',
       '"mainView": { "title": "工作台", "icon": "puzzle", "html": "main-view.html" }',

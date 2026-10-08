@@ -5,6 +5,10 @@ import type { CindyRegion } from '@cindy/maker-shared/brand-identity';
 import type { DevProfileKind } from './devCliFlags.js';
 import { withLocalProfileMigrationStartupBarrier } from './localProfileDataMigration.js';
 import { atomicWriteFileSync } from './utils/atomicWriteFile.js';
+import {
+  readDesktopProcessIdentity,
+  type DesktopProcessIdentity,
+} from './desktopProcessIdentity.js';
 
 export type DesktopDevMode = 'remote' | 'local' | 'unknown';
 export type DesktopDevInstanceState = 'starting' | 'ready' | 'failed';
@@ -12,10 +16,29 @@ export type DesktopDevAuthMode = 'signed-out' | 'local' | 'cloud';
 export interface DesktopDevAuthState { mode: DesktopDevAuthMode; dataOwnerId: string | null; }
 
 export interface DesktopDevInstanceRecord {
-  schemaVersion: 1; worktreeLeaseProtocol?: 1; instanceId: string; pid: number;
-  startedAtMs: number; updatedAtMs: number; rootDir: string; commit: string | null;
-  mode: DesktopDevMode; region: CindyRegion; passive: boolean; isolated: boolean;
-  isolationIntent?: boolean; profileKind?: DevProfileKind; userDataDir: string;
+  schemaVersion: 1;
+  worktreeLeaseProtocol?: 1;
+  instanceId: string;
+  pid: number;
+  /** Main reports the actual window renderer; Linux zygote children may retain argv. */
+  rendererPid?: number;
+  startedAtMs: number;
+  /** Optional for legacy readers/writers; absence never claims that a PID is stale. */
+  processIdentity?: DesktopProcessIdentity;
+  updatedAtMs: number;
+  rootDir: string;
+  commit: string | null;
+  mode: DesktopDevMode;
+  /** 构建区域；共享 userData 启动器据此拒绝跨区域 passive 预览。 */
+  region: CindyRegion;
+  passive: boolean;
+  /** 解析后是否真的落在独立纪元沙箱。不是「有 userData 覆写」。 */
+  isolated: boolean;
+  /** 启动旗标是否声明了 --isolated / XDT_ISOLATED。 */
+  isolationIntent?: boolean;
+  /** 解析后的实际 profile 归属。 */
+  profileKind?: DevProfileKind;
+  userDataDir: string;
   state: DesktopDevInstanceState;
   failure?: { code: string; message: string; detail?: Record<string, unknown> };
 }
@@ -33,7 +56,25 @@ let authSettled = false;
 let authMode: DesktopDevAuthMode | null = null;
 let authOwnerId: string | null = null;
 let startupSettled = false;
-let authCompletionGeneration = 0;
+let startupResult: boolean | undefined;
+const startupResultListeners = new Set<(ready: boolean) => void>();
+/** Local version handoff consumes the existing auth + database + window readiness contract. */
+export function observeDesktopStartupResult(listener: (ready: boolean) => void): () => void {
+  if (startupResult !== undefined) listener(startupResult);
+  else startupResultListeners.add(listener);
+  return () => startupResultListeners.delete(listener);
+}
+function publishDesktopStartupResult(ready: boolean): void {
+  startupResult = ready;
+  for (const listener of startupResultListeners) {
+    try {
+      listener(ready);
+    } catch {
+      // A diagnostic observer must never affect startup.
+    }
+  }
+  startupResultListeners.clear();
+}
 
 function atomicWriteJson(filePath: string, value: unknown): void { atomicWriteFileSync(filePath, `${JSON.stringify(value)}\n`); }
 function readJson(filePath: string): Record<string, unknown> | null { try { const v = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown; return v && typeof v === 'object' ? v as Record<string, unknown> : null; } catch { return null; } }
@@ -41,60 +82,214 @@ function readinessSnapshot(): Record<string, unknown> { return { windowVisible, 
 function updateExternalStartupStatus(state: 'window-ready' | 'ready' | 'failed', detail: Record<string, unknown>): void {
   const statusPath = process.env.XDT_DESKTOP_DEV_STARTUP_STATUS_FILE; if (!statusPath) return;
   try {
-    const current = readJson(statusPath)?.state;
-    const allowed = state === 'window-ready'
-      ? current === 'pending'
-      : current === 'pending' || current === 'window-ready';
-    if (!allowed) return;
-    const existingDetail = detail.detail && typeof detail.detail === 'object'
-      ? detail.detail as Record<string, unknown>
-      : {};
-    atomicWriteJson(statusPath, {
-      state,
-      pid: process.pid,
-      at: Date.now(),
-      ...detail,
-      detail: { ...existingDetail, readiness: readinessSnapshot() },
-    });
-  } catch { /* diagnostic only */ }
+    const value = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+    return value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
-function updateTrackedInstance(state: DesktopDevInstanceState, failure?: DesktopDevInstanceRecord['failure']): void {
+
+function updateExternalStartupStatus(
+  state: 'window-ready' | 'ready' | 'failed',
+  detail: Record<string, unknown>,
+): void {
+  const statusPath = process.env.XDT_DESKTOP_DEV_STARTUP_STATUS_FILE;
+  if (!statusPath) return;
+
+  try {
+    const currentState = readJson(statusPath)?.state;
+    const canTransition =
+      state === 'window-ready'
+        ? currentState === 'pending'
+        : currentState === 'pending' || currentState === 'window-ready';
+    if (!canTransition) return;
+    atomicWriteJson(statusPath, { state, pid: process.pid, at: Date.now(), ...detail });
+  } catch {
+    // Startup reporting is diagnostic-only; never turn a report failure into the app failure.
+  }
+}
+
+function updateTrackedInstance(
+  state: DesktopDevInstanceState,
+  failure?: DesktopDevInstanceRecord['failure'],
+): void {
   if (!trackedInstance) return;
   const record = { ...trackedInstance.record, state, updatedAtMs: Date.now(), ...(failure ? { failure } : {}) };
   try { atomicWriteJson(trackedInstance.filePath, record); trackedInstance.record = record; } catch { /* diagnostic only */ }
 }
-export async function beginDesktopDevInstance(options: BeginDesktopDevInstanceOptions): Promise<() => void> {
-  windowVisible = false; rendererRootReady = false; rendererLocalDbReady = false; authSettled = false; authMode = null; authOwnerId = null; startupSettled = false; authCompletionGeneration += 1;
-  const pid = options.pid ?? process.pid; const startedAtMs = options.startedAtMs ?? Date.now();
-  const record: DesktopDevInstanceRecord = { schemaVersion: 1, worktreeLeaseProtocol: 1, instanceId: options.instanceId ?? randomUUID(), pid, startedAtMs, updatedAtMs: startedAtMs, rootDir: path.resolve(options.rootDir), commit: options.commit ?? null, mode: options.mode ?? 'unknown', region: options.region ?? 'global', passive: options.passive, isolated: options.isolated, ...(options.isolationIntent !== undefined ? { isolationIntent: options.isolationIntent } : {}), ...(options.profileKind !== undefined ? { profileKind: options.profileKind } : {}), userDataDir: path.resolve(options.userDataDir), state: 'starting' };
+
+/**
+ * Register this Electron main process before single-instance arbitration.
+ * The returned cleanup only removes the record when its random instanceId still owns it.
+ */
+export async function beginDesktopDevInstance(
+  options: BeginDesktopDevInstanceOptions,
+): Promise<() => void> {
+  mainWindowReady = false;
+  applicationReady = false;
+  startupSettled = false;
+  startupResult = undefined;
+  const pid = options.pid ?? process.pid;
+  const startedAtMs = options.startedAtMs ?? Date.now();
+  const record: DesktopDevInstanceRecord = {
+    schemaVersion: 1,
+    worktreeLeaseProtocol: 1,
+    instanceId: options.instanceId ?? randomUUID(),
+    pid,
+    startedAtMs,
+    updatedAtMs: startedAtMs,
+    rootDir: path.resolve(options.rootDir),
+    commit: options.commit ?? null,
+    mode: options.mode ?? 'unknown',
+    region: options.region ?? 'global',
+    passive: options.passive,
+    isolated: options.isolated,
+    ...(options.isolationIntent !== undefined ? { isolationIntent: options.isolationIntent } : {}),
+    ...(options.profileKind !== undefined ? { profileKind: options.profileKind } : {}),
+    userDataDir: path.resolve(options.userDataDir),
+    state: 'starting',
+  };
   const filePath = path.join(record.userDataDir, '.dev-instances', `${pid}.json`);
-  try { await withLocalProfileMigrationStartupBarrier(record.userDataDir, options.dbFilePrefix, () => { atomicWriteJson(filePath, record); trackedInstance = { filePath, record }; }); } catch (error) { markDesktopDevStartupFailed('INSTANCE_REGISTRATION_FAILED', error instanceof Error ? error.message : String(error), { phase: 'instance-registration' }); throw error; }
-  return () => { if (trackedInstance?.record.instanceId === record.instanceId) trackedInstance = null; try { if (readJson(filePath)?.instanceId === record.instanceId) fs.rmSync(filePath, { force: true }); } catch { /* stale record is harmless */ } };
+
+  try {
+    await withLocalProfileMigrationStartupBarrier(record.userDataDir, options.dbFilePrefix, () => {
+      // Initial registration is part of the adoption safety protocol. If it
+      // cannot be published, fail startup rather than continuing invisibly and
+      // writing local-v1 while another process snapshots it.
+      atomicWriteJson(filePath, record);
+      trackedInstance = { filePath, record };
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    markDesktopDevStartupFailed('INSTANCE_REGISTRATION_FAILED', message, {
+      phase: 'instance-registration',
+    });
+    throw error;
+  }
+
+  // bootstrap-electron is loaded after registration and must install privileged
+  // schemes before Electron's ready event. Never await an OS subprocess here.
+  // Identity is optional evidence: enrich only the instance we still own, using
+  // its latest readiness state, and never resurrect a record removed on exit.
+  void readDesktopProcessIdentity(pid)
+    .then((identity) => {
+      const current = trackedInstance;
+      if (!identity || current?.record.instanceId !== record.instanceId) return;
+      if (readJson(filePath)?.instanceId !== record.instanceId) return;
+      const updated = { ...current.record, processIdentity: identity };
+      atomicWriteJson(filePath, updated);
+      trackedInstance = { filePath, record: updated };
+    })
+    .catch(() => {
+      // Failure to enrich must not affect startup or weaken legacy PID checks.
+    });
+
+  return () => {
+    if (trackedInstance?.record.instanceId === record.instanceId) trackedInstance = null;
+    try {
+      if (readJson(filePath)?.instanceId === record.instanceId) {
+        fs.rmSync(filePath, { force: true });
+      }
+    } catch {
+      // A stale record is harmless: desktop:whoami verifies that the PID is alive.
+    }
+  };
 }
 function settleDesktopDevReadyIfPossible(): void {
-  if (startupSettled || !windowVisible || !rendererRootReady || !authSettled) return;
-  if (authMode !== 'signed-out' && !rendererLocalDbReady) return;
-  startupSettled = true; updateTrackedInstance('ready'); updateExternalStartupStatus('ready', { instance: trackedInstance?.record ?? null });
+  if (startupSettled || !mainWindowReady || !applicationReady) return;
+  startupSettled = true;
+  updateTrackedInstance('ready');
+  updateExternalStartupStatus('ready', {
+    instance: trackedInstance?.record ?? null,
+  });
+  publishDesktopStartupResult(true);
 }
-export function markDesktopDevWindowReady(): void { if (startupSettled) return; windowVisible = true; updateExternalStartupStatus('window-ready', { instance: trackedInstance?.record ?? null }); settleDesktopDevReadyIfPossible(); }
-export function markDesktopDevRootReady(): void { if (startupSettled) return; rendererRootReady = true; settleDesktopDevReadyIfPossible(); }
-export function markDesktopDevLocalDbReady(ownerId?: string): void { if (startupSettled || (authMode === 'cloud' && ownerId !== authOwnerId) || (authMode === 'local' && ownerId !== authOwnerId)) return; rendererLocalDbReady = true; settleDesktopDevReadyIfPossible(); }
-export function markDesktopDevReady(): void { settleDesktopDevReadyIfPossible(); }
-export function recordDesktopDevAuthStartupResult(initialState: DesktopDevAuthState | { mode?: DesktopDevAuthMode; dataOwnerId?: string | null; isAuthenticated?: boolean; user?: unknown | null }, pendingCompletion: Promise<DesktopDevAuthState> | null, readCurrentState: () => DesktopDevAuthState): void {
-  // 兼容两种入参：新式 {mode,dataOwnerId} 直接用；旧式 {isAuthenticated,user} 归一为 mode/owner。
-  const state: DesktopDevAuthState = initialState.mode
-    ? { mode: initialState.mode, dataOwnerId: initialState.dataOwnerId ?? null }
-    : {
-        mode: initialState.isAuthenticated ? 'cloud' : 'signed-out',
-        dataOwnerId:
-          initialState.user && typeof initialState.user === 'object' && 'id' in initialState.user
-            ? String((initialState.user as { id: unknown }).id)
-            : null,
-      };
-  authMode = state.mode; authOwnerId = state.dataOwnerId;
-  const generation = ++authCompletionGeneration;
-  if (pendingCompletion) { void pendingCompletion.then(() => { if (generation !== authCompletionGeneration || startupSettled) return; const current = readCurrentState(); authMode = current.mode; authOwnerId = current.dataOwnerId; authSettled = true; settleDesktopDevReadyIfPossible(); }, (error) => { if (generation === authCompletionGeneration) markDesktopDevStartupFailed('AUTH_INIT_FAILED', error instanceof Error ? error.message : String(error), { phase: 'auth:initialize:late' }); }); return; }
-  authSettled = true; settleDesktopDevReadyIfPossible();
+
+/** Record that the main BrowserWindow can render, without claiming the database is ready. */
+export function markDesktopDevWindowReady(rendererPid?: number): void {
+  if (startupSettled) return;
+  if (trackedInstance && Number.isSafeInteger(rendererPid) && rendererPid! > 0) {
+    trackedInstance.record = { ...trackedInstance.record, rendererPid };
+  }
+  mainWindowReady = true;
+  updateExternalStartupStatus('window-ready', {
+    instance: trackedInstance?.record ?? null,
+  });
+  settleDesktopDevReadyIfPossible();
+}
+
+/** Record that auth/database initialization no longer blocks use of the rendered app. */
+export function markDesktopDevReady(): void {
+  if (startupSettled) return;
+  applicationReady = true;
+  settleDesktopDevReadyIfPossible();
+}
+
+type DesktopDevAuthState = {
+  isAuthenticated: boolean;
+  user: unknown | null;
+};
+
+/**
+ * Complete logged-out startup immediately only when auth is definitive. A cold-start
+ * timeout is a temporary renderer fallback: keep restart pending until background auth
+ * settles, so a late login still has time to report its localDb migration result.
+ */
+export function recordDesktopDevAuthStartupResult(
+  initialState: DesktopDevAuthState,
+  pendingCompletion: Promise<DesktopDevAuthState> | null,
+  readCurrentState: () => DesktopDevAuthState,
+): void {
+  if (initialState.isAuthenticated && initialState.user !== null) return;
+  if (pendingCompletion === null) {
+    markDesktopDevReady();
+    return;
+  }
+
+  void pendingCompletion.then(
+    () => {
+      // The background refresh result may be stale: a manual login increments
+      // authStateEpoch and makes that old flow resolve as logged out. Consult the
+      // live auth state so the new user's localDb result still owns the startup latch.
+      const currentState = readCurrentState();
+      if (!currentState.isAuthenticated || currentState.user === null) markDesktopDevReady();
+    },
+    (err) => {
+      markDesktopDevStartupFailed(
+        'AUTH_INIT_FAILED',
+        err instanceof Error ? err.message : String(err),
+        { phase: 'auth:initialize:late' },
+      );
+    },
+  );
+}
+
+/** Bridge localDb.ensureReady's stable result shape into the dev startup contract. */
+export function recordDesktopDevLocalDbStartupResult(result: {
+  ready: boolean;
+  error?: { code: string; message: string };
+}): void {
+  if (result.ready) {
+    markDesktopDevReady();
+  } else if (result.error) {
+    markDesktopDevStartupFailed(result.error.code, result.error.message, {
+      phase: 'local-db:ensure-ready',
+    });
+  }
+}
+
+/** Preserve the first concrete main-process startup failure for the waiting restart command. */
+export function markDesktopDevStartupFailed(
+  code: string,
+  message: string,
+  detail?: Record<string, unknown>,
+): void {
+  if (startupSettled) return;
+  startupSettled = true;
+  const failure = { code, message, ...(detail ? { detail } : {}) };
+  updateTrackedInstance('failed', failure);
+  updateExternalStartupStatus('failed', { code, message, ...(detail ? { detail } : {}) });
+  publishDesktopStartupResult(false);
 }
 export function recordDesktopDevLocalDbStartupResult(result: { ready: boolean; error?: { code: string; message: string } }): void { if (!result.ready && result.error) markDesktopDevStartupFailed(result.error.code, result.error.message, { phase: 'local-db:ensure-ready' }); }
 export function markDesktopDevStartupFailed(code: string, message: string, detail?: Record<string, unknown>): void { if (startupSettled) return; startupSettled = true; const failure = { code, message, ...(detail ? { detail } : {}) }; updateTrackedInstance('failed', failure); updateExternalStartupStatus('failed', failure); }

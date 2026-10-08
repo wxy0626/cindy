@@ -1,3 +1,4 @@
+import { captureImContext } from '../../../shared/imMessageSource';
 /**
  * main/im/telegram/adapter.ts
  * ---------------------------------------------------------------------------
@@ -26,6 +27,7 @@ import { autoRegisterTelegramSpeaker } from './contactsAutoRegister';
 import { createTelegramGuestTurnPermissionPolicy } from './permissionPolicy';
 import { telegramUiText, ui, PROCESSING_EMOJI } from './uiText';
 import type { GroupHistoryAccessScope } from '../shared/groupHistoryAccess';
+import { imChannelNoteSourceFromEvent } from '../shared/channelNote';
 
 function ensureWorkingDir(botId: string): string {
   const dir = ownerScopedImUserDataPath('im-working-dir', `telegram-${botId}`);
@@ -93,8 +95,10 @@ export function buildTelegramAdapter(
       }),
     },
     processingEmoji: PROCESSING_EMOJI,
-    // 官方 bot 的结果表情习惯: 成功 👍 / 失败 👎; 中止不放(撤回 👀 即可)。
-    terminalReactionEmoji: (kind) => (kind === 'done' ? '👍' : kind === 'error' ? '👎' : null),
+    // 已收到、等待处理；开始执行后切换为 processingEmoji。
+    queuedEmoji: '👀',
+    // 正常完成由回复本身反馈，清除状态表情；失败保留提醒。
+    terminalReactionEmoji: (kind) => (kind === 'error' ? '👎' : null),
     // /project: 从 Telegram 把当前会话切到 desktop 项目目录(bot 原生会话)。
     projectSwitching: true,
     buildVendorOptions: (userId) => ({ telegramChatId: userId, source: 'telegram' }),
@@ -129,6 +133,8 @@ export function buildTelegramAdapter(
         lane: lane ? { provider, chatId: lane.chatId, threadId: lane.threadId } : null,
       };
     },
+    // 群里发言人已由 prepareAgentTurnText 的 `[发言人]` 行写明(含主人标记), 渠道说明不再重复。
+    channelNoteSourceFor: (event) => imChannelNoteSourceFromEvent(event, { omitSender: true }),
     prepareAgentTurnText: async (event) => {
       const lane = decodeTelegramLaneUserId(event.senderId);
       const replyBlock = event.replyContext
@@ -138,7 +144,11 @@ export function buildTelegramAdapter(
       if (!lane) {
         // DM: 无群窗口, 但人格块与引用注入(回复某条消息触发)同样生效。
         if (!replyBlock && !persona) return null;
-        return { agentText: `${persona}${replyBlock}${event.text}` };
+        return {
+          agentText: `${persona}${replyBlock}${event.text}`,
+          contextSnapshot: captureImContext({ replyPrefix: replyBlock, replyMessageCount: 1 }),
+          ...(event.replyContext ? { replyContext: event.replyContext } : {}),
+        };
       }
       const { messageId: triggerMessageId } = decodeTelegramMessageId(event.messageId);
       // 一群一 lane: 窗口维度与会话维度重合((chat, topic) 即 lane), 游标单条 —
@@ -170,6 +180,13 @@ export function buildTelegramAdapter(
       // 顺序: 群窗口(较远的背景) → 引用块(直接相关) → 发言人 → 用户正文。
       return {
         agentText: `${persona}${ambientBlock}${assembly.prefix}${replyBlock}${speakerLine}${event.text}`,
+        contextSnapshot: captureImContext({
+          groupPrefix: assembly.prefix,
+          groupMessageCount: assembly.messageCount,
+          replyPrefix: replyBlock,
+          replyMessageCount: 1,
+        }),
+        ...(event.replyContext ? { replyContext: event.replyContext } : {}),
         commit: async () => {
           await assembly.commit();
         },

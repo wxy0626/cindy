@@ -1,3 +1,4 @@
+import type { ImContextSnapshot } from '../../../shared/imMessageSource';
 /**
  * main/im/shared/types.ts
  * ---------------------------------------------------------------------------
@@ -26,6 +27,7 @@ import type {
   TurnPermissionPolicy,
 } from '@cindy/maker-core';
 import type { GroupHistoryAccessScope } from './groupHistoryAccess';
+import type { ImChannelNoteSource } from './channelNote';
 import type { ImOutputDriver, IMAttachment, IMMessageEvent, IMUnsupportedEntry, TextChannelIM } from '@cindy/im';
 
 /** 渠道名 — 同时是 sessions.source 列值与 IdentityKey.channel 的值域。 */
@@ -136,7 +138,13 @@ export interface ImSessionNamespace {
  * 渠道适配器 — 编排层所有渠道差异的唯一注入点。
  */
 export interface ImChannelAdapter {
+  /** Resolve an authenticated private notification topic before any default-session or command routing. */
+  resolveNotificationReply?: (event: IMMessageEvent) => Promise<string | null>;
+  notificationReplyText?: { unavailable: string; commands: string };
+
   channel: ImChannelName;
+  /** Selected display service; defaults to channel without changing routing identity. */
+  messageSourceIm?(): string;
   /** 所有渠道共有的文本收发能力；富卡片能力由 output.kind 显式收窄。 */
   im: TextChannelIM;
   /** Terminal output strategy; existing channels use rich-card. */
@@ -144,11 +152,14 @@ export interface ImChannelAdapter {
   config: ImOrchestratorConfig;
   ui: ImUiTextPack;
   sessions: ImSessionNamespace;
-  /** "已收到" ack 的 emoji(feishu: emoji_type 枚举名;slack: emoji 名)。 */
+  /** 处理中表情的基础款（Feishu 使用原生 emoji_type 名）。 */
   processingEmoji: string;
+  /** 用原消息表情表示排队，不另发排队提示；缺省保留文字提示。 */
+  queuedEmoji?: string;
+  /** 没有可撤销状态反馈的渠道静默排队，避免永久残留提示。 */
+  silentQueue?: boolean;
   /**
-   * turn 终态时把 ack 表情替换成结果表情(官方 Telegram bot 习惯:
-   * 成功 👍 / 失败 👎)。返回 null = 该终态不放表情(按默认撤掉 ack);
+   * turn 终态时可将状态替换为错误表情。返回 null = 该终态不放表情(撤掉 ack);
    * 缺省 = 全部按默认撤掉。仅真正跑过的 turn 生效, pre-dispatch 失败不放。
    */
   terminalReactionEmoji?(kind: 'done' | 'aborted' | 'error'): string | null;
@@ -185,7 +196,7 @@ export interface ImChannelAdapter {
   handleTextInteraction?(
     userId: string,
     request: InteractionRequest,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; sharedPermission?: import('../../maker-ipc/sharedPermission').SharedPermission },
   ): Promise<InteractionDecision>;
   /**
    * Cancel a channel-owned text interaction when the central route times out,
@@ -210,6 +221,10 @@ export interface ImChannelAdapter {
    * 游标推进的时机锚点; 受理前失败不调用, 这批上下文下次仍会进入 prompt。
    * 返回 null = 不改写。钩子抛错按"不改写"降级, 不阻断消息。
    *
+   * contextSnapshot: 从本次实际使用的、过滤后的前缀提取的可展示文本。
+   * 共享 runner 保存到用户消息元数据；不要传入 persona、渠道指令或过滤前原文。
+   * 不提供就表示没有附带上下文，不从用户正文或实时历史反推。
+   *
    * contextAttachments: 上下文附带的附件(群历史里的图片/文件) —— 只拼进
    * 模型消息(buildImUserMessage 的 image/file block), **不落库、不进
    * transcript**(它们不是触发用户发的)。与用户自己 attachments 的语义边界
@@ -217,6 +232,12 @@ export interface ImChannelAdapter {
    */
   prepareAgentTurnText?(event: IMMessageEvent): Promise<{
     agentText: string;
+    contextSnapshot?: ImContextSnapshot;
+    /**
+     * agentText 里实际交给模型的被回复消息投影(过滤后的占位也算)。Auto 审阅只用它,
+     * 不读 event.replyContext 原值 —— 审阅器看到的引用不得多于模型看到的。
+     */
+    replyContext?: IMMessageEvent['replyContext'];
     contextAttachments?: IMAttachment[];
     commit?: () => void | Promise<void>;
   } | null>;
@@ -240,6 +261,14 @@ export interface ImChannelAdapter {
   ): boolean;
   /** Telegram 每轮的群历史检索授权；其它渠道不实现即 fail closed。 */
   groupHistoryAccessFor?(event: IMMessageEvent): GroupHistoryAccessScope | undefined;
+  /**
+   * 本条消息的 `[渠道说明]` 来源事实（只进模型正文, 见 channelNote.ts）。
+   * 缺省按入站事件通用推断（imChannelNoteSourceFromEvent）; 渠道有更准确的
+   * 群 id / 群名, 或已在正文别处写了发言人时覆盖。返回 null = 本条不写说明。
+   */
+  channelNoteSourceFor?(
+    event: IMMessageEvent,
+  ): ImChannelNoteSource | null | Promise<ImChannelNoteSource | null>;
 }
 
 // ── UI 文案包 ─────────────────────────────────────────────────────────────────

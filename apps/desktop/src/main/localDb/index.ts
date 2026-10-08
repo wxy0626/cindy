@@ -26,7 +26,7 @@
 import type Database from 'better-sqlite3';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { app, dialog, BrowserWindow } from 'electron';
-import path from 'node:path';
+import { isCindyPersonalRuntime } from '../cindy-make/versionRuntimeIdentity.js';
 import fs from 'node:fs';
 import { BRAND_IDENTITY } from '@cindy/maker-shared/brand-identity';
 
@@ -45,7 +45,7 @@ import { reconcileKnownEquivalentMigrationHashes } from './schemaDriftCompatibil
 import { cleanupStaleOrcaLeadIndex, hasStaleOrcaLeadIndex } from './orcaStaleIndexCleanup';
 import { reconcileStrandedOrcaLeads } from './orcaStrandedLeadReconcile';
 import { initializeCodexHistoryPromptState } from './codexHistoryPromptInit';
-import { dialogueWorkspaceRootDir } from './dialogueWorkspace';
+import { dialogueWorkspaceRoots } from './dialogueWorkspace';
 import { repairManagedDialogueWorkspaceSessions } from './managedDialogueWorkspaceRepair';
 import * as schema from './schema';
 import { loadSqliteVec, resetSqliteVecState } from './sqliteVecLoader';
@@ -172,18 +172,7 @@ export async function ensureReady(userId: string): Promise<EnsureReadyResult> {
   }
 
   const filePath = dbPath(userId);
-  // 存量播种：老版本可能在各自区域目录攒过会话库（local-v1 免登录档案、云账号库）。
-  // 切换到共享根后若不搬，用户升级会看到本机会话/项目消失。覆盖所有 owner，
-  // 幂等 + best-effort，失败只记日志不阻断启动。
-  try {
-    seedSessionDbSharedRoot(app.getPath('userData'), BRAND_IDENTITY.dbFilePrefix);
-    migrateToSharedConversationDb(dbDir(userId), filePath, BRAND_IDENTITY.dbFilePrefix);
-  } catch (error) {
-    log.warn('session db shared root seeding failed (non-fatal)', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-  const passiveSharedUserData = !app.isPackaged && process.env.XDT_PASSIVE_SHARED_USER_DATA === '1';
+  const passiveSharedUserData = (isCindyPersonalRuntime() && fs.existsSync(filePath)) || (!app.isPackaged && process.env.XDT_PASSIVE_SHARED_USER_DATA === '1');
   // A packaged release may be launched while a shared passive dev instance is still
   // open.  The passive reader lease must continue to block schema writes, but an
   // already-compatible database does not need any startup DDL; let the release use
@@ -442,7 +431,9 @@ export async function ensureReady(userId: string): Promise<EnsureReadyResult> {
   }
 
   try {
-    const repaired = repairManagedDialogueWorkspaceSessions(db, dialogueWorkspaceRootDir());
+    const repaired = dialogueWorkspaceRoots().reduce(
+      (count, root) => count + repairManagedDialogueWorkspaceSessions(db, root), 0,
+    );
     if (repaired > 0) {
       log.info(
         JSON.stringify({

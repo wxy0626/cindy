@@ -7,20 +7,14 @@
  */
 
 const urlParams = new URLSearchParams(window.location.search);
+const isRemoteDesktopViewer = urlParams.get('remoteDesktopViewer') === '1';
 const isResourceUsageWindow = urlParams.get('resourceUsageWindow') === '1';
 const isSidebarWindow = urlParams.get('sidebarWindow') === '1';
 const ghostPanelWindowId = urlParams.get('ghostPanelWindow');
 
-// 启动分段打点（2026-09-12 优化轮）：uptime→gate ready 稳定 ~43s 且与 vite 层
-// 优化无关，这里从模块图分发入口开始打点，分解「模块求值 / App 图加载 / gate
-// 等待」各段耗时。debug 级别，生产行为零变化。
-window.electronAPI?.logToMain?.(
-  'debug',
-  'renderer/boot',
-  `entry-start uptimeMs=${Math.round(performance.now())}`,
-);
-
-void (isResourceUsageWindow
+void (isRemoteDesktopViewer
+  ? import('./remote-desktop-viewer-entry')
+  : isResourceUsageWindow
   ? import('./resource-usage-entry')
   : isSidebarWindow
     ? import('./sidebar-window-entry')

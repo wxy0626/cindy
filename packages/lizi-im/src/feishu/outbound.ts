@@ -616,8 +616,12 @@ type SendTarget =
  * 不到, 以「流式建卡」为回合锚点领取点在本编排下成立: agent turn 恒以流式卡
  * 开场, 一次性回复(slash 提示等)则一条消息领取一次。
  */
-function resolveSendTarget(userId: string, opts?: { advanceRound?: boolean }): SendTarget | null {
+function resolveSendTarget(userId: string, opts?: { advanceRound?: boolean; threadTs?: string }): SendTarget | null {
   const lane = decodeLaneUserId(userId);
+  if (!lane && opts?.threadTs) {
+    if (!opts.threadTs.startsWith('om_')) throw new Error('Invalid Feishu reply message id');
+    return { kind: 'reply', messageId: opts.threadTs, replyInThread: true };
+  }
   if (!lane) return { kind: 'open_id', id: userId };
 
   const state = laneAnchors.get(userId) ?? {
@@ -658,7 +662,7 @@ async function createMessage(
   msgType: string,
   content: string,
   uuid?: string,
-): Promise<{ messageId: string }> {
+): Promise<{ messageId: string; chatId?: string }> {
   const c = ensureClient();
   if (target.kind === 'reply') {
     const res = await c.im.v1.message.reply({
@@ -680,10 +684,15 @@ async function createMessage(
   });
   const id = res.data?.message_id ?? '';
   if (!id) throw new Error('[feishu/outbound] create: no message_id in response');
-  return { messageId: id };
+  return { messageId: id, chatId: res.data?.chat_id };
 }
 
-function requireSendTarget(userId: string, opts?: { advanceRound?: boolean }): SendTarget {
+/** Notification receipt used by the host to link replies to the originating session. */
+export async function sendNotification(userId: string, markdown: string): Promise<{ messageId: string; chatId?: string }> {
+  return createMessage({ kind: 'open_id', id: userId }, 'interactive', JSON.stringify(buildInteractiveCardV1({ body: markdown, buttons: [] })));
+}
+
+function requireSendTarget(userId: string, opts?: { advanceRound?: boolean; threadTs?: string }): SendTarget {
   const target = resolveSendTarget(userId, opts);
   if (!target) {
     throw new Error(
@@ -740,8 +749,8 @@ function ensureClient(): Lark.Client {
 
 // ── basic text ────────────────────────────────────────────────────────────────
 
-export async function sendText(userId: string, text: string): Promise<{ messageId: string }> {
-  return createMessage(requireSendTarget(userId), 'text', JSON.stringify({ text }));
+export async function sendText(userId: string, text: string, opts?: { threadTs?: string }): Promise<{ messageId: string }> {
+  return createMessage(requireSendTarget(userId, opts), 'text', JSON.stringify({ text }));
 }
 
 /** 直接回复某条消息(非 owner 群 @ 的礼貌回应等 — 不走 lane 锚点)。 */
@@ -1040,17 +1049,19 @@ export async function addReaction(messageId: string, emojiType: string): Promise
 
 /**
  * 撤销之前 addReaction 返回的 reaction_id 对应的表情。
- * 失败 swallow,因为这是 ack 的清理动作,不应影响 turn 结束流程。
+ * 失败向调用方抛出，让状态切换保留原 token；终态由编排层尽力清理。
  */
 export async function removeReaction(messageId: string, reactionId: string): Promise<void> {
-  const log = getLog();
   try {
-    await ensureClient().im.v1.messageReaction.delete({
+    const response = await ensureClient().im.v1.messageReaction.delete({
       path: { message_id: messageId, reaction_id: reactionId },
     });
+    const rejected = feishuBusinessRejectReason(response);
+    if (rejected) throw new Error(`removeReaction failed: ${rejected}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    log.warn(`[feishu/outbound] removeReaction failed (non-fatal): ${msg}`);
+    getLog().warn(`[feishu/outbound] removeReaction failed (non-fatal): ${msg}`);
+    throw err;
   }
 }
 
@@ -1113,7 +1124,7 @@ export function resolveCardLane(messageId: string, chatId: string): string | nul
 export async function sendInteractive(
   userId: string,
   spec: InteractiveCardSpec,
-  opts?: { deliverToOwnerDm?: boolean; ownerDmNote?: string },
+  opts?: { deliverToOwnerDm?: boolean; ownerDmNote?: string; threadTs?: string },
 ): Promise<{ messageId: string }> {
   // 授权卡改投宿主私聊(群 lane 专用语义): 群里的授权卡只有 owner 能答且
   // 消不掉。owner 未知时保持原 lane 投递, 不吞掉这次交互(telegram 同口径)。
@@ -1127,7 +1138,7 @@ export async function sendInteractive(
   }
   const card = buildInteractiveCardV1(spec);
   const result = await createMessage(
-    requireSendTarget(userId),
+    requireSendTarget(userId, opts),
     'interactive',
     JSON.stringify(card),
   );
@@ -1170,9 +1181,10 @@ export async function patchCardRaw(messageId: string, cardJson: unknown): Promis
 export async function sendCardRaw(
   userId: string,
   cardJson: unknown,
+  opts?: { threadTs?: string },
 ): Promise<{ messageId: string }> {
   return createMessage(
-    requireSendTarget(userId, { advanceRound: true }),
+    requireSendTarget(userId, { advanceRound: true, ...opts }),
     'interactive',
     JSON.stringify(cardJson),
   );
@@ -1241,8 +1253,9 @@ export async function sendFile(
   userId: string,
   absPath: string,
   displayName?: string,
+  opts?: { threadTs?: string },
 ): Promise<FeishuSendFileResult> {
-  const target = resolveSendTarget(userId);
+  const target = resolveSendTarget(userId, opts);
   if (!target) {
     getLog().error(`[feishu/outbound] sendFile: no reply anchor for topic lane ...${userId.slice(-8)}`);
     return { ok: false, reason: 'SEND_FAIL' };

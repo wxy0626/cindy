@@ -285,6 +285,110 @@ function makeAutoReplyProcess(methods?: string[], emitSpawn = true) {
   return process;
 }
 
+describe('nodeRuntimeBroker protected manual input', () => {
+  function manualHarness() {
+    const ghost = fakeGhost();
+    ghost.manifest.node!.entries = ['node/account.cjs'];
+    ghost.manifest.node!.secretBindings = [{ key: 'manual_token', label: 'Manual Token',
+      entry: 'node/account.cjs', methods: ['account/import'] }];
+    const abort = new AbortController();
+    let saved: string | null = null;
+    let sessionId: string | null = 'task';
+    let child: FakeNodeProcess;
+    const spawnProcess = vi.fn(() => { child = makeAutoReplyProcess(); return child; });
+    const readSecret = vi.fn(() => saved);
+    const openSecretInput = vi.fn(async (input: import('../nodeSecretSetup').NodeSecretSetupInput) => {
+      input.assertCurrent(); saved = 'synthetic-manual-secret'; return true;
+    });
+    const log = { info: vi.fn(), warn: vi.fn() };
+    const secretSaved = vi.fn(() => saved !== null);
+    const broker = new GhostNodeRuntimeBroker({ getGhost: () => ghost, spawnProcess,
+      getCallSignal: (_, id) => id === 'live-call' ? abort.signal : null,
+      getCallSessionId: () => sessionId, readSecret, secretSaved,
+      openSecretInput, log });
+    const request = { type: 'node-request', entry: 'node/account.cjs', method: 'account/import',
+      params: {}, callId: 'live-call', cancelWithCall: true, promptSecrets: true };
+    return { ghost, broker, get child() { return child; }, request, abort, readSecret, secretSaved, openSecretInput, spawnProcess, log,
+      changeSession: () => { sessionId = 'another-task'; } };
+  }
+
+  it.each([false, true])('leaves legacy manual credentials unchanged (saved: %s)', async saved => {
+    const h = manualHarness();
+    h.secretSaved.mockImplementation(() => { throw new Error('New card state must not be probed'); });
+    h.readSecret.mockReturnValue(saved ? 'synthetic-existing' : null);
+    try {
+      const result = await h.broker.handleRequest('node-ghost', {
+        ...h.request, callId: 'old-metadata', cancelWithCall: undefined, promptSecrets: undefined,
+      });
+      expect(result).toMatchObject(saved ? { ok: true } : { ok: false, errorCode: 'PERMISSION_DENIED' });
+      expect(h.secretSaved).not.toHaveBeenCalled();
+      expect(h.openSecretInput).not.toHaveBeenCalled();
+      if (saved) expect(h.child.received[0]).toMatchObject({ cindy: { secrets: { manual_token: 'synthetic-existing' } } });
+    } finally { h.broker.destroyAll(); }
+  });
+
+  it('waits for the card before spawning and privately injects its saved value', async () => {
+    const h = manualHarness();
+    h.openSecretInput.mockImplementationOnce(async input => {
+      expect(h.spawnProcess).not.toHaveBeenCalled();
+      expect(h.readSecret).not.toHaveBeenCalled();
+      expect(input).toMatchObject({ entry: 'node/account.cjs', method: 'account/import', force: true });
+      h.readSecret.mockReturnValue('synthetic-manual-secret');
+      return true;
+    });
+    try {
+      const result = await h.broker.handleRequest('node-ghost', h.request);
+      expect(result).toMatchObject({ ok: true });
+      expect(h.child.received[0]).toMatchObject({ params: {},
+        cindy: { secretInputCompleted: true, secrets: { manual_token: 'synthetic-manual-secret' } } });
+      expect(JSON.stringify(result)).not.toContain('synthetic-manual-secret');
+      expect(JSON.stringify(h.log)).not.toContain('synthetic-manual-secret');
+    } finally { h.broker.destroyAll(); }
+  });
+
+  it('can collect a missing optional binding without changing global plugin setup', async () => {
+    const h = manualHarness(); h.ghost.manifest.setup = { requires: [] };
+    try {
+      expect(await h.broker.handleRequest('node-ghost', { ...h.request, promptSecrets: false }))
+        .toMatchObject({ ok: true });
+      expect(h.openSecretInput).toHaveBeenCalledWith(expect.objectContaining({ force: false }));
+      expect(h.ghost.manifest.setup).toEqual({ requires: [] });
+    } finally { h.broker.destroyAll(); }
+  });
+
+  it('allows only one pending password card per call and releases it after cancellation', async () => {
+    const h = manualHarness();
+    let release!: (value: boolean) => void;
+    h.openSecretInput.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    try {
+      const pending = h.broker.handleRequest('node-ghost', h.request);
+      await vi.waitFor(() => expect(h.openSecretInput).toHaveBeenCalledTimes(1));
+      expect(await h.broker.handleRequest('node-ghost', h.request)).toMatchObject({ ok: false, errorCode: 'RATE_LIMITED' });
+      release(false);
+      expect(await pending).toMatchObject({ ok: false, errorCode: 'CANCELLED' });
+      expect(await h.broker.handleRequest('node-ghost', h.request)).toMatchObject({ ok: true });
+    } finally { h.broker.destroyAll(); }
+  });
+
+  it.each(['cancel', 'owner', 'package', 'missing-method', 'background'])('refuses %s before Node dispatch', async failure => {
+    const h = manualHarness();
+    h.openSecretInput.mockImplementationOnce(async input => {
+      if (failure === 'cancel') return false;
+      if (failure === 'owner') h.changeSession();
+      if (failure === 'package') h.ghost.manifest.version = '2.0.0';
+      input.assertCurrent(); return true;
+    });
+    const request = { ...h.request,
+      ...(failure === 'missing-method' ? { method: 'account/status' } : {}),
+      ...(failure === 'background' ? { callId: undefined } : {}) };
+    try {
+      expect(await h.broker.handleRequest('node-ghost', request)).toMatchObject({ ok: false });
+      expect(h.spawnProcess).not.toHaveBeenCalled();
+      expect(h.readSecret).not.toHaveBeenCalled();
+    } finally { h.broker.destroyAll(); }
+  });
+});
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
@@ -1766,7 +1870,75 @@ describe('nodeRuntimeBroker · 意外死亡诊断(2026-07-26)', () => {
     const message = (result as { message?: string }).message ?? '';
     expect(message).toContain('[REDACTED]');
     expect(message).not.toContain('sk-secret-token-12345');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('sk-secret-token-12345');
   });
+
+  it.each([
+    'whole', 'split', 'truncated-log', 'partial-at-exit', 'after-stop', 'after-drain',
+    'partial-newline', 'partial-space', 'partial-single-chunk', 'ordinary-after-injection',
+  ] as const)(
+    'OAuth stderr %s 在主日志及退出诊断中都不泄露令牌', async (scenario) => {
+      const ghost = fakeGhost();
+      ghost.manifest.network = { hosts: ['example.test'], secrets: [{
+        key: 'mail_account', label: 'Mail', source: 'oauth',
+        inject: { header: 'Authorization', format: 'Bearer {value}' },
+        oauth: { authorizeUrl: 'https://example.test/auth', tokenUrl: 'https://example.test/token', scopes: ['mail'] },
+      }] };
+      ghost.manifest.node!.secretBindings = [{ key: 'token', label: 'Mail', methods: ['slow'], oauthSecret: 'mail_account' }];
+      const tokens = ['ya29.fake-access-token-account-A-abcdefgh', 'ya29.fake-access-token-account-B-ijklmnop'];
+      let child!: FakeNodeProcess;
+      const log = { info: vi.fn(), warn: vi.fn(), debug: vi.fn() };
+      const sendToGhost = vi.fn();
+      const broker = new GhostNodeRuntimeBroker({
+        getGhost: () => ghost, log, sendToGhost,
+        resolveOauthSecret: async (_ghost, _key, account) => ({ ok: true, accessToken: tokens[account === 'b' ? 1 : 0] }),
+        spawnProcess: () => (child = new FakeNodeProcess()),
+      });
+      try {
+        const first = broker.handleRequest('node-ghost', { ...rpcRequest('slow'), authAccount: 'a' });
+        const second = broker.handleRequest('node-ghost', { ...rpcRequest('slow'), authAccount: 'b' });
+        await vi.waitFor(() => expect(child?.received).toHaveLength(2));
+        const token = tokens[0];
+        if (scenario === 'whole' || scenario === 'truncated-log') {
+          child.stderr.write(`${scenario === 'truncated-log' ? 'x'.repeat(4050) : ''}Error: ${token} ${tokens[1]}\n`);
+        } else if (scenario === 'partial-single-chunk') {
+          child.stderr.write(`Error: ${token.slice(0, 18)}\n`);
+        } else if (scenario === 'ordinary-after-injection') {
+          child.stderr.write('ordinary diagnostic after receiving credentials\n');
+        } else if (scenario === 'after-drain') {
+          child.emit('exit', 1, null);
+          // 不发 end，让生产的有界 drain 兜底先结算、清理令牌集合。
+          await Promise.all([first, second]);
+          child.stderr.write(`Error: ${token}\n`);
+        } else {
+          child.stderr.write(`Error: ${token.slice(0, 18)}`);
+          if (scenario === 'after-stop') broker.stop('node-ghost');
+          if (scenario === 'partial-newline' || scenario === 'partial-space') {
+            child.stderr.write(scenario === 'partial-newline' ? '\n' : ' ');
+          } else if (scenario !== 'partial-at-exit') {
+            child.stderr.write(`${token.slice(18)} ${tokens[1]}\n`);
+          }
+        }
+        if (scenario !== 'after-drain') child.emit('exit', 1, null);
+        child.stderr.end();
+        const results = await Promise.all([first, second]);
+        const allOutput = JSON.stringify([log.warn.mock.calls, log.info.mock.calls, log.debug.mock.calls, sendToGhost.mock.calls, results]);
+        // 同时检查 logger 真正收到的参数，不能只 stringify mock 函数本身。
+        const stderrText = log.warn.mock.calls
+          .filter(([message]) => message === 'ghost node stderr')
+          .map(([, meta]) => meta.text).join('');
+        for (const secret of tokens) {
+          expect(allOutput).not.toContain(secret);
+          expect(stderrText).not.toContain(secret);
+        }
+        expect(allOutput).not.toContain(token.slice(0, 18));
+        expect(allOutput).not.toContain('ordinary diagnostic after receiving credentials');
+        if (scenario !== 'after-stop' && scenario !== 'after-drain') expect(allOutput).toContain('[REDACTED]');
+      } finally {
+        broker.destroyAll();
+      }
+    },
+  );
 });
 
 describe('nodeRuntimeBroker · 权限与协议', () => {
@@ -1781,6 +1953,104 @@ describe('nodeRuntimeBroker · 权限与协议', () => {
       errorCode: 'PERMISSION_DENIED',
     });
     expect(spawnProcess).not.toHaveBeenCalled();
+  });
+
+  it('OAuth 注入按插件与显式账号解析，且不读取静态 Secret', async () => {
+    const ghost = fakeGhost();
+    ghost.manifest.network = { hosts: ['example.test'], secrets: [{
+      key: 'mail_account', label: 'Mail', source: 'oauth',
+      inject: { header: 'Authorization', format: 'Bearer {value}' },
+      oauth: { authorizeUrl: 'https://example.test/auth', tokenUrl: 'https://example.test/token', scopes: ['mail'] },
+    }] };
+    ghost.manifest.node!.secretBindings = [{
+      key: 'access_token', label: 'Mail', methods: ['mail/run'], oauthSecret: 'mail_account',
+    }];
+    let child!: ReturnType<typeof makeAutoReplyProcess>;
+    const readSecret = vi.fn();
+    const resolveOauthSecret = vi.fn(async (_id: string, _key: string, account?: string) => ({
+      ok: true as const, accessToken: `fake-token-${account ?? 'default'}`,
+    }));
+    const broker = new GhostNodeRuntimeBroker({
+      getGhost: () => ghost, readSecret, resolveOauthSecret,
+      // OAuth 解析先异步完成，再创建假进程，避免 spawn 在宿主监听前发出。
+      spawnProcess: () => (child = makeAutoReplyProcess()),
+    });
+    try {
+      await broker.handleRequest('node-ghost', { ...rpcRequest('mail/run'), authAccount: 'account-a' });
+      await broker.handleRequest('node-ghost', { ...rpcRequest('mail/run'), authAccount: 'account-b' });
+      await broker.handleRequest('node-ghost', rpcRequest('mail/run'));
+      await broker.handleRequest('node-ghost', rpcRequest('mail/schema'));
+      expect(resolveOauthSecret.mock.calls).toEqual([
+        ['node-ghost', 'mail_account', 'account-a'],
+        ['node-ghost', 'mail_account', 'account-b'],
+        ['node-ghost', 'mail_account', undefined],
+      ]);
+      expect(readSecret).not.toHaveBeenCalled();
+      expect(child.received[0]).toMatchObject({ cindy: { secrets: { access_token: 'fake-token-account-a' } } });
+      expect(child.received[1]).toMatchObject({ cindy: { secrets: { access_token: 'fake-token-account-b' } } });
+      expect(child.received[3]).not.toHaveProperty('cindy');
+    } finally { broker.destroyAll(); }
+  });
+
+  it('OAuth 无可用账号时不启动 Worker、不回退到静态凭据', async () => {
+    const ghost = fakeGhost();
+    ghost.manifest.network = { hosts: ['example.test'], secrets: [{
+      key: 'mail_account', label: 'Mail', source: 'oauth',
+      inject: { header: 'Authorization', format: 'Bearer {value}' },
+      oauth: { authorizeUrl: 'https://example.test/auth', tokenUrl: 'https://example.test/token', scopes: ['mail'] },
+    }] };
+    ghost.manifest.node!.secretBindings = [{
+      key: 'access_token', label: 'Mail', methods: ['mail/run'], oauthSecret: 'mail_account',
+    }];
+    const spawnProcess = vi.fn();
+    const readSecret = vi.fn();
+    const broker = new GhostNodeRuntimeBroker({
+      getGhost: () => ghost, readSecret, spawnProcess,
+      resolveOauthSecret: async () => ({ ok: false, error: 'NO_ACCOUNT' }),
+    });
+    const result = await broker.handleRequest('node-ghost', rpcRequest('mail/run'));
+    expect(result).toMatchObject({ ok: false, errorCode: 'PERMISSION_DENIED' });
+    expect(readSecret).not.toHaveBeenCalled();
+    expect(spawnProcess).not.toHaveBeenCalled();
+    broker.destroyAll();
+  });
+
+  it('已接收的悬空 OAuth 声明在运行时拒绝，不读取静态凭证或启动 Worker', async () => {
+    const ghost = fakeGhost();
+    ghost.manifest.node!.secretBindings = [{
+      key: 'access_token', label: 'Account', methods: ['run'], oauthSecret: 'future_account',
+    }];
+    const readSecret = vi.fn();
+    const resolveOauthSecret = vi.fn();
+    const spawnProcess = vi.fn();
+    const broker = new GhostNodeRuntimeBroker({ getGhost: () => ghost, readSecret, resolveOauthSecret, spawnProcess });
+    try {
+      expect(await broker.handleRequest('node-ghost', rpcRequest('run')))
+        .toMatchObject({ ok: false, errorCode: 'PERMISSION_DENIED' });
+      expect(readSecret).not.toHaveBeenCalled();
+      expect(resolveOauthSecret).not.toHaveBeenCalled();
+      expect(spawnProcess).not.toHaveBeenCalled();
+    } finally { broker.destroyAll(); }
+  });
+
+  it('OAuth 刷新跨越停用再启用时不把旧调用交给新 Worker', async () => {
+    const ghost = fakeGhost();
+    ghost.manifest.network = { hosts: ['example.test'], secrets: [{
+      key: 'mail_account', label: 'Mail', source: 'oauth',
+      inject: { header: 'Authorization', format: 'Bearer {value}' },
+      oauth: { authorizeUrl: 'https://example.test/auth', tokenUrl: 'https://example.test/token', scopes: ['mail'] },
+    }] };
+    ghost.manifest.node!.secretBindings = [{ key: 'access_token', label: 'Mail', methods: ['run'], oauthSecret: 'mail_account' }];
+    let finish!: (value: { ok: true; accessToken: string }) => void;
+    const token = new Promise<{ ok: true; accessToken: string }>((resolve) => { finish = resolve; });
+    const spawnProcess = vi.fn();
+    const broker = new GhostNodeRuntimeBroker({ getGhost: () => ghost, spawnProcess, resolveOauthSecret: () => token });
+    const request = broker.handleRequest('node-ghost', rpcRequest('run'));
+    broker.stop('node-ghost');
+    finish({ ok: true, accessToken: 'fake-token' });
+    expect(await request).toMatchObject({ ok: false, errorCode: 'PERMISSION_DENIED' });
+    expect(spawnProcess).not.toHaveBeenCalled();
+    broker.destroyAll();
   });
 
   it('只在清单绑定的方法中把 safeStorage 凭证注入 Worker 保留字段', async () => {
@@ -1805,7 +2075,7 @@ describe('nodeRuntimeBroker · 权限与协议', () => {
       method: 'mail/action',
       params: { action: 'search' },
       // main.js 自报的同名字段不可信；broker 必须忽略并重铸。
-      cindy: { secrets: { mail_code: 'attacker-value' } },
+      cindy: { secretInputCompleted: true, secrets: { mail_code: 'attacker-value' } },
     });
     expect(result).toMatchObject({ ok: true });
     expect(readSecret).toHaveBeenCalledWith('node-ghost', 'mail_code');
@@ -1814,6 +2084,7 @@ describe('nodeRuntimeBroker · 权限与协议', () => {
       params: { action: 'search' },
       cindy: { secrets: { mail_code: 'fake-secret-value' } },
     });
+    expect(child.received[0].cindy).not.toHaveProperty('secretInputCompleted');
 
     await broker.handleRequest('node-ghost', rpcRequest('account/status', {}));
     expect(readSecret).toHaveBeenCalledTimes(1);

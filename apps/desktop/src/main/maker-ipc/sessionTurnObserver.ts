@@ -1,4 +1,6 @@
 import type { Session } from '@cindy/maker-core';
+import { MANAGED_LLAMACPP_PROVIDER_ID } from '../../shared/llamaCpp.js';
+import { ensureManagedOllamaReadyForSession } from '../local-model-runtime/preflight.js';
 import { createLogger } from '../logger.js';
 import { throwIpcError } from '../utils/ipcValidate.js';
 import { getSessionProvider } from '../maker-host/session-provider-store.js';
@@ -7,6 +9,7 @@ import { describeModelRouteRejection } from '../maker-host/model-route-guard.js'
 import { SilentStopTurnLeaseGate, SessionTurnLeaseTracker } from './sessionTurnLease.js';
 
 export interface InstallSessionTurnObserverDeps {
+  readonly beforeLocalProviderStart?: (session: Session) => Promise<void>;
   readonly silentStopTurnLeaseGate: Pick<
     SilentStopTurnLeaseGate,
     'supersede' | 'schedule' | 'supersedeOwnedBy'
@@ -23,6 +26,7 @@ export function installSessionTurnObserver(deps: InstallSessionTurnObserverDeps,
   session.setTurnLifecycleObserver({
     beforeProviderStart: async (turnGeneration) => {
       if (session.remoteHostId) return;
+      await deps.beforeLocalProviderStart?.(session);
       // 每条本地 Session.send 都经过这一个 Main-owned 边界，包括 renderer、IM、
       // Goal、Learn、Hook 与 Scheduler。付费权限不能只挂在普通 IPC 发送事务上。
       const model = session.model;
@@ -48,6 +52,12 @@ export function installSessionTurnObserver(deps: InstallSessionTurnObserverDeps,
         if (verdict.kind === 'reject' && verdict.reason === 'explicit-source-unavailable') {
           throwIpcError('INVALID_PARAMS', describeModelRouteRejection(verdict.reason, model, getSessionProvider(session.id)));
         }
+      }
+      // Existing tasks must restore the managed service after a manual stop too.
+      // Reuse the common send boundary so IM/Goal/Scheduler get the same behavior.
+      const providerId = getSessionProvider(session.id);
+      if (providerId === MANAGED_LLAMACPP_PROVIDER_ID) {
+        await ensureManagedOllamaReadyForSession({ providerId, onlyIfStopped: true });
       }
       deps.silentStopTurnLeaseGate.supersede(session.id);
       // Keep Review's exact-instance liveness listener lazy. PID-only turn
@@ -75,6 +85,7 @@ export function installSessionTurnObserver(deps: InstallSessionTurnObserverDeps,
         // the bounded auto-resume decision runs. Its exact lease is either
         // replaced by the next provider generation or released by settle.
         const scheduled = deps.silentStopTurnLeaseGate.schedule(session.id, event, turnLeaseId);
+        if (scheduled) session.claimHostTurnContinuation(turnGeneration);
         if (!scheduled) {
           deps.log.debug('ignored duplicate silent-stop terminal for the current turn', {
             sessionId: session.id,

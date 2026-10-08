@@ -44,6 +44,26 @@ describe('稳定层:能力必须写进提示词', () => {
     enabled.capabilities.botModeEnabled = false;
     expect(buildBotStableTier(enabled)).not.toContain('routine_save');
   });
+  it('只给本机伙伴主任务讲它能管主人的任务,自动化另需挂载', () => {
+    const main = input();
+    main.capabilities.botModeEnabled = true;
+    main.capabilities.sessionControlEnabled = true;
+    const stable = buildBotStableTier(main);
+    expect(stable).toContain('你能看、能管主人的任务');
+    expect(stable).toContain('沿用当前任务的权限档与用户授权');
+    expect(stable).not.toContain('OWNER_TURN_REQUIRED');
+    expect(stable).not.toContain('TASK_OUT_OF_SCOPE');
+    expect(stable).toContain('add_workbench_project');
+    expect(stable).not.toContain('你能建普通自动化');
+    main.capabilities.automationEnabled = true;
+    expect(buildBotStableTier(main)).toContain('schedule_create');
+
+    expect(buildBotStableTier(input())).not.toContain('你能看、能管主人的任务');
+    main.capabilities.botModeEnabled = false;
+    expect(buildBotStableTier(main)).not.toContain('你能看、能管主人的任务');
+    expect(buildBotStableTier(main)).not.toContain('schedule_create');
+  });
+
   it('挂了 docs 就点名文档工具,并写清 PDF 要自检', () => {
     const stable = buildBotStableTier(
       input({
@@ -100,7 +120,7 @@ describe('稳定层:能力必须写进提示词', () => {
     );
     expect(all).toContain('你记得住事');
     expect(all).toContain('第一次明确说出一条稳定偏好');
-    expect(all).toContain('save_bot_skill');
+    expect(all).toContain('save_teammate_skill');
     expect(all).toContain('第一次验证完就');
     expect(all).toContain('开后台任务，也可以给伙伴发消息');
     expect(all).toContain('start_session_task');
@@ -118,7 +138,7 @@ describe('稳定层:能力必须写进提示词', () => {
     expect(all).not.toContain('list_tools');
 
     const none = buildBotStableTier(input());
-    expect(none).not.toContain('save_bot_skill');
+    expect(none).not.toContain('save_teammate_skill');
     expect(none).not.toContain('create_teammate');
     expect(none).not.toContain('make_pptx');
   });

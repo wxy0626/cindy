@@ -385,6 +385,16 @@ function deriveRouteProxySessionToken(task) {
     .digest('base64url');
 }
 
+// 受邀者(另一个账号)的托管会话(CINDY_PI_HOSTED.guest)：子代理同样不读本机用户的说明文件与技能。
+function hostedGuestSession() {
+  try {
+    const raw = process.env.CINDY_PI_HOSTED;
+    return !!raw && JSON.parse(raw).guest === true;
+  } catch (err) {
+    return false;
+  }
+}
+
 function readDepth() {
   const raw = process.env[DEPTH_ENV];
   const parsed = typeof raw === 'string' ? Number.parseInt(raw, 10) : 0;
@@ -402,6 +412,22 @@ function readPermissionSnapshot() {
   } catch (err) {
     return { mode: 'ask' };
   }
+}
+
+function copyManagedRipgrep(parentHome, childHome) {
+  const name = process.platform === 'win32' ? 'rg.exe' : 'rg';
+  const source = join(parentHome, 'bin', name);
+  try {
+    if (!statSync(source).isFile()) return;
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return;
+    throw error;
+  }
+  const destDir = join(childHome, 'bin');
+  mkdirSync(destDir, { recursive: true, mode: 0o700 });
+  const dest = join(destDir, name);
+  copyFileSync(source, dest);
+  try { chmodSync(dest, 0o755); } catch (err) { /* best effort on Windows */ }
 }
 
 function toolsFor(agent, permission) {
@@ -845,6 +871,7 @@ async function launchDurableRun(binary, tasks, runtime, taskId, mode, context, d
       };
     }),
   };
+  if (hostedGuestSession()) config.guestIsolation = true;
   const configPath = join(runDir, 'config.json');
   const durableRunnerFile = join(runDir, 'runner.cjs');
   try {
@@ -898,6 +925,9 @@ async function launchDurableRun(binary, tasks, runtime, taskId, mode, context, d
     try { chmodSync(permissionFile, 0o600); } catch (err) { /* best effort on Windows */ }
     mkdirSync(childConfigHome, { recursive: true, mode: 0o700 });
     copyFileSync(join(configHome, 'models.json'), join(childConfigHome, 'models.json'));
+    // Parent configHome is ephemeral. Durable children outlive it, so Pi native
+    // grep (PI_CODING_AGENT_DIR/bin) and the Cindy find override need a private copy.
+    copyManagedRipgrep(configHome, childConfigHome);
     // Inherit the parent's frozen rules, not the possibly edited native user
     // home. Child config outlives the parent when a durable run is detached.
     for (const name of ${JSON.stringify(PI_GLOBAL_CONTEXT_FILE_NAMES)}) {

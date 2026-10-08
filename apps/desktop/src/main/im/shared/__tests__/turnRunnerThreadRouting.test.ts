@@ -40,8 +40,14 @@ const mocks = vi.hoisted(() => ({
   takePendingInteractionsForSession: vi.fn(() => []),
   noteSilentStopUserSend: vi.fn(),
   noteSilentStopSessionReset: vi.fn(),
+  // 与生产同语义的最小替身: 统一停止按 id 取**当前** runtime 并中止(唯一的一次 abort)。
+  stopSessionTurnExplicitly: vi.fn(async (sessionId: string): Promise<void> => {
+    await (mocks.getMaker() as { getSession(id: string): { abort(): Promise<void> } | undefined })
+      .getSession(sessionId)
+      ?.abort();
+  }),
   onSilentStopSettled: vi.fn(() => vi.fn()),
-  rejectAllPending: vi.fn(),
+  rejectAllPending: vi.fn<(reason: string, owner?: symbol) => Array<{ requestId: string; messageId: string }>>(() => []),
   registerPending: vi.fn(),
   registerPendingExternal: vi.fn(),
   checkDestructiveToolCall: vi.fn(() => ({ destructive: false })),
@@ -83,6 +89,7 @@ vi.mock('../../../maker-ipc/register', () => ({
   takePendingInteractionsForSession: mocks.takePendingInteractionsForSession,
   noteSilentStopUserSend: mocks.noteSilentStopUserSend,
   noteSilentStopSessionReset: mocks.noteSilentStopSessionReset,
+  stopSessionTurnExplicitly: mocks.stopSessionTurnExplicitly,
   onSilentStopSettled: mocks.onSilentStopSettled,
 }));
 vi.mock('../pendingInteractions', () => ({
@@ -99,6 +106,7 @@ vi.mock('../fbotTitle', () => ({
   generateAndPersistFbotTitle: mocks.generateAndPersistFbotTitle,
 }));
 
+import { ImAccountScopeClosedError } from '../../accountBoundary';
 import { createTurnRunner, type ImTurnRunner } from '../turnRunner';
 import type { ImCardBuilders } from '../cardBuilders';
 import type { ImSessionRepo, ImSessionRow } from '../sessionRepo';
@@ -127,6 +135,7 @@ function makeSessionHarness(sessionId: string): SessionHarness {
   const session = {
     id: sessionId,
     agentKind: 'claude-code',
+    abort: vi.fn(async () => undefined),
     send,
     isTurnRunning: vi.fn(() => false),
     onEvent(listener: (event: AgentEvent) => void) {
@@ -272,6 +281,7 @@ beforeEach(() => {
   mocks.takePendingInteractionsForSession.mockReturnValue([]);
   // maker.createSession: 按 id 返回独立 harness(多 session 并行的关键)
   mocks.getMaker.mockReturnValue({
+    getSession: vi.fn((id: string) => harnesses.get(id)?.session),
     on: vi.fn(() => () => undefined),
     createSession: vi.fn(async (args: { id?: string }) => {
       const id = args.id ?? 'anon';
@@ -579,6 +589,24 @@ describe('turnRunner 自动任务转播(scheduler turn → 远程控制 thread)'
   const withOrigin = (e: Partial<AgentEvent>): AgentEvent =>
     ({ ...e, turnOrigin: schedulerOrigin }) as AgentEvent;
 
+  it('does not forward child output or settle on a child terminal during scheduled turns', async () => {
+    const stub = streamingHandleStub();
+    mocks.slackIm.startStreamingText.mockResolvedValue(stub);
+    const h = await attachAndIdle();
+    const child = { parentUuid: 'toolu_scheduled_child' };
+    h.emit(withOrigin({ type: 'text', data: { text: 'internal report', isFinal: true }, agentMeta: child }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.slackIm.startStreamingText).not.toHaveBeenCalled();
+    h.emit(withOrigin({ type: 'text', data: { text: 'public result', isFinal: true } }));
+    await vi.waitFor(() => expect(stub.replace).toHaveBeenCalled());
+    h.emit(withOrigin({ type: 'done', data: {}, agentMeta: child }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(stub.finalize).not.toHaveBeenCalled();
+    h.emit(withOrigin({ type: 'done', data: {} }));
+    await vi.waitFor(() => expect(stub.finalize).toHaveBeenCalledWith(expect.stringContaining('public result')));
+    expect(JSON.stringify(stub.replace.mock.calls)).not.toContain('internal report');
+  });
+
   it('scheduler stray 事件 → 在接管 thread 开转播卡,带任务名 + 步骤 + 流式结果', async () => {
     const stub = streamingHandleStub();
     mocks.slackIm.startStreamingText.mockResolvedValue(stub);
@@ -654,5 +682,105 @@ describe('turnRunner 自动任务转播(scheduler turn → 远程控制 thread)'
     expect(mocks.slackIm.startStreamingText).toHaveBeenCalledTimes(1);
     const finalBody = (stub.finalize.mock.calls.at(-1) as unknown[] | undefined)?.[0] as string;
     expect(finalBody).toContain('重试后成功');
+  });
+});
+
+describe('notification replies reuse the originating session without takeover', () => {
+  function origin(status = 'active') {
+    mocks.dbSelect.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{
+      ...rowFor('original-session'), sdkSessionId: 'original-sdk-session', status,
+    }] }) }) });
+  }
+  const reply = (scopeKey: string) => runner.runAgentTurn({
+    notificationSessionId: 'original-session', botContextId: 'T1', userId: 'U1',
+    userMessageId: `reply-${scopeKey}`, text: 'continue', attachments: [], scopeKey,
+  });
+
+  it('resumes the original SDK session without changing bindings or moving desktop interactions', async () => {
+    origin();
+    await reply('om_notification_a');
+    expect(fakeRepo.createSession).not.toHaveBeenCalled();
+    expect(mocks.bindingGet).not.toHaveBeenCalled();
+    expect(mocks.takePendingInteractionsForSession).not.toHaveBeenCalled();
+    expect(mocks.getMaker().createSession).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'original-session', resumeSessionId: 'original-sdk-session', vendorOptions: undefined,
+    }));
+    expect(harnesses.get('original-session')!.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('queues different topics on the same session and sends each final result to its own root', async () => {
+    origin();
+    await reply('om_notification_a');
+    await reply('om_notification_b');
+    const h = harnesses.get('original-session')!;
+    expect(h.send).toHaveBeenCalledTimes(1);
+    h.emit({ type: 'text', data: { text: 'first' } } as AgentEvent);
+    await vi.waitFor(() => expect(mocks.slackIm.startStreamingText).toHaveBeenCalledWith('U1', undefined, { threadTs: 'om_notification_a' }));
+    h.emit({ type: 'done' } as AgentEvent);
+    await vi.waitFor(() => expect(h.send).toHaveBeenCalledTimes(2));
+    h.emit({ type: 'text', data: { text: 'second' } } as AgentEvent);
+    await vi.waitFor(() => expect(mocks.slackIm.startStreamingText).toHaveBeenCalledWith('U1', undefined, { threadTs: 'om_notification_b' }));
+    h.emit({ type: 'done' } as AgentEvent);
+    expect(fakeRepo.createSession).not.toHaveBeenCalled();
+  });
+
+  it('revalidates a queued reply before invoking the original session', async () => {
+    origin();
+    await reply('om_notification_a');
+    const revalidateNotificationReply = vi.fn(async () => { throw new Error('bot changed'); });
+    await runner.runAgentTurn({
+      notificationSessionId: 'original-session', revalidateNotificationReply,
+      botContextId: 'T1', userId: 'U1', userMessageId: 'reply-b',
+      text: 'continue', attachments: [], scopeKey: 'om_notification_b',
+    });
+    expect(revalidateNotificationReply).not.toHaveBeenCalled();
+    const h = harnesses.get('original-session')!;
+    h.emit({ type: 'done' } as AgentEvent);
+    await vi.waitFor(() => expect(revalidateNotificationReply).toHaveBeenCalledTimes(1));
+    expect(h.send).toHaveBeenCalledTimes(1);
+    expect(fakeRepo.createSession).not.toHaveBeenCalled();
+  });
+
+  it('discards queued account-closure errors without sending through the replacement account', async () => {
+    origin();
+    await reply('om_notification_a');
+    await runner.runAgentTurn({
+      notificationSessionId: 'original-session',
+      revalidateNotificationReply: async () => { throw new ImAccountScopeClosedError(); },
+      botContextId: 'T1', userId: 'U1', userMessageId: 'reply-stale',
+      text: 'continue', attachments: [], scopeKey: 'om_notification_b',
+    });
+    mocks.slackIm.sendText.mockClear();
+    const h = harnesses.get('original-session')!;
+    h.emit({ type: 'done' } as AgentEvent);
+    await vi.waitFor(() => expect(mocks.logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('dispatchQueuedSend threw (queued path): [IM_NOT_READY]'),
+    ));
+    expect(h.send).toHaveBeenCalledTimes(1);
+    expect(mocks.slackIm.sendText).not.toHaveBeenCalledWith(
+      'U1', expect.anything(), expect.objectContaining({ threadTs: 'om_notification_b' }),
+    );
+    expect(mocks.slackIm.removeMessageReaction.mock.calls.some(([id]) => id === 'reply-stale')).toBe(false);
+  });
+
+  it('stopping a queued topic never aborts the active turn from another topic', async () => {
+    origin();
+    await reply('om_notification_a');
+    await reply('om_notification_b');
+    const h = harnesses.get('original-session')!;
+    await expect(runner.stopActiveTurn({
+      notificationSessionId: 'original-session', botContextId: 'T1', userId: 'U1', scopeKey: 'om_notification_b',
+    })).resolves.toEqual({ stopped: true, droppedQueued: 1 });
+    expect(h.session.abort).not.toHaveBeenCalled();
+    h.emit({ type: 'done' } as AgentEvent);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(h.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an archived origin rather than creating another session', async () => {
+    origin('archived');
+    await expect(reply('om_notification_a')).rejects.toThrow('Notification target session is unavailable');
+    expect(fakeRepo.createSession).not.toHaveBeenCalled();
+    expect(harnesses.size).toBe(0);
   });
 });

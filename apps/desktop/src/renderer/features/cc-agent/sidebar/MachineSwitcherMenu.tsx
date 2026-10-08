@@ -53,7 +53,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
+import { useDeviceLinkDeviceList } from '@/features/device-link/useDeviceLinkDeviceList';
+import { isMobilePlatform } from '@cindy/maker-shared/device-list';
 import {
   isMachineSelected,
   MACHINE_ALL,
@@ -63,8 +66,11 @@ import {
   useMachineSwitcher,
   useRemoteSessionBootstrapLoading,
 } from '@/features/device-link/useMachineSwitcher';
-import { MENU_CONTENT_CLASS, MENU_ITEM_CLASS } from './menuStyles';
-import type { FilterStatus } from '../hooks/useSidebarFilter';
+import { MENU_ITEM_CLASS, MENU_ROW_CLASS } from './menuStyles';
+
+/** 段头标题共用样式:与原「全部任务」标题一致(淡灰、hover 加深)。 */
+const SCOPE_TITLE_CLASS =
+  'text-sm font-medium text-[var(--sidebar-list-muted)] transition-colors hover:text-[var(--sidebar-nav-text)]';
 
 export function MachineSwitcherMenu({
   status,
@@ -78,6 +84,7 @@ export function MachineSwitcherMenu({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { devices, selectedDeviceId, select, toggle } = useMachineSwitcher();
+  const desktopTargets=(useDeviceLinkDeviceList()??[]).filter(device=>!device.isSelf&&!isMobilePlatform(device.platform));
   // 设备列表只看当前是否真有可展示的远程设备。hasRemote 还会把「目录已空、
   // raw 仍记着远端」算进去——那是旧逃生口,标题恒在后会误画出「所有 / 本机」。
   const showDeviceList = devices.length > 0;
@@ -112,9 +119,43 @@ export function MachineSwitcherMenu({
   };
 
   const triggerLabel = t('ccAgent.sidebar.machineSwitcher.menuTrigger');
-  // 机器范围 aria 文案(小箭头 trigger):「所有」/ 无远程 →「所有机器」;
-  // 本机 →「本机任务」;单设备 → 设备名;多选 → 「N 台机器」。
-  let triggerText = t('ccAgent.sidebar.machineSwitcher.allMachines');
+  const settingsItems = (
+    <>
+      {desktopTargets.length>0 && <DropdownMenuSub>
+        <DropdownMenuSubTrigger className={MENU_ROW_CLASS}><Monitor size={14}/><span>{t('remoteDesktop.title')}</span></DropdownMenuSubTrigger>
+        <DropdownMenuSubContent>{desktopTargets.map(device=><DropdownMenuItem
+          key={device.deviceId} className={MENU_ITEM_CLASS}
+          disabled={!device.online||!device.remoteControlEnabled||!device.controlEnabled}
+          onSelect={()=>void window.electronAPI.openRemoteDesktop({deviceId:device.deviceId,name:device.name}).catch(()=>toast.error(t('remoteDesktop.connectionError')))}>
+          <span>{device.name}</span>
+        </DropdownMenuItem>)}</DropdownMenuSubContent>
+      </DropdownMenuSub>}
+      <DropdownMenuItem
+        className={MENU_ITEM_CLASS}
+        onSelect={() => navigate('/settings?tab=remote-control')}
+      >
+        <MonitorCog size={14} strokeWidth={2} className="shrink-0 opacity-70" />
+        <span className="truncate">{t('ccAgent.sidebar.machineSwitcher.remoteSettings')}</span>
+      </DropdownMenuItem>
+      {onOpenDisplaySettings ? (
+        <DropdownMenuItem
+          className={MENU_ITEM_CLASS}
+          onSelect={() => {
+            // 等本菜单关完、当前指针事件走完再开显示设置,避免两个 Radix
+            // 菜单抢焦点、或同一次 click 被新菜单当成点外部而立刻关掉。
+            window.setTimeout(() => onOpenDisplaySettings(), 0);
+          }}
+        >
+          <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0 opacity-70" />
+          <span className="truncate">{t('ccAgent.sidebar.organizeSidebar')}</span>
+        </DropdownMenuItem>
+      ) : null}
+    </>
+  );
+
+  // 标题文字 = 当前范围(2026-08-13 定稿:标题回答"我正在看什么"):
+  // 「所有」/ 无远程 →「全部任务」;本机 →「本机任务」;单设备 → 设备名;多选 → 「N 台机器」。
+  let triggerText = t('ccAgent.sidebar.allSessions');
   if (showDeviceList && selectedDeviceId !== MACHINE_ALL) {
     if (selectedDeviceId.length === 1) {
       const only = selectedDeviceId[0];
@@ -160,53 +201,16 @@ export function MachineSwitcherMenu({
         >
           {t('ccAgent.sidebar.allSessions')}
         </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={!isActiveScope}
-          aria-label={t('ccAgent.sidebar.archivedTasks')}
-          onClick={() => onStatusChange('archived')}
-          className={scopeSegmentButtonClass(!isActiveScope)}
-        >
-          {t('ccAgent.sidebar.archivedTasks')}
-        </button>
-      </div>
-      {showDeviceList ? (
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={`${triggerLabel}: ${triggerText}`}
-              aria-busy={remoteSessionBootstrapLoading}
-              title={`${triggerLabel}: ${triggerText}`}
-              className={cn(
-                'flex h-6 w-6 shrink-0 items-center justify-center rounded-md',
-                'text-[var(--sidebar-list-muted)] transition-colors hover:bg-sidebar-item-hover hover:text-[var(--sidebar-nav-text)]',
-                'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--focus-ring)]',
-                // 菜单展开期间按钮保持加深(data-state=open):鼠标移进菜单后
-                // :hover 失效,按钮不能瞬间变淡、菜单像悬空没了锚点。
-                'data-[state=open]:text-[var(--sidebar-nav-text)]',
-              )}
-            >
-              {remoteSessionBootstrapLoading ? (
-                <span
-                  aria-hidden="true"
-                  className="inline-flex animate-spinner motion-reduce:animate-none"
-                >
-                  <Loader2 size={13} strokeWidth={1.8} />
-                </span>
-              ) : (
-                <ChevronDown size={14} strokeWidth={2} />
-              )}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            // 小箭头下方展开、左边贴齐按钮左边;空间不足时 Radix 自动翻到上方。
-            side="bottom"
-            align="start"
-            sideOffset={4}
-            className={cn(MENU_CONTENT_CLASS, 'min-w-48')}
-          >
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        // 标题下方展开、左边贴齐标题左边;空间不足时 Radix 自动翻到上方。
+        side="bottom"
+        align="start"
+        sideOffset={4}
+        className="min-w-48"
+      >
+        {showDeviceList ? (
+          <>
             <MachineMenuItem
               label={t('ccAgent.sidebar.machineSwitcher.allMachines')}
               selected={selectedDeviceId === MACHINE_ALL}
@@ -241,10 +245,12 @@ export function MachineSwitcherMenu({
                 />
               );
             })}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
-    </div>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        {settingsItems}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

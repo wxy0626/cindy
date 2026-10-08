@@ -20,6 +20,25 @@ Windows Android Studio SDK location; they do not need to be on `PATH`. The
 command does not rebuild the native app, so install the matching development
 package first when switching build identity.
 
+The three commands share Metro worktree, source, region and environment checks.
+`whoami` success proves identity consistency, not that the app has loaded a bundle
+or displayed a page (`pageVerified` remains false). `rebuild` reports installation
+separately from a launch request, and exits nonzero if launch is blocked, including
+when Metro is absent. `--build-only` does not require Metro. A successful launch
+request still requires fresh bundle logs and visible page verification.
+
+For the macOS external viewer, use `pnpm mobile:sim:open -- --udid <booted-udid>`.
+It resolves the app inside the selected Xcode toolchain (including `DEVELOPER_DIR`),
+opens Device Hub or Simulator by its absolute path, and exits nonzero on failure.
+Do not use AppleScript app-name lookup or `open -a Simulator`: Xcode 27 has Device
+Hub instead, and probing a missing name can display an application chooser.
+The pinned Expo CLI patch shares discovery and opening with this entrypoint.
+
+Use `mobile:sim:whoami -- --viewer --json` when handing off an external window.
+`viewer.running` checks the selected app process; `viewer.windowVerified: false`
+explicitly leaves visible-window acceptance to a screenshot/manual check. Without
+`--viewer`, a missing external viewer does not fail embedded/headless identity checks.
+
 ## Current Source Verification Contract
 
 Before anyone claims "the simulator is already showing the new version", they
@@ -58,8 +77,9 @@ pnpm mobile:sim:rebuild    # rebuild + reinstall the Global native dev app (nati
 
 `mobile:sim:start` and `mobile:sim:rebuild` default to `global`; the China
 Mainland build requires explicit `--region=cn`. Before touching
-Expo, all `mobile:sim:*` commands initialize the protocol submodule and repair
-the workspace dependencies when needed. The start/rebuild scripts also
+Expo, all `mobile:sim:*` commands check dependencies without installing or deleting
+anything. If the check fails, preserve the environment and explicitly run
+`pnpm install --frozen-lockfile` in the current worktree after diagnosing the failure. The start/rebuild scripts also
 synchronize
 the selected build region and the matching `config/endpoint*.json` bootstrap
 base into `apps/mobile/.env`. Local Xcode / Simulator builds also read the selected
@@ -190,8 +210,8 @@ Before asking someone to retest, confirm which native app is installed:
 
 ```bash
 xcrun simctl list devices booted
-pnpm mobile:sim:whoami                    # cn(default)
-pnpm mobile:sim:whoami -- --region=global # global
+pnpm mobile:sim:whoami                    # Global(default)
+pnpm mobile:sim:whoami -- --region=cn     # China Mainland
 ```
 
 `mobile:sim:whoami` resolves the selected identity from `app.config.js` plus the
@@ -205,9 +225,28 @@ fingerprint mismatch makes it exit nonzero. Expected version values come from
 - `version`
 - `ios.buildNumber`
 
-The native build number only proves native installation. For JavaScript
-freshness, the Metro terminal must show a new bundle/reload after the source
-change.
+The native build number only proves native installation. `whoami` also compares
+the installed `EXUpdates.bundle/fingerprint` with the current worktree's Expo
+Updates fingerprint, using the same development environment and workflow as the
+native build. A missing/unreadable fingerprint (`native-unknown`) or difference
+(`native-mismatch`) fails the check even when Metro is correct. Run ordinary
+`mobile:sim:rebuild` without `--clean`; it rejects incompatible cached artifacts
+and checks the built and installed app before handing it off. For example,
+switching worktrees with different `@expo/ui` versions can otherwise silently
+break native gradient parameters while the app still opens.
+
+For JavaScript freshness, the Metro terminal must show a new bundle/reload after
+the source change. Matching native fingerprints does not prove page rendering.
+
+If a freshly built app exits before loading JavaScript with `UIScene life cycle
+is required`, check the SDK 57 scene backport: `expo >= 57.0.23` and
+`expo-build-properties` with `ios.enableSceneSupport: true`. The repository enables
+this official path for Xcode 27 / iOS 27. Prebuild should generate an
+`EXExpoAppSceneDelegate` manifest for the main app and make AppDelegate conform to
+`ExpoReactNativeFactoryProvider`; it must no longer create the legacy window.
+This native migration changes the runtime fingerprint and requires a new native
+build. Verify cold/warm links and background/foreground behavior as well as
+startup; do not mask it with a JavaScript workaround.
 
 ## Environment And Login
 
@@ -376,6 +415,31 @@ Keyboard covers the composer
 : Reproduce with the software keyboard enabled, then inspect `KeyboardAvoidingView`
 behavior, safe-area insets, and composer bottom spacing together. Do not validate
 keyboard layout with only the hardware keyboard.
+
+## Android Rendering Performance
+
+- Record the running AVD's actual RAM, GPU backend, CPU count, resolution,
+  installed build, source label, and uptime. `config.ini` can differ from the
+  running emulator's command-line overrides (`hardware-qemu.ini`).
+- First repeat a fixed scroll in Android Settings as an environment control.
+  If it also stalls, save `dumpsys gfxinfo`, memory/swap counters and a Perfetto
+  trace before investigating the app. Cold boot the same AVD without loading or
+  saving a snapshot, preserve user data, and repeat the control with the same
+  hardware settings. Do not attribute this recovery to an application patch.
+- For the app, verify the updated bundle was actually loaded after restarting
+  Metro through `mobile:sim:start`. A development client can continue running
+  cached code after Metro exits. Focus/page assertions must pass before each
+  scripted interaction; an aborted sequence is not a performance sample.
+- Warm each version, repeat the same interaction at least three times, and keep
+  builds, animation settings and simulator configuration identical. Do not run
+  builds, type checks or tests concurrently with sampling. Record frame count,
+  missed-deadline count and frame-time percentiles together: adding a native
+  exit animation changes the denominator of the jank percentage.
+- Use Perfetto to separate React/Fabric mount work, Compose recomposition,
+  RenderThread and graphics-buffer waits. `gfxinfo` for a removed popup can omit
+  that window's frames; retain snapshots while the popup is open as well as the
+  process totals. Debug/emulator results identify regressions, but do not prove
+  release-build performance on physical devices.
 
 ## Before Asking For Manual Retest
 

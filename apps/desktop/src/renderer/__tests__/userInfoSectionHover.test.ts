@@ -86,8 +86,11 @@ describe('UserInfoSection — version label', () => {
     expect(source).toContain('text={gitVersionLabel ?? developmentLabel}');
     expect(source).toContain('side="top" delay={0}');
     expect(source).not.toContain('XD.Inc');
-    expect(source).toContain('{accountDetailLabel}');
-    expect(source).toContain('title={accountDetailLabel}');
+    expect(source).toContain("import { useCindyVersions } from '@/lib/useCindyVersions';");
+    expect(source).toContain('const versions = useCindyVersions();');
+    expect(source).toContain("t('cindyMake.versions.personal')");
+    expect(source).toContain('{visibleVersionLabel}');
+    expect(source).toContain('title={visibleVersionLabelDetail}');
   });
 
   it('renders Beta on the account button without reusing the development version', () => {

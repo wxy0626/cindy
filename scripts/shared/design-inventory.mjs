@@ -39,6 +39,7 @@ const LAYOUT_ROUTE_COMPONENTS = new Set([
 
 /** 运行期跳转组件：与 <Navigate> 同类，不是 surface。 */
 const RUNTIME_REDIRECT_COMPONENTS = new Map([
+  ['MainEntryRedirect', '(runtime home entry redirect)'],
   ['CCAgentIndexRedirect', '(runtime session redirect)'],
 ]);
 
@@ -397,6 +398,8 @@ export function catalogSurfaces() {
       reachableComponents: [
         'MainLayout',
         'Sidebar',
+        'ProjectsSection',
+        'DeviceSectionHeader',
         'RightSidebar',
         'WindowControls',
         'ChromeActions',
@@ -412,6 +415,8 @@ export function catalogSurfaces() {
       styleRoots: [
         'apps/desktop/src/renderer/components/layout',
         'apps/desktop/src/renderer/components/sidebar',
+        'apps/desktop/src/renderer/features/cc-agent/sidebar/sections/ProjectsSection.tsx',
+        'apps/desktop/src/renderer/features/cc-agent/sidebar/DeviceSectionHeader.tsx',
         'apps/desktop/src/renderer/components/title-bar',
         'apps/desktop/src/renderer/layout',
         'apps/desktop/src/renderer/features/right-sidebar',
@@ -534,16 +539,20 @@ export function catalogSurfaces() {
     {
       id: 'desktop.bots',
       platform: 'desktop',
-      title: '伙伴（列表 / 对话 / 设置 / 历史 / 伙伴私聊）',
+      title: '伙伴（列表 / 对话 / 设置 / 历史 / 伙伴私聊 / 群聊）',
       productionEntry:
-        'hash `/bots`、`/bots/:botId`、`/bots/roster` 及伙伴当前/历史任务、伙伴私聊路由（BotsFeatureLayout）',
+        'hash `/bots`、`/bots/list`、`/bots/:botId`、`/bots/roster` 及伙伴当前/历史任务、伙伴私聊、伙伴群聊路由（BotsFeatureLayout）',
       reachableComponents: [
         'BotsHomeView',
+        'BotsListView',
         'BotRosterView',
         'BotSessionView',
         'RemoteBotSessionView',
         'BotHistorySessionView',
         'BotDirectMessageView',
+        'BotGroupChatView',
+        'BotGroupSettingsDrawer',
+        'BotGroupCreateDialog',
         'BotSettingsDrawer',
         'BotBasicProfileFields',
         'BotModelChainEditor',
@@ -555,20 +564,24 @@ export function catalogSurfaces() {
       extraStyleRoots: ['desktop.chat.session'],
       routerPaths: [
         '/bots',
+        '/bots/list',
         '/bots/:botId',
         '/bots/:botId/direct/:threadId',
         '/bots/:botId/history/:sessionId',
         '/bots/:botId/session/:sessionId',
         '/bots/roster',
+        '/bots/groups/:groupId',
         '/bots/remote/:deviceId/:botId',
       ],
       routeEntryComponents: {
         '/bots': 'BotsHomeView',
+        '/bots/list': 'BotsListView',
         '/bots/:botId': 'BotsHomeView',
         '/bots/:botId/direct/:threadId': 'BotDirectMessageView',
         '/bots/:botId/history/:sessionId': 'BotHistorySessionView',
         '/bots/:botId/session/:sessionId': 'BotSessionView',
         '/bots/roster': 'BotRosterView',
+        '/bots/groups/:groupId': 'BotGroupChatView',
         '/bots/remote/:deviceId/:botId': 'RemoteBotSessionView',
       },
     },
@@ -587,56 +600,64 @@ export function catalogSurfaces() {
       platform: 'desktop',
       title: 'SkillHub 本地技能',
       productionEntry:
-        'hash `/skillhub/local` 及详情 `/skillhub/local/:kind/global/:name`、`/skillhub/local/:kind/project/:projectHash/:name`',
+        'hash `/skillhub/local` 及统一详情 `/skillhub/detail`（旧详情链接重定向）',
       // SkillhubHomeView 直接渲染 PluginManagementLayout（features/plugin 共享布局）、
-      // SkillhubMarketPreviewPanel 与 InstallTargetPicker——只扫三个路由组件文件
+      // 统一详情布局与 InstallTargetPicker——只扫列表组件文件
       // 会漏掉这些子组件的样式事实。
       reachableComponents: [
+        'SkillhubLocalLayout',
         'SkillhubHomeView',
         'SkillhubDetailView',
+        'SkillhubDetailRoute',
+        'SkillDetailLayout',
         'SkillhubFeatureLayout',
         'PluginManagementLayout',
-        'SkillhubMarketPreviewPanel',
+        'SkillhubMarketDetailView',
         'InstallTargetPicker',
       ],
       styleRoots: [
+        'apps/desktop/src/renderer/features/skillhub/SkillhubLocalLayout.tsx',
         'apps/desktop/src/renderer/features/skillhub/SkillhubHomeView.tsx',
         'apps/desktop/src/renderer/features/skillhub/SkillhubDetailView.tsx',
+        'apps/desktop/src/renderer/features/skillhub/SkillhubDetailRoute.tsx',
+        'apps/desktop/src/renderer/features/skillhub/components/SkillDetailLayout.tsx',
         'apps/desktop/src/renderer/features/skillhub/SkillhubFeatureLayout.tsx',
-        'apps/desktop/src/renderer/features/skillhub/SkillhubMarketPreviewPanel.tsx',
+        'apps/desktop/src/renderer/features/skillhub/SkillhubMarketDetailView.tsx',
         'apps/desktop/src/renderer/features/skillhub/components/InstallTargetPicker.tsx',
         'apps/desktop/src/renderer/features/plugin/PluginManagementLayout.tsx',
       ],
       routerPaths: [
-        '/skillhub/local',
+        // The pathless parent renders the retained catalog itself at /skillhub/local.
+        '/skillhub',
+        '/skillhub/detail',
         '/skillhub/local/:kind/global/:name',
         '/skillhub/local/:kind/project/:projectHash/:name',
         '/skillhub/local/by-path',
       ],
-      routeEntryComponents: { '/skillhub/local': 'SkillhubHomeView', '/skillhub/local/:kind/global/:name': 'SkillhubDetailView', '/skillhub/local/:kind/project/:projectHash/:name': 'SkillhubDetailView', '/skillhub/local/by-path': 'SkillhubDetailView' },
+      routeEntryComponents: { '/skillhub': 'SkillhubLocalLayout', '/skillhub/detail': 'SkillhubDetailRoute', '/skillhub/local/:kind/global/:name': 'LegacySkillDetailRedirect', '/skillhub/local/:kind/project/:projectHash/:name': 'LegacySkillDetailRedirect', '/skillhub/local/by-path': 'LegacySkillDetailRedirect' },
     },
     {
       id: 'desktop.skillhub.market',
       platform: 'desktop',
       title: 'SkillHub 市场',
       productionEntry: 'hash `/skillhub/market`（SkillhubMarketListView）',
-      // 市场页直接渲染的子组件（MarketCard / InstallTargetPicker / 预览面板 / 两个编辑
+      // 市场页直接渲染的子组件（MarketCard / InstallTargetPicker / 详情页 / 两个编辑
       // 弹窗）在 components/ 与同目录下，只扫入口文件会漏掉它们的全部样式事实。
       reachableComponents: [
         'SkillhubMarketListView',
         'MarketCard',
         'InstallTargetPicker',
-        'SkillhubMarketPreviewPanel',
+        'SkillhubMarketDetailView',
         'MarketInfoEditDialog',
         'VisibilityEditorDialog',
       ],
       styleRoots: [
         'apps/desktop/src/renderer/features/skillhub/SkillhubMarketListView.tsx',
-        'apps/desktop/src/renderer/features/skillhub/SkillhubMarketPreviewPanel.tsx',
+        'apps/desktop/src/renderer/features/skillhub/SkillhubMarketDetailView.tsx',
         'apps/desktop/src/renderer/features/skillhub/components',
       ],
-      routerPaths: ['/skillhub/market'],
-      routeEntryComponents: { '/skillhub/market': 'SkillhubMarketListView' },
+      routerPaths: ['/skillhub/market', '/skillhub/market/:name', '/skillhub/market/:kind/:name', '/skillhub/market/manage/:name'],
+      routeEntryComponents: { '/skillhub/market': 'SkillhubMarketListView', '/skillhub/market/:name': 'LegacySkillDetailRedirect', '/skillhub/market/:kind/:name': 'LegacySkillDetailRedirect', '/skillhub/market/manage/:name': 'LegacySkillDetailRedirect' },
     },
     {
       id: 'desktop.settings',
@@ -772,6 +793,30 @@ export function catalogSurfaces() {
       rendererEntryModules: { resourceUsageWindow: './resource-usage-entry' },
     },
     {
+      id: 'desktop.window.remote-desktop',
+      platform: 'desktop',
+      title: '远程桌面独立窗口',
+      productionEntry: '`?remoteDesktopViewer=1` → renderer/remote-desktop-viewer-entry.tsx',
+      reachableComponents: ['RemoteDesktopViewerWindow', 'Select', 'Button', 'FormField', 'ConfirmDialog', 'Switch', 'Popover', 'Tip'],
+      styleRoots: [
+        'apps/desktop/src/renderer/remote-desktop-viewer-entry.tsx',
+        'apps/desktop/src/renderer/features/remote-desktop/RemoteDesktopViewerWindow.tsx',
+        'apps/desktop/src/renderer/components/ui/popover.tsx',
+        'apps/desktop/src/renderer/components/ui/tooltip.tsx',
+        'apps/desktop/src/renderer/components/ui/switch.tsx',
+        'apps/desktop/src/renderer/components/ui/confirm-dialog.tsx',
+        'apps/desktop/src/renderer/components/ui/select.tsx',
+        'apps/desktop/src/renderer/components/ui/button.tsx',
+        'apps/desktop/src/renderer/components/ui/form-field.tsx',
+        'apps/desktop/src/renderer/features/remote-desktop/viewerWindow.css',
+        'apps/desktop/src/main/remote-desktop-viewer',
+        'apps/desktop/src/renderer/styles/globals.css',
+        'apps/desktop/src/renderer/styles/generated/tokens.css',
+      ],
+      routerPaths: [],
+      rendererEntryModules: { remoteDesktopViewer: './remote-desktop-viewer-entry' },
+    },
+    {
       id: 'desktop.window.voice-overlay',
       platform: 'desktop',
       title: '语音输入浮窗',
@@ -890,7 +935,7 @@ export function catalogSurfaces() {
       id: 'desktop.overlay.permission-prompt',
       platform: 'desktop',
       title: '权限询问',
-      productionEntry: 'PermissionPrompt（会话内权限卡；DS-11 迁移前置）',
+      productionEntry: 'PermissionPrompt（会话内权限卡；DS-9 迁移前置）',
       reachableComponents: ['PermissionPrompt', 'PermissionSelector', 'AskUserQuestionPrompt'],
       styleRoots: [
         'apps/desktop/src/renderer/components/new-chat/PermissionPrompt.tsx',
@@ -1213,7 +1258,7 @@ export function defaultHumanSeed(surfaces) {
     '',
     '生成器不得改本表。首轮（DS-2a）：全部 `legacy`；暂无归属写 `unassigned`。`protected` 与迁移状态正交。',
     '',
-    'Mobile 已纳入同一台账的静态入口发现；保持 legacy，数值接管在 DS-10。',
+    'Mobile 已纳入同一台账的静态入口发现；保持 legacy，数值接管留待 Mobile 独立阶段。',
     '',
     '另册 / 排除（不进必做迁移清单）：',
     '',
@@ -1265,7 +1310,7 @@ const PROTECTED_TAGS = {
   'desktop.chat.new-draft': ['DESIGN.md §15.15 创建页内容位'],
   'desktop.overlay.permission-prompt': [
     'DESIGN.md §5 裸文字按钮豁免（相关）',
-    'DS-11 Permission 迁移前置',
+    'DS-9 Permission 迁移前置',
   ],
   'desktop.settings': [
     'DESIGN.md §10 语义豁免色族消费者',
@@ -1280,7 +1325,7 @@ export function defaultHumanAnnotation(id) {
     owner: 'unassigned',
     status: 'legacy',
     protected: (PROTECTED_TAGS[id] ?? []).join('；') || '—',
-    target: id.startsWith('mobile.') ? 'DS-7 发现入口，DS-10 接管；未迁移' : '查现有标准组件与治理 §12 当前路线；按人工下一动作接管',
+    target: id.startsWith('mobile.') ? 'DS-7 发现入口，Mobile 独立阶段接管；未迁移' : '查现有标准组件与治理 §12 当前路线；按人工下一动作接管',
     next: '保持现状；发现问题记下一动作，本张不修视觉',
   };
 }
@@ -1357,12 +1402,14 @@ export function mobileCatalogSurfaces() {
     ['device-management', '设备管理', ['devices/manage.tsx', 'devices/manage/[deviceId].tsx']],
     ['remote-desktop', '远程桌面', ['devices/desktop/[deviceId].tsx']],
     ['resources', '远程资源列表与详情', ['resources/[collectionId].tsx', 'resources/[collectionId]/[resourceId].tsx']],
+    ['plugins', '插件目录、页面与原生交互', ['plugins.tsx']],
     ['companions.direct', '伙伴私聊回看', ['companions/direct/[threadId].tsx']],
+    ['companions.groups', '伙伴群聊与分工', ['companions/groups/[groupId].tsx']],
     ['chat.session', '任务内容与输入', ['sessions/[sessionId].tsx']],
+    ['chat.sharing', '共享任务邀请与成员；供应商分享链接提示', ['shared-session.tsx', 'provider-share.tsx']],
     ['chat.new', '新建任务', ['sessions/new.tsx']],
     ['files', '任务文件与预览', ['files/[sessionId].tsx', 'files/preview/[sessionId].tsx']],
-    ['automations', '自动化', ['automations/[deviceId].tsx']],
-    ['settings', '设置（含调试与日志上传可见入口）', ['settings.tsx']],
+    ['settings', '设置（含调试与日志上传可见入口）', ['settings.tsx', 'settings/device-name.tsx', 'settings/voice-dictionary.tsx']],
     ['auth', '登录与添加账号', ['(auth)/login.tsx', 'add-account.tsx']],
     ['account-deletion', '账号注销', ['account-deletion.tsx']],
   ];
@@ -1387,6 +1434,7 @@ export function mobileRouteCoverage(repoRoot, catalog = mobileCatalogSurfaces())
   const excluded = new Map([
     ['_layout.tsx', 'layout; visible mounted feedback is a separate overlay surface'],
     ['+native-intent.ts', 'native intent routing; no screen'],
+    ['automations/[deviceId].tsx', 'legacy automation link redirect; no screen'],
     ['splash-preview.tsx', 'MOBILE_VISUAL_MOCK_ENABLED preview; not production UI'],
     ['listperf.tsx', '__DEV__ list performance harness; not production UI'],
   ]);

@@ -165,6 +165,13 @@ export interface IMUnsupportedEntry {
 }
 
 export interface IMMessageEvent {
+  /** Optional transport-owned display context for shared permission prompts. */
+  interactionSource?: {
+    chatName?: string;
+    threadName?: string;
+    senderName?: string;
+    messageUrl?: string;
+  };
   channelName: string;
   /** Sender open_id (or channel-equivalent stable user id). */
   senderId: string;
@@ -231,6 +238,8 @@ export interface IMMessageEvent {
     /** 被引消息的附件数(已并入本事件 attachments;0/缺省 = 无)。 */
     attachmentCount?: number;
   };
+  /** Native private topic metadata. Root message id and thread id are distinct. */
+  replyThread?: { rootMessageId: string; threadId: string };
   /** Channel-specific raw event for debug. */
   raw?: unknown;
   /**

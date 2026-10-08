@@ -138,6 +138,35 @@ function createAgent(
 }
 
 describe('Maker Pi managed-package skill boundary', () => {
+  it('uses the runtime Skill view for host authorization checks', async () => {
+    const agent = createAgent(async () => {
+      throw new Error('not used');
+    }, 'claude-code');
+    agent.listRuntimeSkills = vi.fn(async () => ({ skills: [{
+      kind: 'agent-skill' as const,
+      name: 'learn',
+      source: 'skill' as const,
+      path: '/repo/.claude/skills/learn/SKILL.md',
+    }] }));
+    const maker = new Maker({
+      agents: { 'claude-code': agent },
+      storage: createStorage(),
+      logger: createLogger(),
+    });
+
+    const result = await maker.listAgentRuntimeSkills('claude-code', {
+      workingDir: '/repo/src',
+      runtimeConfigDir: '/runtime/claude-home',
+    });
+
+    expect(result.skills.map((skill) => skill.name)).toEqual(['learn']);
+    expect(agent.listRuntimeSkills).toHaveBeenCalledWith({
+      workingDir: '/repo/src',
+      runtimeConfigDir: '/runtime/claude-home',
+    });
+    await maker.shutdown();
+  });
+
   it.each(['claude-code', 'codex', 'pi'] as const)('keeps %s live palettes on their startup Skill snapshot', async (agentKind) => {
     const source = '/fixture/disabled-skill';
     let disabled: string[] = [source];
@@ -532,7 +561,73 @@ describe('Maker local Pi package generation fence', () => {
   });
 });
 
+describe('Maker initial plan persistence', () => {
+  it.each([true, false, undefined])('stores initial plan mode %s with the new task', async (planMode) => {
+    const storage = createStorage();
+    const create = vi.spyOn(storage, 'create');
+    const update = vi.spyOn(storage, 'update');
+    const maker = new Maker({
+      agents: { codex: createAgent(async () => createHandle({ id: 'plan-handle' })) },
+      storage,
+      logger: createLogger(),
+    });
+    try {
+      const session = await maker.createSession({
+        agentKind: 'codex', workingDir: '/repo', model: 'm', planMode,
+      });
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(create.mock.calls[0][0].planMode).toBe(planMode);
+      expect((await storage.get(session.id))?.planMode).toBe(planMode);
+      expect(update).not.toHaveBeenCalled();
+    } finally {
+      await maker.shutdown();
+    }
+  });
+
+  it.each(['codex', 'claude-code', 'pi'] as const)(
+    'cleans up %s after a failed plan-bearing insert and permits retry without an orphan',
+    async (agentKind) => {
+      const close = vi.fn(async () => undefined);
+      const start = vi.fn(async () => ({ ...createHandle({ id: 'plan-handle', agentKind }), close }));
+      const storage = createStorage();
+      const create = storage.create.bind(storage);
+      const insert = vi.spyOn(storage, 'create')
+        .mockRejectedValueOnce(new Error('storage unavailable'))
+        .mockImplementation(create);
+      const maker = new Maker({ agents: { [agentKind]: createAgent(start, agentKind) }, storage, logger: createLogger() });
+      const opts: CreateSessionOptions = { agentKind, workingDir: '/repo', model: 'm', planMode: true };
+      try {
+        await expect(maker.createSession(opts)).rejects.toThrow('storage unavailable');
+        expect(insert.mock.calls[0][0].planMode).toBe(true);
+        expect(close).toHaveBeenCalledTimes(1);
+        expect(maker.listActiveSessions()).toEqual([]);
+        expect(await storage.list()).toEqual([]);
+        const session = await maker.createSession(opts);
+        expect(await storage.list()).toEqual([expect.objectContaining({ id: session.id, planMode: true })]);
+        expect(maker.listActiveSessions()).toHaveLength(1);
+      } finally {
+        await maker.shutdown();
+      }
+    },
+  );
+});
+
 describe('Maker session creation singleflight', () => {
+  it('persists the durable resume id while exposing a distinct transient request id', async () => {
+    const storage = createStorage();
+    const handle = { ...createHandle({ id: 'sdk-source', agentKind: 'claude-code' }), requestSessionId: 'sdk-unaccepted-fork' };
+    const maker = new Maker({
+      agents: { 'claude-code': createAgent(async () => handle, 'claude-code') },
+      storage, logger: createLogger(),
+    });
+    const session = await maker.createSession({ id: 'fork-task', agentKind: 'claude-code', workingDir: '/fixture', model: 'grok-4.6' });
+    expect(session.sdkSessionId).toBe('sdk-source');
+    expect(session.requestSessionId).toBe('sdk-unaccepted-fork');
+    expect((await storage.get('fork-task'))?.sdkSessionId).toBe('sdk-source');
+    await maker.closeSession('fork-task');
+    expect((await storage.get('fork-task'))?.sdkSessionId).toBe('sdk-source');
+  });
+
   it('reports the effective runtime cwd when recovering an existing task elsewhere', async () => {
     const storage = createStorage();
     await storage.create({ id: 'recovered-cwd', agentKind: 'codex', workDir: '/original', title: 'Existing task', model: 'test-model' });
@@ -1187,6 +1282,79 @@ describe('Maker session creation singleflight', () => {
 });
 
 describe('Maker session close events', () => {
+  it('defers retirement of only the captured runtime and ignores its stale identity after rebuild', async () => {
+    const queue = createAsyncQueue<AgentEvent>();
+    let running = false;
+    const handle = createHandle({ id: 'old-thread', agentKind: 'pi' });
+    handle.send = vi.fn(async () => { running = true; });
+    handle.isTurnRunning = () => running;
+    handle.events = () => queue;
+    const replacement = createHandle({ id: 'new-thread', agentKind: 'pi' });
+    replacement.close = vi.fn(replacement.close);
+    const start = vi.fn().mockResolvedValueOnce(handle).mockResolvedValue(replacement);
+    const maker = new Maker({ agents: { pi: createAgent(start, 'pi') }, storage: createStorage(), logger: createLogger() });
+    const opts = { id: 'retiring', agentKind: 'pi' as const, workingDir: '/repo', model: 'm' };
+    const old = await maker.createSession(opts);
+    await old.send('work');
+    expect(await maker.closeSessionIfCurrent(old, 'requested', { afterCurrentTurn: true })).toBe('deferred');
+    expect(maker.getSession(old.id)).toBe(old);
+    running = false;
+    queue.push({ type: 'done', source: 'pi', data: { status: 'completed', result: 'done' } });
+    await vi.waitFor(() => expect(maker.getSession(old.id)).toBeUndefined());
+    const next = await maker.createSession(opts);
+    await maker.closeSessionIfCurrent(old, 'requested', { afterCurrentTurn: true });
+    expect(maker.getSession(next.id)).toBe(next);
+    expect(replacement.close).not.toHaveBeenCalled();
+    await next.close();
+    queue.end();
+  });
+
+  it.each([
+    { initial: 'runtime-refresh', begun: false, next: 'agent-switch', expected: 'agent-switch' },
+    { initial: 'runtime-refresh', begun: false, next: 'requested', expected: 'requested' },
+    { initial: 'runtime-refresh', begun: true, next: 'agent-switch', expected: 'runtime-refresh' },
+    { initial: 'requested', begun: false, next: 'agent-switch', expected: 'requested' },
+    { initial: 'agent-switch', begun: false, next: 'runtime-refresh', expected: 'agent-switch' },
+  ] as const)('preserves actual close ownership: $initial, begun=$begun, next=$next', async ({ initial, begun, next, expected }) => {
+    const queue = createAsyncQueue<AgentEvent>();
+    const exit = createDeferred();
+    const handle = createHandle({ id: 'retiring-thread', agentKind: 'pi' });
+    handle.events = () => queue;
+    handle.close = vi.fn(async () => { await exit.promise; queue.end(); });
+    const maker = new Maker({ agents: { pi: createAgent(async () => handle, 'pi') },
+      storage: createStorage(), logger: createLogger() });
+    const session = await maker.createSession({ id: 'retiring', agentKind: 'pi', workingDir: '/repo', model: 'm' });
+    const closed = vi.fn();
+    maker.on(event => { if (event.type === 'session:closed') closed(event); });
+    const release = session.acquireTurnLease()!;
+    expect(await maker.closeSessionIfCurrent(session, initial, { afterCurrentTurn: true })).toBe('deferred');
+    if (begun) {
+      release();
+      await vi.waitFor(() => expect(handle.close).toHaveBeenCalledOnce());
+    }
+    const closing = maker.closeSession(session.id, next);
+    exit.resolve();
+    await closing;
+    release();
+    expect(closed).toHaveBeenCalledExactlyOnceWith({
+      type: 'session:closed', sessionId: session.id, session, reason: expected,
+    });
+    expect(handle.close).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the original cause when an unconfirmed close is retried as a switch', async () => {
+    const handle = createHandle({ id: 'failed-close', agentKind: 'pi' });
+    handle.close = vi.fn().mockRejectedValueOnce(new Error('exit unconfirmed')).mockResolvedValue(undefined);
+    const maker = new Maker({ agents: { pi: createAgent(async () => handle, 'pi') },
+      storage: createStorage(), logger: createLogger() });
+    const session = await maker.createSession({ id: 'failed-close', agentKind: 'pi', workingDir: '/repo', model: 'm' });
+    await expect(maker.closeSession(session.id, 'runtime-refresh')).rejects.toThrow('exit unconfirmed');
+    expect(session.getStatus()).toBe('error');
+    await maker.closeSession(session.id, 'agent-switch');
+    expect(maker.getSessionCloseReason(session)).toBe('runtime-refresh');
+    expect(handle.close).toHaveBeenCalledTimes(2);
+  });
+
   it('preserves the explicit close reason and exact Session identity', async () => {
     const maker = new Maker({
       agents: {
@@ -1651,16 +1819,20 @@ describe('Maker start-option lifecycle hooks', () => {
     expect(onStartCleanupSucceeded).not.toHaveBeenCalled();
   });
 
-  it.each([new TypeError('startup RPC failed'), 'non-Error startup failure'])(
-    'releases only the confirmed-stopped startup and preserves its original error: %s', async (startupError) => {
+  it.each((['codex', 'claude-code', 'pi'] as const).flatMap((kind) =>
+    [new TypeError('startup RPC failed'), 'non-Error startup failure'].map((error) => ({ kind, error }))))(
+    'releases only the confirmed-stopped $kind startup and permits a fresh task: $error', async ({ kind, error: startupError }) => {
       const otherStartup = {} as CreateSessionOptions;
       const leased = new Set<CreateSessionOptions>([otherStartup]);
       const onStartFailed = vi.fn(({ options, runtimeMayBeAlive }: SessionStartFailureContext) => {
         if (!runtimeMayBeAlive) leased.delete(options);
       });
       const onStartCleanupSucceeded = vi.fn();
+      const startSession = vi.fn()
+        .mockRejectedValueOnce(new AgentStartupStoppedError(startupError))
+        .mockResolvedValueOnce(createHandle({ id: 'fresh-sdk-session' }));
       const maker = new Maker({
-        agents: { pi: createAgent(vi.fn().mockRejectedValue(new AgentStartupStoppedError(startupError)), 'pi') },
+        agents: { [kind]: createAgent(startSession, kind) },
         storage: createStorage(), logger: createLogger(),
         lifecycleHooks: {
           prepareStartOptions: (_id, options) => { leased.add(options); },
@@ -1668,7 +1840,7 @@ describe('Maker start-option lifecycle hooks', () => {
         },
       });
       await expect(maker.createSession({
-        id: 'confirmed-exit', agentKind: 'pi', workingDir: '/repo', model: 'pi-model',
+        id: 'confirmed-exit', agentKind: kind, workingDir: '/repo', model: 'test-model',
       })).rejects.toBe(startupError);
       expect(onStartFailed).toHaveBeenCalledOnce();
       expect(onStartFailed).toHaveBeenCalledWith(expect.objectContaining({
@@ -1676,6 +1848,12 @@ describe('Maker start-option lifecycle hooks', () => {
       }));
       expect(leased).toEqual(new Set([otherStartup]));
       expect(onStartCleanupSucceeded).not.toHaveBeenCalled();
+      const replacement = await maker.createSession({
+        id: 'fresh-task', agentKind: kind, workingDir: '/repo', model: 'test-model',
+      });
+      expect(maker.getSession('fresh-task')).toBe(replacement);
+      expect(startSession).toHaveBeenCalledTimes(2);
+      await replacement.close();
     },
   );
 
@@ -2215,6 +2393,60 @@ describe('Maker Pi runtime skill status', () => {
     }));
     expect(preview.skills.every((skill) => skill.runtimeStatus === 'discovered')).toBe(true);
     expect(wrongProject.skills.every((skill) => skill.runtimeStatus === 'discovered')).toBe(true);
+  });
+
+  it('marks Windows project-scope --skill loaded when frontmatter name differs from the folder', async () => {
+    const agent = createAgent(async (opts) => {
+      const handle = createHandle({ id: `pi-${opts.sessionId}`, agentKind: 'pi' });
+      handle.getRuntimeCapabilities = () => ({
+        sessionId: opts.sessionId,
+        capturedAt: '2026-09-14T00:00:00.000Z',
+        generation: 1,
+        status: 'loaded',
+        source: 'pi:get_commands',
+        commands: [{
+          name: 'skill:frontmatter-alias',
+          source: 'skill',
+          sourceInfo: {
+            source: 'local',
+            scope: 'project',
+            baseDir: '/repo/.pi/skills/folder-name',
+            path: '/repo/.pi/skills/folder-name/SKILL.md',
+          },
+        }],
+      });
+      return handle;
+    }, 'pi');
+    agent.listAgentSkills = vi.fn(async () => ({
+      skills: [{
+        kind: 'agent-skill' as const,
+        name: 'folder-name',
+        source: 'skill' as const,
+        scope: 'repo' as const,
+        path: '/repo/.pi/skills/folder-name/SKILL.md',
+        runtimeStatus: 'discovered' as const,
+      }],
+    }));
+    const maker = new Maker({
+      agents: { pi: agent },
+      storage: createStorage(),
+      logger: createLogger(),
+    });
+    await maker.createSession({
+      id: 'win-alias',
+      agentKind: 'pi',
+      workingDir: '/repo',
+      model: 'm',
+    });
+    const listed = await maker.listAgentSkills('pi', {
+      workingDir: '/repo',
+      sessionId: 'win-alias',
+    });
+    expect(listed.skills[0]).toMatchObject({
+      name: 'folder-name',
+      runtimeStatus: 'loaded',
+      runtimeCommandName: 'skill:frontmatter-alias',
+    });
   });
 
   it('keeps a project skill discovered when its source no longer matches the launch snapshot', async () => {

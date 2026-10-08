@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import { desktopClientBuildEnv } from '../../scripts/shared/client-endpoint-build-env.mjs';
-import { buildConfigTimingPlugin } from './vite-boot-timing';
+import { cindyRuntimeSourcePlugin } from './cindy-runtime-source';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 // 登录 scenario fixtures 的生产空 stub(implementation-plan Step 0 WHAT4 生产排除
@@ -11,6 +11,11 @@ const loginFixturesStub = path.resolve(
   configDir,
   '../../packages/auth-client/fixtures/loginScenarios.production-stub.ts',
 );
+
+// Git operations can deliver a burst of file events. Waiting briefly before a
+// development rebuild lets Rollup invalidate that burst as one graph update,
+// keeping the watcher peak bounded without changing packaged builds.
+const DEV_WATCH_BUILD_DELAY_MS = 250;
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
@@ -29,50 +34,7 @@ export default defineConfig(({ mode }) => {
       ? (process.env[key] ?? '')
       : (allEnv[key] ?? '');
   return {
-    // Dev 启动分段探针：main 目标在 dev 是 forge 的第一个构建目标，config-resolved
-    // 时刻即「vite 构建工作开始」；与 renderer server-listening、target built、
-    // App started 对齐可分解前置段（见 vite-boot-timing.ts 头注）。
-    plugins: [
-      buildConfigTimingPlugin('main'),
-      // rolldown 兼容补丁（2026-09-13）：rolldown 的 CJS 输出不会转换
-      // `import.meta.url`（运行时是 undefined），而 `_generated` 的运行时代码用
-      // `createRequire(import.meta.url)` 解析 require → ERR_INVALID_ARG_VALUE →
-      // Electron "App threw an error during load"。main bundle 是 CJS 格式，
-      // `__filename` 由 Node 包装器保证且 createRequire 两者语义等价。
-      // 仅 dev 时启用（rollup 分支下替换同样语义等价且无害；与 inline 开关解耦——
-      // rolldown 对【任何】走它编译的 import.meta.url 都会生成 `{}.url`（undefined），
-      // manualChunks 多 chunk 形态同样需要本插件）。
-      ...(mode === 'development'
-        ? [
-            {
-              name: 'xdt-import-meta-url-cjs-compat',
-              transform(code: string) {
-                if (!code.includes('import.meta.url')) return null;
-                // 1) 高频标准写法 → 语义等价的 CJS 形式
-                let next = code
-                  .replace(
-                    /createRequire\(\s*import\.meta\.url\s*\)/g,
-                    'createRequire(__filename)',
-                  )
-                  .replace(
-                    /fileURLToPath\(\s*import\.meta\.url\s*\)/g,
-                    '__filename',
-                  );
-                // 2) 兜底：rolldown 的 CJS 输出不给 import.meta.url 任何值（undefined），
-                //    剩余用法一律替换为 __filename（路径语义；日志计数便于排查）。
-                const fallbackCount = (next.match(/import\.meta\.url/g) || []).length;
-                if (fallbackCount > 0) {
-                  console.log(
-                    `[xdt-import-meta-patch] fallback import.meta.url -> __filename x${fallbackCount}`,
-                  );
-                  next = next.replace(/import\.meta\.url/g, '__filename');
-                }
-                return next === code ? null : { code: next, map: null };
-              },
-            },
-          ]
-        : []),
-    ],
+    plugins: [cindyRuntimeSourcePlugin(path.resolve(configDir, '../..'), mode === 'development')],
     resolve: {
       // 仅 fixtures 生产排除条件(v6.17 允许范围):production 构建把
       // '@cindy/auth-client/fixtures' 整模块替换为空 stub,dev 构建保留真模块。
@@ -147,10 +109,8 @@ export default defineConfig(({ mode }) => {
       ),
     },
     build: {
-      // dev 冷启动提速(2026-09-11):esnext 免去对 ~33MB main 产物的语法降级转译
-      // (Vite 默认 target 'modules' 需按 es2020 一档转译,数秒级)。Electron 41 的
-      // V8 全量支持 esnext,运行行为无差异;生产构建保持默认 target 不变。
-      ...(mode === 'development' ? { target: 'esnext' as const } : {}),
+      watch:
+        mode === 'development' ? { buildDelay: DEV_WATCH_BUILD_DELAY_MS } : undefined,
       rollupOptions: {
         output: {
           // rolldown 实验开关（2026-09-13）：rolldown 默认拆 chunk + 动态 import，

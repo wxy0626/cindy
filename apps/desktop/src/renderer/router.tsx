@@ -8,132 +8,38 @@ import {
 } from 'react';
 import { createHashRouter, Navigate } from 'react-router-dom';
 
+import { MainLayout } from '@/components/layout/MainLayout';
+import { MainEntryRedirect } from '@/components/layout/MainEntryRedirect';
 import { RouteErrorFallback } from '@/components/error/RouteErrorFallback';
 import { LoginPage } from '@/components/login/LoginPage';
 import { AddAccountLoginPage } from '@/components/login/AddAccountLoginPage';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { GuestRoute } from '@/components/auth/GuestRoute';
 import { LocalDbGate } from '@/components/auth/LocalDbGate';
-
-/**
- * 路由级懒加载（2026-09-12 启动提速「App 模块拆分」）。
- *
- * 背景：此前本文件静态 import 全部 feature（cc-agent/settings/skillhub/bots/
- * scheduler… 20+ 个大图），导致 `import('./App')` 的模块图在 gate ready 前就
- * 把整个主功能区加载完——boot-timing 打点实测 App 图约 13s，其中绝大多数是
- * gate 前根本不会渲染的模块。
- *
- * 拆分原则：
- *  - 保持静态：gate 链（ProtectedRoute/GuestRoute/LocalDbGate）、登录线
- *    （LoginPage/AddAccountLoginPage）、错误兜底（RouteErrorFallback）——它们
- *    在 gate ready 前可能被渲染；
- *  - 懒加载：主功能区全部（MainLayout 及所有 feature view）——由 LocalDbGate
- *    在 gate 检查期间并行预加载并汇合（见 LocalDbGate 的 mainChunksReady），
- *    撤掉 AppShellCover（Splash）时主图已就绪，无闪帧。
- *
- * 生效机制：懒元素各自包 <Lazy>（Suspense fallback 固定 null——屏幕视觉由
- * AppShellCover 承接，与 LocalDbGate checking 阶段 return null 的约定一致；
- * 正常路径下预加载汇合保证此 fallback 不可见）。
- */
-function Lazy({ children }: { children: ReactNode }): ReactElement {
-  return <Suspense fallback={null}>{children}</Suspense>;
-}
-
-/** 命名导出 → React.lazy 组件：`lazyNamed(() => import('x'), 'X')`，收敛 27 条声明样板。
- * 泛型保留「导出名必须是该模块真实存在的键」的编译期检查；组件性用断言收窄
- * （模块里常混有非组件导出，如常量/工具函数，无法由类型系统整体约束）。 */
-function lazyNamed<M, K extends keyof M & string>(
-  loader: () => Promise<M>,
-  name: K,
-): LazyExoticComponent<ComponentType<object>> {
-  return lazy(async () => ({
-    default: (await loader())[name] as unknown as ComponentType<object>,
-  }));
-}
-
-// —— 主功能区懒加载组件（清单与下方路由一一对应；LocalDbGate 预热 MainLayout
-//    与 cc-agent 落地链，其余按导航时加载）——
-const MainLayout = lazyNamed(() => import('@/components/layout/MainLayout'), 'MainLayout');
-const SidebarWindowLayout = lazyNamed(
-  () => import('@/components/layout/SidebarWindowLayout'),
-  'SidebarWindowLayout',
-);
-const GhostPanelWindowLayout = lazyNamed(
-  () => import('@/components/layout/GhostPanelWindowLayout'),
-  'GhostPanelWindowLayout',
-);
-const CCAgentFeatureLayout = lazyNamed(
-  () => import('@/features/cc-agent/CCAgentFeatureLayout'),
-  'CCAgentFeatureLayout',
-);
-const CCAgentIndexRedirect = lazyNamed(
-  () => import('@/features/cc-agent/CCAgentIndexRedirect'),
-  'CCAgentIndexRedirect',
-);
-const SecondaryWindowBootGate = lazyNamed(
-  () => import('@/features/cc-agent/SecondaryWindowBootGate'),
-  'SecondaryWindowBootGate',
-);
-const CCAgentSessionView = lazyNamed(
-  () => import('@/features/cc-agent/CCAgentSessionView'),
-  'CCAgentSessionView',
-);
-const NewMakerDraftRoute = lazyNamed(
-  () => import('@/features/cc-agent/NewMakerDraftRoute'),
-  'NewMakerDraftRoute',
-);
-const OrcaWorkflowRoute = lazyNamed(
-  () => import('@/features/cc-agent/OrcaWorkflowRoute'),
-  'OrcaWorkflowRoute',
-);
-const WorkdirBrowseRoute = lazyNamed(
-  () => import('@/features/cc-agent/workdir-browse/WorkdirBrowseRoute'),
-  'WorkdirBrowseRoute',
-);
-const IssueTrackerFeatureLayout = lazyNamed(
-  () => import('@/features/issue-tracker/IssueTrackerFeatureLayout'),
-  'IssueTrackerFeatureLayout',
-);
-const SkillhubFeatureLayout = lazyNamed(
-  () => import('@/features/skillhub/SkillhubFeatureLayout'),
-  'SkillhubFeatureLayout',
-);
-const SkillhubHomeView = lazyNamed(() => import('@/features/skillhub/SkillhubHomeView'), 'SkillhubHomeView');
-const SkillhubDetailView = lazyNamed(
-  () => import('@/features/skillhub/SkillhubDetailView'),
-  'SkillhubDetailView',
-);
-const SkillhubMarketListView = lazyNamed(
-  () => import('@/features/skillhub/SkillhubMarketListView'),
-  'SkillhubMarketListView',
-);
-const MakerExperimentalView = lazyNamed(
-  () => import('@/features/maker-experimental/MakerExperimentalView'),
-  'MakerExperimentalView',
-);
-const SchedulerPage = lazyNamed(() => import('@/features/scheduler'), 'SchedulerPage');
-const GhostPluginPage = lazyNamed(() => import('@/features/plugin/GhostPluginPage'), 'GhostPluginPage');
-const BotsFeatureLayout = lazyNamed(() => import('@/features/bots/BotsFeatureLayout'), 'BotsFeatureLayout');
-const BotsHomeView = lazyNamed(() => import('@/features/bots/BotsHomeView'), 'BotsHomeView');
-const BotHistorySessionView = lazyNamed(
-  () => import('@/features/bots/BotHistorySessionView'),
-  'BotHistorySessionView',
-);
-const BotRosterView = lazyNamed(() => import('@/features/bots/BotRosterView'), 'BotRosterView');
-const BotSessionView = lazyNamed(() => import('@/features/bots/BotSessionView'), 'BotSessionView');
-const BotDirectMessageView = lazyNamed(
-  () => import('@/features/bots/BotDirectMessageView'),
-  'BotDirectMessageView',
-);
-const RemoteBotSessionView = lazyNamed(
-  () => import('@/features/bots/RemoteBotSessionView'),
-  'RemoteBotSessionView',
-);
-const GhostMainViewFeatureLayout = lazyNamed(
-  () => import('@/features/plugin/GhostMainViewFeatureLayout'),
-  'GhostMainViewFeatureLayout',
-);
-const SettingsView = lazyNamed(() => import('@/components/settings/SettingsView'), 'SettingsView');
+import { CCAgentFeatureLayout } from '@/features/cc-agent/CCAgentFeatureLayout';
+import { CCAgentIndexRedirect } from '@/features/cc-agent/CCAgentIndexRedirect';
+import { SecondaryWindowBootGate } from '@/features/cc-agent/SecondaryWindowBootGate';
+import { CCAgentSessionView } from '@/features/cc-agent/CCAgentSessionView';
+import { NewMakerDraftRoute } from '@/features/cc-agent/NewMakerDraftRoute';
+import { OrcaWorkflowRoute } from '@/features/cc-agent/OrcaWorkflowRoute';
+import { WorkdirBrowseRoute } from '@/features/cc-agent/workdir-browse/WorkdirBrowseRoute';
+import { IssueTrackerFeatureLayout } from '@/features/issue-tracker/IssueTrackerFeatureLayout';
+import { SkillhubFeatureLayout } from '@/features/skillhub/SkillhubFeatureLayout';
+import { SkillhubLocalLayout } from '@/features/skillhub/SkillhubLocalLayout';
+import { SkillhubDetailRoute, LegacySkillDetailRedirect } from '@/features/skillhub/SkillhubDetailRoute';
+import { SkillhubMarketListView } from '@/features/skillhub/SkillhubMarketListView';
+import { MakerExperimentalView } from '@/features/maker-experimental/MakerExperimentalView';
+import { SchedulerPage } from '@/features/scheduler';
+import { GhostPluginPage } from '@/features/plugin/GhostPluginPage';
+import { BotsFeatureLayout } from '@/features/bots/BotsFeatureLayout';
+import { BotsListView } from '@/features/bots/BotsListView';
+import { BotsHomeView } from '@/features/bots/BotsHomeView';
+import { BotHistorySessionView } from '@/features/bots/BotHistorySessionView';
+import { BotRosterView } from '@/features/bots/BotRosterView';
+import { BotSessionView } from '@/features/bots/BotSessionView';
+import { BotDirectMessageView } from '@/features/bots/BotDirectMessageView';
+import { BotGroupChatView } from '@/features/bots/BotGroupChatView';
+import { GhostMainViewFeatureLayout } from '@/features/plugin/GhostMainViewFeatureLayout';
 
 /**
  * 三层路由架构：
@@ -144,7 +50,7 @@ const SettingsView = lazyNamed(() => import('@/components/settings/SettingsView'
  *   ProtectedRoute (已登录) — 校验 canEnterApp（真登出或换号窗口）
  *    └── LocalDbGate               → 等 localDb.ensureReady（按 userId 切库）
  *         └── MainLayout            → 主功能区
- *              ├── /                → Navigate to /cc-agent
+ *              ├── /                → Restore account's last top-level entry
  *              ├── /cc-agent/...    → CCAgentFeatureLayout
  *              ├── /bots/...        → BotsFeatureLayout
  *              └── /settings        → SettingsView
@@ -209,7 +115,7 @@ export const router = createHashRouter([
                 // 切到其它页面;MainLayout 自身崩溃才冒泡到根级全屏兜底。
                 errorElement: <RouteErrorFallback variant="section" />,
                 children: [
-                  { index: true, element: <Navigate to="/cc-agent" replace /> },
+                  { index: true, element: <MainEntryRedirect /> },
                   {
                     path: 'cc-agent',
                     element: (
@@ -295,33 +201,16 @@ export const router = createHashRouter([
                       </Lazy>
                     ),
                     children: [
-                      {
-                        index: true,
-                        element: (
-                          <Lazy>
-                            <BotsHomeView />
-                          </Lazy>
-                        ),
-                      },
+                      { index: true, element: <BotsHomeView /> },
+                      { path: 'list', element: <BotsListView /> },
                       // 阵容是主区的一页,不是浮在对话上的模态。静态段排在 :botId
                       // 之前(React Router 也按静态优先定级),所以 /bots/roster 不会
                       // 被当成一个叫 "roster" 的伙伴。
-                      {
-                        path: 'roster',
-                        element: (
-                          <Lazy>
-                            <BotRosterView />
-                          </Lazy>
-                        ),
-                      },
-                      {
-                        path: 'remote/:deviceId/:botId',
-                        element: (
-                          <Lazy>
-                            <RemoteBotSessionView />
-                          </Lazy>
-                        ),
-                      },
+                      { path: 'roster', element: <BotRosterView /> },
+                      // 伙伴群聊是独立对象(不是某位伙伴的任务),静态段 'groups' 同样排在
+                      // :botId 之前,/bots/groups/<id> 不会被当成一个叫 "groups" 的伙伴。
+                      { path: 'groups/:groupId', element: <BotGroupChatView /> },
+                      { path: 'remote/:deviceId/:botId', element: <RemoteBotSessionView /> },
                       // 伙伴私聊只从双方时间线里的消息入口打开，不出现在左侧伙伴列表。
                       {
                         path: ':botId/direct/:threadId',
@@ -377,63 +266,33 @@ export const router = createHashRouter([
                     children: [
                       { index: true, element: <Navigate to="/skillhub/local" replace /> },
                       {
-                        path: 'local',
+                        element: <SkillhubLocalLayout />,
                         children: [
+                          { path: 'detail', element: <SkillhubDetailRoute /> },
                           {
-                            index: true,
-                            element: (
-                              <Lazy>
-                                <SkillhubHomeView />
-                              </Lazy>
-                            ),
-                          },
-                          {
-                            path: 'by-path',
-                            element: (
-                              <Lazy>
-                                <SkillhubDetailView />
-                              </Lazy>
-                            ),
-                          },
-                          {
-                            path: ':kind/global/:name',
-                            element: (
-                              <Lazy>
-                                <SkillhubDetailView />
-                              </Lazy>
-                            ),
-                          },
-                          {
-                            path: ':kind/project/:projectHash/:name',
-                            element: (
-                              <Lazy>
-                                <SkillhubDetailView />
-                              </Lazy>
-                            ),
+                            path: 'local',
+                            children: [
+                              { index: true, element: null },
+                              { path: 'by-path', element: <LegacySkillDetailRedirect /> },
+                              { path: ':kind/global/:name', element: <LegacySkillDetailRedirect /> },
+                              { path: ':kind/project/:projectHash/:name', element: <LegacySkillDetailRedirect /> },
+                            ],
                           },
                         ],
                       },
                       {
                         path: 'market',
                         children: [
-                          {
-                            index: true,
-                            element: (
-                              <Lazy>
-                                <SkillhubMarketListView />
-                              </Lazy>
-                            ),
-                          },
-                          // 全屏详情页/旧管理整页已移除(详情与管理统一走市场列表内的浮窗),
-                          // 旧 URL 一律 fallback 回 market 列表
+                          { index: true, element: <SkillhubMarketListView /> },
+                          // Existing market bookmarks resolve to the shared detail page.
                           {
                             path: 'manage/:name',
-                            element: <Navigate to="/skillhub/market" replace />,
+                            element: <LegacySkillDetailRedirect market />,
                           },
-                          { path: ':name', element: <Navigate to="/skillhub/market" replace /> },
+                          { path: ':name', element: <LegacySkillDetailRedirect market /> },
                           {
                             path: ':kind/:name',
-                            element: <Navigate to="/skillhub/market" replace />,
+                            element: <LegacySkillDetailRedirect market />,
                           },
                         ],
                       },

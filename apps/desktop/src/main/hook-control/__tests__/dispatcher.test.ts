@@ -7,9 +7,17 @@
 import path from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
+import { Session, type AgentEvent, type AgentSessionHandle, type Capabilities } from '@cindy/maker-core';
+import { observeHookTurn } from '../turnObserver';
+import { bindRuntimeRecoveryNotice } from '../../im/shared/runtimeRecoveryNotice';
+import { setMainLocale } from '../../i18n';
 
 import {
   HOOK_FEATURE_MESSAGE_OPS,
+  HOOK_FEATURE_TELEGRAM_CARD_OPS,
+  HOOK_FEATURE_TELEGRAM_COMMANDS,
+  HOOK_FEATURE_TELEGRAM_FINAL_OPS,
+  HOOK_FEATURE_TELEGRAM_PROGRESS_OPS,
   HOOK_FEATURE_TURN_DELIVERY,
   HOOK_FEATURE_TURN_REOPEN,
   type HookMessage,
@@ -240,6 +248,112 @@ function makeDispatcher(overrides?: {
   return { d, bindings, fr };
 }
 
+describe('post-terminal runtime recovery delivery', () => {
+  it.each([
+    ['en', 'Pi extensions could not be refreshed. Restart Cindy before using Pi again.'],
+    ['zh-CN', 'Pi 扩展未能完成刷新。请重启 Cindy 后再使用 Pi。'],
+    ['zh-TW', 'Pi 擴充功能未能完成重新整理。請重新啟動 Cindy 後再使用 Pi。'],
+    ['ja', 'Pi 拡張機能を更新できませんでした。Pi を再び使用する前に Cindy を再起動してください。'],
+    ['ko', 'Pi 확장을 새로 고치지 못했습니다. Pi를 다시 사용하기 전에 Cindy를 다시 시작하세요.'],
+  ] as const)('delivers localized %s recovery after the observer unsubscribes, without replay', async (locale, expected) => {
+    setMainLocale(locale);
+    let terminal!: () => void;
+    const terminalReady = new Promise<void>(resolve => { terminal = resolve; });
+    let end!: () => void;
+    const ended = new Promise<void>(resolve => { end = resolve; });
+    let failClose!: () => void;
+    const closeReady = new Promise<void>(resolve => { failClose = resolve; });
+    let running = false;
+    const handle = {
+      id: 'pi', agentKind: 'pi', model: 'm',
+      send: vi.fn(async () => { running = true; }),
+      close: vi.fn(async () => { await closeReady; throw new Error('exit unconfirmed'); }),
+      isTurnRunning: () => running, setInteractionResolver() {},
+      async *events() {
+        await terminalReady;
+        yield { type: 'text', source: 'pi', data: { text: 'saved result', isFinal: true } } as AgentEvent;
+        running = false;
+        yield { type: 'done', source: 'pi', data: { status: 'completed' } } as AgentEvent;
+        await ended;
+      },
+    } as unknown as AgentSessionHandle;
+    const logger = { ...noopLog, debug() {}, trace() {}, error() {}, fatal() {}, child() { return this; } };
+    const session = new Session({ id: 'task', agentKind: 'pi', workDir: WS_DIR,
+      handle, capabilities: {} as Capabilities, logger, turnStallMs: 0 });
+    let delivery: Promise<boolean> | undefined;
+    const noticeResult = vi.fn();
+    const run = vi.fn(async (req: HookRunRequest): Promise<HookRunOutcome> => {
+      const observer = observeHookTurn(session, { onSilentStopSettled: () => () => {}, log: noopLog });
+      await session.send(req.prompt, { beforeProviderStart: () => {
+        bindRuntimeRecoveryNotice(session, text => {
+          delivery = req.onRuntimeRecovery!(text);
+          void delivery.then(noticeResult);
+          return delivery;
+        }, noopLog);
+      } });
+      await session.closeAfterCurrentTurn({ failureEvent: () => ({ type: 'text', data: {
+        text: 'restart-cindy-to-refresh-packages', isFinal: true,
+      } }) });
+      terminal();
+      await observer.finished;
+      return { status: 'ok', finalText: observer.finalText(), errorMessage: null, durationMs: 1 };
+    });
+    const { d } = makeDispatcher({ runner: { isBusy: () => false, inspect: async () => null, run } });
+    const c = collector();
+    d.onConnected('conn-1', c.send, [HOOK_FEATURE_MESSAGE_OPS]);
+    try {
+      d.handleDispatch('conn-1', telegramDispatch(), c.send);
+      await vi.waitFor(() => expect(c.ofType('turn.end')).toHaveLength(1));
+      expect(c.ofType('turn.end')[0]?.payload).toMatchObject({ status: 'ok', finalText: 'saved result' });
+      failClose();
+      await vi.waitFor(() => expect(session.getStatus()).toBe('error'));
+      const notices = c.ofType('msg.op').filter(m => m.payload.action.kind === 'send');
+      expect(notices).toHaveLength(1);
+      expect(notices[0]?.payload).toMatchObject({ scope: { externalKey: telegramDispatch().externalKey },
+        action: { kind: 'send', text: expected } });
+      expect(JSON.stringify(notices)).not.toContain('restart-cindy-to-refresh-packages');
+      expect(notices[0]?.payload.requestId).toBeUndefined();
+      expect(noticeResult).not.toHaveBeenCalled(); // Socket send is not channel delivery.
+      d.onMessageOpResult({ opId: notices[0]!.payload.opId, ok: true, messageId: 'notice-1' });
+      await expect(delivery).resolves.toBe(true);
+      d.onMessageOpResult({ opId: notices[0]!.payload.opId, ok: true, messageId: 'notice-1' });
+      expect(c.ofType('turn.end')).toHaveLength(1);
+      expect(handle.send).toHaveBeenCalledOnce();
+      expect(run).toHaveBeenCalledOnce();
+    } finally {
+      failClose();
+      vi.mocked(handle.close).mockImplementation(async () => { end(); });
+      await session.close().catch(() => session.close());
+      d.dispose();
+      setMainLocale('en');
+    }
+  });
+
+  it.each(['unsupported', 'offline', 'account-changed', 'rejected', 'timeout'] as const)(
+    'does not claim delivery or rewrite success when %s', async (failure) => {
+      const { d, fr } = makeDispatcher();
+      const c = collector();
+      d.onConnected('conn-1', c.send, failure === 'unsupported' ? [] : [HOOK_FEATURE_MESSAGE_OPS]);
+      d.handleDispatch('conn-1', telegramDispatch(), c.send);
+      await tick();
+      fr.finish();
+      await tick();
+      if (failure === 'offline') d.onDisconnected('conn-1');
+      if (failure === 'account-changed') await d.deactivateAccount();
+      if (failure === 'timeout') vi.useFakeTimers();
+      try {
+        const pending = fr.calls[0]!.onRuntimeRecovery!('restart-cindy-to-refresh-packages');
+        const notice = c.ofType('msg.op').find(m => m.payload.action.kind === 'send');
+        if (failure === 'rejected') d.onMessageOpResult({ opId: notice!.payload.opId, ok: false });
+        if (failure === 'timeout') await vi.advanceTimersByTimeAsync(10_000);
+        await expect(pending).resolves.toBe(false);
+        expect(c.ofType('turn.end')).toHaveLength(1);
+        expect(fr.calls).toHaveLength(1);
+      } finally { d.dispose(); vi.useRealTimers(); }
+    },
+  );
+});
+
 describe('isPathWithin', () => {
   it('相等 / 子目录 / 外部路径', () => {
     expect(isPathWithin(WS_DIR, WS_DIR)).toBe(true);
@@ -294,6 +408,21 @@ describe('buildHookSessionTitle', () => {
 });
 
 describe('normalizeTaskSource', () => {
+  it('excludes the X trigger from references without mutating the wire chain', () => {
+    const current = { messageId: 'current', author: '@user', text: '@bot request' };
+    const source = {
+      im: 'x' as const, triggerMessageId: 'current', userText: 'request',
+      threadContext: [current],
+    };
+    expect(normalizeTaskSource(source).threadContext).toEqual([]);
+    expect(source.threadContext).toEqual([current]);
+    expect(normalizeTaskSource({ ...source, userText: undefined }).threadContext).toEqual([current]);
+    expect(normalizeTaskSource({ ...source, im: 'slack' }).threadContext).toEqual([current]);
+    expect(normalizeTaskSource({ ...source, triggerMessageId: undefined }).threadContext).toEqual([current]);
+    const legacy = { author: '@user', text: 'request' };
+    expect(normalizeTaskSource({ ...source, threadContext: [legacy] }).threadContext).toEqual([legacy]);
+  });
+
   it('bounds server-controlled display metadata before session persistence', async () => {
     const source = normalizeTaskSource({
       im: 'telegram',
@@ -343,6 +472,26 @@ describe('normalizeTaskSource', () => {
 
     expect(fr.calls[0]?.source?.channelName).toHaveLength(160);
     expect(fr.calls[0]?.source?.userText).toHaveLength(20_000);
+    fr.finish();
+  });
+
+  it('takes the Auto-review reply target from the raw chain before display bounding', async () => {
+    const fr = fakeRunner();
+    const { d } = makeDispatcher({ runner: fr.runner });
+    const c = collector();
+    // A 21-ancestor X chain ending in the current request: display keeps the oldest 20.
+    const threadContext = [
+      ...Array.from({ length: 21 }, (_, index) => ({ messageId: `m${index}`, author: `@a${index}`, text: `ancestor ${index}` })),
+      { messageId: 'current', author: '@user', text: '@bot is this true?' },
+    ];
+    d.handleDispatch('conn-1', dispatch({
+      source: { im: 'x', triggerMessageId: 'current', userText: 'is this true?', threadContext },
+    }), c.send);
+    await tick();
+
+    expect(fr.calls[0]?.source?.threadContext).toHaveLength(20);
+    expect(fr.calls[0]?.source?.threadContext?.at(-1)?.text).toBe('ancestor 19');
+    expect(fr.calls[0]?.autoReviewReplyTarget).toEqual({ author: '@a20', text: 'ancestor 20' });
     fr.finish();
   });
 
@@ -578,6 +727,35 @@ describe('dispatcher 核心语义', () => {
     });
   });
 
+  it('X 新字段在展示截断前组装，runner 收到客户端 prompt 与原话元数据', async () => {
+    const fr = fakeRunner();
+    const { d } = makeDispatcher({ runner: fr.runner });
+    const c = collector();
+    const longText = 'a'.repeat(5000) + '末尾事实';
+    d.handleDispatch('conn-1', dispatch({
+      prompt: '旧服务端模板',
+      source: {
+        im: 'x', triggerMessageId: '2', userText: '查看 PR',
+        xContext: { requesterId: 'u', requesterName: 'User', truncated: false },
+        threadContext: [
+          { messageId: '1', replyToMessageId: null, authorId: 'other', author: '@other', text: longText },
+          { messageId: '2', replyToMessageId: '1', authorId: 'u', author: '@user', text: '@bot 查看 PR' },
+        ],
+      },
+    }), c.send);
+    await tick();
+    expect(fr.calls[0]?.prompt).toContain('当前请求者：User（@user）');
+    expect(fr.calls[0]?.prompt).toContain(longText);
+    expect(fr.calls[0]?.prompt).not.toContain('旧服务端模板');
+    expect(fr.calls[0]?.prompt.endsWith('[@user · 当前请求]\n查看 PR')).toBe(true);
+    expect(fr.calls[0]?.source).toMatchObject({
+      userText: '查看 PR', triggerMessageId: '2', xContext: { requesterId: 'u' },
+    });
+    expect(fr.calls[0]?.source?.threadContext).toEqual([
+      expect.objectContaining({ messageId: '1', author: '@other', text: longText.slice(0, 4000) }),
+    ]);
+  });
+
   it('标题用 source.userText, 不吃 prompt 里 server 挂的 thread 上下文块', async () => {
     // server 会把 thread 上下文拼进 prompt(Slack 的 injectThreadContext 一直
     // 如此, X 也已接上)。按 prompt 前 24 字取标题的话, 整条 thread 派出来的
@@ -638,7 +816,7 @@ describe('dispatcher 核心语义', () => {
     fr.finish();
   });
 
-  it('会话被移出工作目录映射 -> 断开绑定、换新对话并说明, 不跟随到映射外', async () => {
+  it('会话被移出工作目录映射 -> 断开绑定、静默换新对话, 不跟随到映射外', async () => {
     const bindings = memoryBindings();
     const sessions: Record<string, { workingDir: string; usable: boolean }> = {};
     const fr = fakeRunner({ sessions });
@@ -666,10 +844,7 @@ describe('dispatcher 核心语义', () => {
 
     fr.finish({ finalText: '新对话的回答' });
     await tick();
-    const finalText = c.last('turn.end')!.payload.finalText;
-    expect(finalText).toContain('原任务已不在可用的工作目录里');
-    expect(finalText).toContain('把它所在的目录加进来');
-    expect(finalText).toContain('新对话的回答');
+    expect(c.last('turn.end')!.payload.finalText).toBe('新对话的回答');
   });
 
   it('旧任务还在跑时被移出映射: 新消息不排进旧会话(快路径也过边界)', async () => {
@@ -984,7 +1159,7 @@ describe('dispatcher 核心语义', () => {
     fr.finish();
   });
 
-  it('工作目录映射被改(会话目录没变) -> 仍丢绑定重建, 并说明原因', async () => {
+  it('工作目录映射被改(会话目录没变) -> 仍丢绑定静默重建', async () => {
     const bindings = memoryBindings();
     const sessions: Record<string, { workingDir: string; usable: boolean }> = {};
     const fr = fakeRunner({ sessions });
@@ -1013,9 +1188,7 @@ describe('dispatcher 核心语义', () => {
 
     fr.finish({ finalText: '新会话的回答' });
     await tick();
-    const finalText = c.last('turn.end')!.payload.finalText;
-    expect(finalText).toContain('原任务已不在可用的工作目录里');
-    expect(finalText).toContain('新会话的回答');
+    expect(c.last('turn.end')!.payload.finalText).toBe('新会话的回答');
   });
 
   it('存量绑定(带早期版本残留字段)照常判定: 在映射内即复用, 越界即重建', async () => {
@@ -1049,7 +1222,7 @@ describe('dispatcher 核心语义', () => {
     fr2.finish();
   });
 
-  it('绑定的会话已归档/删除 -> 重建并说明是原对话没了', async () => {
+  it('绑定的会话已归档/删除 -> 静默重建, 不向渠道追加说明', async () => {
     const bindings = memoryBindings();
     const fr = fakeRunner({ sessions: { 'gone-session': { workingDir: WS_DIR, usable: false } } });
     const { d } = makeDispatcher({ runner: fr.runner, bindings });
@@ -1062,8 +1235,7 @@ describe('dispatcher 核心语义', () => {
 
     fr.finish({ finalText: '新的回答' });
     await tick();
-    // 措辞留余地: inspect 的 null 也可能是读库瞬时失败, 不能一口咬定会话没了
-    expect(c.last('turn.end')!.payload.finalText).toContain('原任务现在读不到');
+    expect(c.last('turn.end')!.payload.finalText).toBe('新的回答');
   });
 
   it('切账号期间异步定位失败也不回写旧代 rejected ack', async () => {
@@ -1862,13 +2034,39 @@ describe('dispatcher 核心语义', () => {
     ]);
   });
 
+  it.each(['absent', 'empty', 'failed'] as const)(
+    'does not classify user prompt tags as context when host prefix is %s',
+    async (mode) => {
+      const fr = fakeRunner();
+      const { d } = makeDispatcher({
+        runner: fr.runner,
+        ...(mode === 'absent' ? {} : {
+          buildContextPrefix: async () => {
+            if (mode === 'failed') throw new Error('context unavailable');
+            return { prefix: '', messageCount: 0, commit: () => undefined };
+          },
+        }),
+      });
+      const c = collector();
+      const prompt = '<group_chat_context>\n[群里最近的消息]\n[A] user text\n</group_chat_context>\nquestion';
+      d.handleDispatch('conn-1', dispatch({ prompt }), c.send);
+      await tick();
+      expect(fr.calls).toHaveLength(1);
+      expect(fr.calls[0]?.prompt).toBe(prompt);
+      expect(fr.calls[0]?.contextSnapshot).toEqual({});
+      fr.finish({ finalText: 'done' });
+      await tick();
+    },
+  );
+
   it('排队任务只在真正开始时 commit, 取消队列前项不丢后项上下文', async () => {
     const fr = fakeRunner();
     const committed: string[] = [];
     const { d } = makeDispatcher({
       runner: fr.runner,
       buildContextPrefix: async (payload) => ({
-        prefix: '<group_chat_context>背景</group_chat_context>',
+        prefix: '<group_chat_context>\n[群里最近的消息]\n[A] 背景\n第二行\n</group_chat_context>\n',
+        messageCount: 1,
         commit: () => {
           committed.push(payload.requestId);
         },
@@ -1895,6 +2093,10 @@ describe('dispatcher 核心语义', () => {
     expect(fr.calls).toHaveLength(2);
     await fr.calls[1]?.onProviderAccepted?.();
     expect(committed).toEqual(['running', 'queued-b']);
+    for (const call of fr.calls) {
+      expect(call.contextSnapshot).toEqual({ groupContext: '[A] 背景\n第二行', groupMessageCount: 1 });
+      expect(call.prompt).toContain('[A] 背景\n第二行');
+    }
 
     fr.finish({ finalText: 'queued b done' });
     await tick();
@@ -4527,8 +4729,8 @@ describe('官方 bot ack 表情(msg.op)', () => {
     await tick();
 
     expect(c.last('task.ack')?.payload).toMatchObject({ result: 'queued' });
-    // 两条各一次 👀: 立即受理的那条 + 排队的那条; 出队启动时不重复补发。
-    expect(reactionEmojis(c.sent)).toEqual(['👀', '👀']);
+    // 第一条已经处理中，第二条仍显示排队。
+    expect(reactionEmojis(c.sent)).toEqual(['👀', expect.stringMatching(/^(👨‍💻|🤔|🤓|✍)$/), '👀']);
   });
 
   it('排队中被取消 → 👀 换成终态, 不永远挂着「在做」', async () => {
@@ -4546,8 +4748,8 @@ describe('官方 bot ack 表情(msg.op)', () => {
     d.cancel('conn-1', 'to-cancel');
     await tick();
 
-    // 两条各打 👀, 被取消那条补一个终态 —— 用户主动停止不算失败, 仍是 👍。
-    expect(reactionEmojis(c.sent)).toEqual(['👀', '👀', '👍']);
+    // 取消排队任务时清掉它的状态，不影响正在执行的任务。
+    expect(reactionEmojis(c.sent)).toEqual(['👀', expect.stringMatching(/^(👨‍💻|🤔|🤓|✍)$/), '👀', '']);
   });
 
   it('账号停用: 已打 👀 而终态没人发的任务, 停用时撤销那个 👀', async () => {
@@ -4566,12 +4768,12 @@ describe('官方 bot ack 表情(msg.op)', () => {
     await tick();
     d.handleDispatch('conn-1', telegramDispatch({ requestId: 'queued' }), c.send);
     await tick();
-    expect(reactionEmojis(c.sent)).toEqual(['👀', '👀']); // 两条各一个在册
+    expect(reactionEmojis(c.sent)).toEqual(['👀', expect.stringMatching(/^(👨‍💻|🤔|🤓|✍)$/), '👀']); // 两条各一个在册
 
     const draining = d.deactivateAccount();
     await tick();
     // 两个 👀 都被撤销(空串), 没有任何一个被装成终态。
-    const after = reactionEmojis(c.sent).slice(2);
+    const after = reactionEmojis(c.sent).slice(3);
     expect(after).toEqual(['', '']);
 
     // HookRunOutcome 只有 ok / error 两态, 取消由 dispatcher 侧改写。
@@ -4588,7 +4790,7 @@ describe('官方 bot ack 表情(msg.op)', () => {
     d.setEmojiReactionsMode('minimal');
     d.handleDispatch('conn-1', telegramDispatch({ requestId: 'offline-final' }), online.send);
     await tick();
-    expect(reactionEmojis(online.sent)).toEqual(['👀']);
+    expect(reactionEmojis(online.sent)).toEqual(['👀', expect.stringMatching(/^(👨‍💻|🤔|🤓|✍)$/)]);
 
     d.onDisconnected('conn-1');
     fr.finish({ status: 'ok' });
@@ -4597,7 +4799,7 @@ describe('官方 bot ack 表情(msg.op)', () => {
     const reconnected = collector();
     d.onConnected('conn-1', reconnected.send, [HOOK_FEATURE_MESSAGE_OPS]);
     await tick();
-    expect(reactionEmojis(reconnected.sent)).toEqual(['👍']);
+    expect(reactionEmojis(reconnected.sent)).toEqual(['']);
   });
 
   it('老 server 没宣告 msg-op-v1 → 一帧 msg.op 都不发', async () => {
@@ -4642,7 +4844,7 @@ describe('官方 bot ack 表情(msg.op)', () => {
     d.setEmojiReactionsMode('minimal');
     d.handleDispatch('conn-1', telegramDispatch({ requestId: 'hydrated' }), c.send);
     await tick();
-    expect(reactionEmojis(c.sent)).toEqual(['👀']);
+    expect(reactionEmojis(c.sent)).toEqual(['👀', expect.stringMatching(/^(👨‍💻|🤔|🤓|✍)$/)]);
   });
 
   it('账号切换后档位打回未知 —— 不拿上一位主人的选择顶上', async () => {
@@ -4653,7 +4855,7 @@ describe('官方 bot ack 表情(msg.op)', () => {
     d.setEmojiReactionsMode('minimal');
     d.handleDispatch('conn-1', telegramDispatch({ requestId: 'first-owner' }), c.send);
     await tick();
-    expect(reactionEmojis(c.sent)).toEqual(['👀']);
+    expect(reactionEmojis(c.sent)).toEqual(['👀', expect.stringMatching(/^(👨‍💻|🤔|🤓|✍)$/)]);
 
     const draining = d.deactivateAccount();
     fr.finish({ status: 'ok' });
@@ -4666,5 +4868,572 @@ describe('官方 bot ack 表情(msg.op)', () => {
     d.handleDispatch('conn-2', telegramDispatch({ requestId: 'second-owner' }), next.send);
     await tick();
     expect(next.sent.filter((m) => m.type === 'msg.op')).toHaveLength(0);
+  });
+});
+
+describe('官方 Telegram 进度消息由客户端渲染(telegram-progress-ops-v1)', () => {
+  const PROGRESS_FEATURES = [HOOK_FEATURE_MESSAGE_OPS, HOOK_FEATURE_TELEGRAM_PROGRESS_OPS];
+  const progressOps = (sent: readonly HookMessage[]) =>
+    sent.filter(
+      (m): m is Extract<HookMessage, { type: 'msg.op' }> =>
+        m.type === 'msg.op' && m.payload.purpose === 'turn-progress',
+    );
+
+  it('未协商: 只发 turn.progress, 一帧进度 msg.op 都没有(行为与旧版相同)', async () => {
+    vi.useFakeTimers();
+    try {
+      const fr = fakeRunner();
+      const { d } = makeDispatcher({ runner: fr.runner });
+      const c = collector();
+      d.onConnected('conn-1', c.send, [HOOK_FEATURE_MESSAGE_OPS]);
+      d.handleDispatch('conn-1', telegramDispatch(), c.send);
+      await tick();
+      fr.calls[0].onProgress!('**工作中**');
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(c.ofType('turn.progress')).toHaveLength(1);
+      expect(progressOps(c.sent)).toHaveLength(0);
+      fr.finish();
+      await tick();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('协商后: turn.progress 照发(续 lease), 进度消息首帧 send、后续 edit, done 冲刷排在 turn.end 之前', async () => {
+    vi.useFakeTimers();
+    try {
+      const fr = fakeRunner();
+      const { d } = makeDispatcher({ runner: fr.runner });
+      const c = collector();
+      d.onConnected('conn-1', c.send, PROGRESS_FEATURES);
+      d.handleDispatch('conn-1', telegramDispatch(), c.send);
+      await tick();
+      const onProgress = fr.calls[0].onProgress!;
+
+      onProgress('**工作中**');
+      expect(c.ofType('turn.progress')).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1_500);
+      const [first] = progressOps(c.sent);
+      expect(first.payload).toMatchObject({
+        requestId: 'req-1',
+        scope: { externalKey: 'telegram:group:bot:-100200:user-7:g1' },
+        action: { kind: 'send', tier: 'html', text: '<b>工作中</b>' },
+      });
+      d.onMessageOpResult({ opId: first.payload.opId, ok: true, messageId: '700' });
+      await tick();
+
+      // 最后一帧还在 1.5s 尾沿窗口里就收口: 终稿栅栏同步冲刷, wire 上先于 turn.end。
+      onProgress('**工作中**\n\n最后一帧');
+      fr.finish();
+      await tick();
+      const lastEdit = c.sent.findIndex(
+        (m) => m.type === 'msg.op' && m.payload.purpose === 'turn-progress' && m.payload.action.kind === 'edit',
+      );
+      const end = c.sent.findIndex((m) => m.type === 'turn.end');
+      expect(lastEdit).toBeGreaterThan(-1);
+      expect(lastEdit).toBeLessThan(end);
+      expect((c.sent[lastEdit] as Extract<HookMessage, { type: 'msg.op' }>).payload.action).toMatchObject({
+        kind: 'edit',
+        messageId: '700',
+      });
+
+      // 收口后迟到的进度帧 / 节流定时器不再产出任何进度 op。
+      const count = progressOps(c.sent).length;
+      onProgress('迟到');
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(progressOps(c.sent)).toHaveLength(count);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('跨轮不串消息: 下一轮从新的 send 开始, opId 按各自 requestId 派生', async () => {
+    vi.useFakeTimers();
+    try {
+      const fr = fakeRunner();
+      const { d } = makeDispatcher({ runner: fr.runner });
+      const c = collector();
+      d.onConnected('conn-1', c.send, PROGRESS_FEATURES);
+      d.handleDispatch('conn-1', telegramDispatch({ requestId: 'r-a' }), c.send);
+      await tick();
+      fr.calls[0].onProgress!('第一轮');
+      await vi.advanceTimersByTimeAsync(1_500);
+      const a = progressOps(c.sent)[0];
+      d.onMessageOpResult({ opId: a.payload.opId, ok: true, messageId: '1' });
+      fr.finish();
+      await tick();
+
+      d.handleDispatch('conn-1', telegramDispatch({ requestId: 'r-b' }), c.send);
+      await tick();
+      fr.calls[1].onProgress!('第二轮');
+      await vi.advanceTimersByTimeAsync(1_500);
+      const b = progressOps(c.sent).filter((m) => m.payload.requestId === 'r-b');
+      expect(b).toHaveLength(1);
+      expect(b[0].payload.action.kind).toBe('send');
+      expect(b[0].payload.opId.startsWith('r-b:')).toBe(true);
+      // 上一轮的迟到回执不会被这一轮认领。
+      d.onMessageOpResult({ opId: a.payload.opId, ok: true, messageId: '1' });
+      fr.calls[1].onProgress!('第二轮继续');
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(progressOps(c.sent).filter((m) => m.payload.requestId === 'r-b')).toHaveLength(1);
+      fr.finish();
+      await tick();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('Slack 任务即使连接宣告了能力也不走进度 op', async () => {
+    vi.useFakeTimers();
+    try {
+      const fr = fakeRunner();
+      const { d } = makeDispatcher({ runner: fr.runner });
+      const c = collector();
+      d.onConnected('conn-1', c.send, PROGRESS_FEATURES);
+      d.handleDispatch('conn-1', dispatch(), c.send);
+      await tick();
+      fr.calls[0].onProgress!('slack 进度');
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(progressOps(c.sent)).toHaveLength(0);
+      fr.finish();
+      await tick();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('官方 Telegram 终稿 / 交互卡 / 命令菜单由客户端发布', () => {
+  type OpMessage = Extract<HookMessage, { type: 'msg.op' }>;
+  const ALL_FEATURES = [
+    HOOK_FEATURE_MESSAGE_OPS,
+    HOOK_FEATURE_TELEGRAM_PROGRESS_OPS,
+    HOOK_FEATURE_TELEGRAM_FINAL_OPS,
+    HOOK_FEATURE_TELEGRAM_CARD_OPS,
+    HOOK_FEATURE_TELEGRAM_COMMANDS,
+  ];
+  const ops = (sent: readonly HookMessage[], purpose?: string) =>
+    sent.filter((m): m is OpMessage => m.type === 'msg.op' && (purpose === undefined || m.payload.purpose === purpose));
+
+  /**
+   * 带自动回执的连接: 每发一帧 msg.op 就在下一个微任务里按 responder 回执(模拟服务端)。
+   * responder 返回 null = 不回执。onSend 在帧交出时同步回调(用来抓"那一刻"的账本)。
+   */
+  function respondingCollector(
+    d: ReturnType<typeof makeDispatcher>['d'],
+    responder: (payload: OpMessage['payload']) => Record<string, unknown> | null,
+    onSend?: (m: HookMessage) => void,
+  ) {
+    const c = collector();
+    let id = 500;
+    const send = (m: HookMessage): boolean => {
+      const ok = c.send(m);
+      onSend?.(m);
+      if (ok && m.type === 'msg.op') {
+        const result = responder(m.payload);
+        if (result) {
+          queueMicrotask(() =>
+            d.onMessageOpResult({ opId: m.payload.opId, ok: true, messageId: String(id++), ...result } as never),
+          );
+        }
+      }
+      return ok;
+    };
+    return { ...c, send };
+  }
+
+  it('协商终稿: 先写持久出箱、再经 msg.op 发布, 最后 turn.end 带 clientFinal.complete', async () => {
+    const ledger = memoryTerminalLedger();
+    const fr = fakeRunner();
+    const { d } = makeDispatcher({ runner: fr.runner, terminalLedger: ledger });
+    let ledgerAtFirstFinal: HookTerminalRecord | null | undefined;
+    const c = respondingCollector(
+      d,
+      (p) => (p.action.kind === 'send' && p.action.tier === 'rich' ? { ok: false, channelErrorCode: 400, error: 'rich' } : {}),
+      (m) => {
+        if (m.type === 'msg.op' && m.payload.purpose === 'turn-final' && ledgerAtFirstFinal === undefined) {
+          ledgerAtFirstFinal = ledger.get('conn-1', 'req-1');
+        }
+      },
+    );
+    d.onConnected('conn-1', c.send, ALL_FEATURES);
+    d.handleDispatch('conn-1', telegramDispatch(), c.send);
+    await tick();
+    fr.finish({ finalText: '**答案**' });
+    await tick(40);
+
+    // 发布前出箱里已经有一份「交回服务端」版本的 turn.end(不带 clientFinal)。
+    expect(ledgerAtFirstFinal?.delivery).toBe('pending');
+    expect(ledgerAtFirstFinal?.turnEnd?.clientFinal).toBeUndefined();
+    const finals = ops(c.sent, 'turn-final');
+    expect(finals.map((m) => m.payload.action.kind)).toEqual(['send', 'send']);
+    const endIndex = c.sent.findIndex((m) => m.type === 'turn.end');
+    expect(endIndex).toBeGreaterThan(c.sent.indexOf(finals[finals.length - 1]));
+    const end = c.last('turn.end')!.payload;
+    expect(end.clientFinal).toEqual({ complete: true });
+    expect(ledger.get('conn-1', 'req-1')?.turnEnd?.clientFinal).toEqual({ complete: true });
+  });
+
+  it('客户端终稿没有完整确认 → turn.end 带 clientFinal.complete=false(服务端照旧发布)', async () => {
+    vi.useFakeTimers();
+    try {
+      const fr = fakeRunner();
+      const { d } = makeDispatcher({ runner: fr.runner });
+      const c = respondingCollector(d, (p) => (p.purpose === 'turn-final' ? null : {}));
+      d.onConnected('conn-1', c.send, ALL_FEATURES);
+      d.handleDispatch('conn-1', telegramDispatch(), c.send);
+      await tick();
+      fr.finish({ finalText: '答案' });
+      await vi.advanceTimersByTimeAsync(3 * 31_000) // 首发 + 2 次原样重发各等满回执超时;
+      await tick(20);
+      const end = c.last('turn.end')!.payload;
+      expect(end.clientFinal).toEqual({ complete: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('持久出箱写不进兜底帧: 不走客户端终稿, turn.end 交给服务端照旧发布', async () => {
+    const ledger = memoryTerminalLedger();
+    const set = ledger.set.bind(ledger);
+    // 发布前那次 pending 写入失败(磁盘满 / 锁冲突), 之后的写入照常。
+    let failNext = true;
+    ledger.set = (record) => {
+      if (failNext && record.delivery === 'pending') {
+        failNext = false;
+        return false;
+      }
+      return set(record);
+    };
+    const fr = fakeRunner();
+    const { d } = makeDispatcher({ runner: fr.runner, terminalLedger: ledger });
+    const c = respondingCollector(d, () => ({}));
+    d.onConnected('conn-1', c.send, ALL_FEATURES);
+    d.handleDispatch('conn-1', telegramDispatch(), c.send);
+    await tick();
+    fr.finish({ finalText: '答案' });
+    await tick(20);
+    expect(ops(c.sent, 'turn-final')).toHaveLength(0);
+    const end = c.last('turn.end')!.payload;
+    expect(end.clientFinal).toBeUndefined();
+    expect(end.finalText).toBe('答案');
+  });
+
+  it('带附件的成功轮次不走客户端终稿: 不发 turn-final, turn.end 原样带附件交给服务端', async () => {
+    const fr = fakeRunner();
+    const { d } = makeDispatcher({ runner: fr.runner });
+    const c = respondingCollector(d, () => ({}));
+    d.onConnected('conn-1', c.send, ALL_FEATURES);
+    d.handleDispatch('conn-1', telegramDispatch(), c.send);
+    await tick();
+    fr.finish({
+      finalText: '答案',
+      attachments: [{ name: 'a.png', mimeType: 'image/png', dataBase64: 'AAAA' }],
+    });
+    await tick(20);
+    expect(ops(c.sent, 'turn-final')).toHaveLength(0);
+    const end = c.last('turn.end')!.payload;
+    expect(end.clientFinal).toBeUndefined();
+    expect(end.attachments).toHaveLength(1);
+  });
+
+  it('发布客户端终稿期间重连: 不重放出箱里的兜底 turn.end, 发布结束后才发正式帧', async () => {
+    vi.useFakeTimers();
+    try {
+      const ledger = memoryTerminalLedger();
+      const fr = fakeRunner();
+      const { d } = makeDispatcher({ runner: fr.runner, terminalLedger: ledger });
+      const c = respondingCollector(d, (p) => (p.purpose === 'turn-final' ? null : {}));
+      d.onConnected('conn-1', c.send, ALL_FEATURES);
+      d.handleDispatch('conn-1', telegramDispatch(), c.send);
+      await tick();
+      fr.finish({ finalText: '答案' });
+      await tick(20);
+      expect(ops(c.sent, 'turn-final').length).toBeGreaterThan(0);
+      expect(ledger.get('conn-1', 'req-1')?.delivery).toBe('pending');
+
+      const reconnected = respondingCollector(d, (p) => (p.purpose === 'turn-final' ? null : {}));
+      d.onConnected('conn-1', reconnected.send, ALL_FEATURES);
+      await tick(20);
+      expect(reconnected.sent.filter((m) => m.type === 'turn.end')).toHaveLength(0);
+
+      await vi.advanceTimersByTimeAsync(3 * 31_000) // 首发 + 2 次原样重发各等满回执超时;
+      await tick(20);
+      const ends = reconnected.sent.filter((m) => m.type === 'turn.end');
+      expect(ends).toHaveLength(1);
+      expect((ends[0] as Extract<HookMessage, { type: 'turn.end' }>).payload.clientFinal).toEqual({
+        complete: false,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('失败 / NO_REPLY / 未协商终稿能力: 不发 turn-final, turn.end 不带 clientFinal(行为与旧版相同)', async () => {
+    for (const [features, outcome] of [
+      [ALL_FEATURES, { status: 'error' as const, finalText: '', errorMessage: 'boom' }],
+      [ALL_FEATURES, { finalText: 'NO_REPLY' }],
+      [[HOOK_FEATURE_MESSAGE_OPS, HOOK_FEATURE_TELEGRAM_PROGRESS_OPS], { finalText: '答案' }],
+    ] as const) {
+      const fr = fakeRunner();
+      const { d } = makeDispatcher({ runner: fr.runner });
+      const c = respondingCollector(d, () => ({}));
+      d.onConnected('conn-1', c.send, [...features]);
+      d.handleDispatch('conn-1', telegramDispatch(), c.send);
+      await tick();
+      fr.finish(outcome);
+      await tick(20);
+      expect(ops(c.sent, 'turn-final')).toHaveLength(0);
+      expect(c.last('turn.end')!.payload.clientFinal).toBeUndefined();
+    }
+  });
+
+  it('协商卡片: 用个人 bot 同一渲染经 msg.op 发卡(短按钮成对), 收口编辑清键盘并先于 turn.end; 不发 interaction.request', async () => {
+    const fr = fakeRunner();
+    const { d } = makeDispatcher({ runner: fr.runner });
+    const c = respondingCollector(d, () => ({}));
+    d.onConnected('conn-1', c.send, ALL_FEATURES);
+    d.handleDispatch('conn-1', telegramDispatch(), c.send);
+    await tick();
+    const req = fr.calls[0];
+    req.onInteraction!({
+      interactionId: 'i-1',
+      kind: 'permission',
+      title: '🔐 权限请求: Bash',
+      body: '工具: `Bash`',
+      buttons: [
+        { id: 'perm:allow', label: '允许一次', style: 'primary' },
+        { id: 'perm:always', label: '本任务总是允许', style: 'default' },
+        { id: 'perm:deny', label: '拒绝', style: 'danger' },
+      ],
+    });
+    await tick();
+    const [open] = ops(c.sent, 'interaction-card');
+    expect(open.payload).toMatchObject({ interactionId: 'i-1', requestId: 'req-1' });
+    expect(open.payload.action).toMatchObject({
+      kind: 'send',
+      tier: 'html',
+      text: '<b>🔐 权限请求: Bash</b>\n\n工具: <code>Bash</code>',
+      // 与个人 bot 同一排布: label ≤12 字的两两并排。
+      buttons: [
+        [
+          { token: 'perm:allow', label: '允许一次' },
+          { token: 'perm:always', label: '本任务总是允许' },
+        ],
+        [{ token: 'perm:deny', label: '拒绝' }],
+      ],
+    });
+    expect(c.ofType('interaction.request')).toHaveLength(0);
+
+    req.onInteractionCancel!('i-1', '等待授权超时, 已拒绝该权限请求');
+    fr.finish();
+    await tick(30);
+    const close = ops(c.sent, 'interaction-card').find((m) => m.payload.interactionClosed === true)!;
+    expect(close.payload.action).toMatchObject({ kind: 'edit', buttons: [] });
+    expect(c.sent.indexOf(close)).toBeLessThan(c.sent.findIndex((m) => m.type === 'turn.end'));
+    expect(c.ofType('interaction.cancel')).toHaveLength(0);
+  });
+
+  it('发布客户端终稿期间服务端重投同一 task.dispatch: 只回放 ack, 不发兜底 turn.end', async () => {
+    vi.useFakeTimers();
+    try {
+      const ledger = memoryTerminalLedger();
+      const fr = fakeRunner();
+      const { d } = makeDispatcher({ runner: fr.runner, terminalLedger: ledger });
+      const c = respondingCollector(d, (p) => (p.purpose === 'turn-final' ? null : {}));
+      d.onConnected('conn-1', c.send, ALL_FEATURES);
+      d.handleDispatch('conn-1', telegramDispatch(), c.send);
+      await tick();
+      fr.finish({ finalText: '答案' });
+      await tick(20);
+      expect(ledger.get('conn-1', 'req-1')?.delivery).toBe('pending');
+      const acksBefore = c.ofType('task.ack').length;
+
+      // 服务端没收到最初的 ack, 重投同一个 requestId。
+      d.handleDispatch('conn-1', telegramDispatch(), c.send);
+      await tick(20);
+      expect(c.ofType('task.ack').length).toBe(acksBefore + 1);
+      expect(c.ofType('turn.end')).toHaveLength(0);
+      expect(fr.calls).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(3 * 31_000);
+      await tick(20);
+      const ends = c.ofType('turn.end');
+      expect(ends).toHaveLength(1);
+      expect(ends[0].payload.clientFinal).toEqual({ complete: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('终稿已发、卡片还在 drain 时重连: 仍不重放兜底帧, 正式 turn.end 带 clientFinal.complete', async () => {
+    vi.useFakeTimers();
+    try {
+      const ledger = memoryTerminalLedger();
+      const fr = fakeRunner();
+      const { d } = makeDispatcher({ runner: fr.runner, terminalLedger: ledger });
+      // 卡片收口编辑不回执 → drain 要等满上限; 终稿段正常确认。
+      const responder = (p: OpMessage['payload']) =>
+        p.purpose === 'interaction-card' && p.interactionClosed ? null : {};
+      const c = respondingCollector(d, responder);
+      d.onConnected('conn-1', c.send, ALL_FEATURES);
+      d.handleDispatch('conn-1', telegramDispatch(), c.send);
+      await tick();
+      const req = fr.calls[0];
+      req.onInteraction!({
+        interactionId: 'i-1',
+        kind: 'permission',
+        title: '🔐 权限请求: Bash',
+        body: '工具: `Bash`',
+        buttons: [{ id: 'perm:allow', label: '允许一次', style: 'primary' }],
+      });
+      await tick();
+      req.onInteractionCancel!('i-1', '已处理');
+      fr.finish({ finalText: '答案' });
+      await tick(20);
+      expect(ops(c.sent, 'turn-final').length).toBeGreaterThan(0);
+      expect(c.ofType('turn.end')).toHaveLength(0);
+
+      const reconnected = respondingCollector(d, responder);
+      d.onConnected('conn-1', reconnected.send, ALL_FEATURES);
+      await tick(20);
+      expect(reconnected.ofType('turn.end')).toHaveLength(0);
+
+      await vi.advanceTimersByTimeAsync(6_000);
+      await tick(20);
+      const ends = reconnected.ofType('turn.end');
+      expect(ends).toHaveLength(1);
+      expect(ends[0].payload.clientFinal).toEqual({ complete: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drain 超时后仍在途的卡片操作: 换账号重连后不经新账号的同名连接发出', async () => {
+    vi.useFakeTimers();
+    try {
+      const fr = fakeRunner();
+      const { d } = makeDispatcher({ runner: fr.runner });
+      // 发卡撞 429, 要退避 20s: 这一轮收口时 drain(5s)等不到它。
+      const c = respondingCollector(d, (p) =>
+        p.purpose === 'interaction-card'
+          ? { ok: false, channelErrorCode: 429, retryAfterMs: 20_000, error: 'Too Many Requests' }
+          : {},
+      );
+      d.onConnected('conn-1', c.send, ALL_FEATURES);
+      d.handleDispatch('conn-1', telegramDispatch(), c.send);
+      await tick();
+      fr.calls[0].onInteraction!({
+        interactionId: 'i-1',
+        kind: 'permission',
+        title: '🔐 权限请求: Bash',
+        body: '工具: `Bash`',
+        buttons: [{ id: 'perm:allow', label: '允许一次', style: 'primary' }],
+      });
+      await tick();
+      expect(ops(c.sent, 'interaction-card')).toHaveLength(1);
+      fr.finish();
+      await vi.advanceTimersByTimeAsync(6_000);
+      await tick(20);
+      expect(c.ofType('turn.end')).toHaveLength(1);
+
+      await d.deactivateAccount();
+      d.activateAccount();
+      const next = respondingCollector(d, () => ({}));
+      d.onConnected('conn-1', next.send, ALL_FEATURES);
+      await vi.advanceTimersByTimeAsync(20_000);
+      await tick(20);
+      expect(ops(next.sent, 'interaction-card')).toHaveLength(0);
+      expect(next.ofType('interaction.request')).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('卡片 op 被明确拒绝 → 回落 interaction.request, 收口也走 interaction.cancel', async () => {
+    const fr = fakeRunner();
+    const { d } = makeDispatcher({ runner: fr.runner });
+    const c = respondingCollector(d, (p) =>
+      p.purpose === 'interaction-card' ? { ok: false, channelErrorCode: 400, error: "can't parse entities" } : {},
+    );
+    d.onConnected('conn-1', c.send, ALL_FEATURES);
+    d.handleDispatch('conn-1', telegramDispatch(), c.send);
+    await tick();
+    const req = fr.calls[0];
+    req.onInteraction!({ interactionId: 'i-2', kind: 'ask_user_question', title: '❓ 选哪个', body: 'x', buttons: [] });
+    await tick(20);
+    expect(c.ofType('interaction.request')).toHaveLength(1);
+    req.onInteractionCancel!('i-2', '超时');
+    await tick(20);
+    expect(c.ofType('interaction.cancel')).toHaveLength(1);
+    fr.finish();
+    await tick(20);
+  });
+
+  it('命令菜单: 握手宣告 telegram-commands-v1 才下发 provider.commands.set', () => {
+    const menus = [{ languageCode: null, commands: [{ command: 'new', description: 'New task' }] }];
+    const fr = fakeRunner();
+    const d = createHookDispatcher({
+      getConnection: () => CONFIG,
+      bindings: memoryBindings(),
+      runner: fr.runner,
+      telegramCommandMenus: () => menus,
+      log: noopLog,
+    });
+    const without = collector();
+    d.onConnected('conn-1', without.send, [HOOK_FEATURE_MESSAGE_OPS]);
+    expect(without.ofType('provider.commands.set')).toHaveLength(0);
+    const withMenu = collector();
+    d.onConnected('conn-1', withMenu.send, [HOOK_FEATURE_TELEGRAM_COMMANDS]);
+    expect(withMenu.last('provider.commands.set')?.payload).toEqual({ provider: 'telegram', menus });
+  });
+});
+
+describe('渠道 /stop 走统一明确停止', () => {
+  it('task.cancel 调 stopSessionExplicitly(与桌面 Stop 同一套清理), 不再直接 abort', async () => {
+    const fr = fakeRunner();
+    const abortSession = vi.fn(async () => undefined);
+    const stopSessionExplicitly = vi.fn(async () => undefined);
+    const d = createHookDispatcher({
+      getConnection: () => CONFIG,
+      bindings: memoryBindings(),
+      runner: fr.runner,
+      abortSession,
+      stopSessionExplicitly,
+      log: noopLog,
+    });
+    const c = collector();
+    d.handleDispatch('conn-1', dispatch(), c.send);
+    await tick();
+    const sessionId = fr.calls[0].sessionId;
+    d.cancel('conn-1', 'req-1');
+    expect(stopSessionExplicitly).toHaveBeenCalledWith(sessionId);
+    expect(abortSession).not.toHaveBeenCalled();
+    fr.finish({ status: 'error', finalText: '', errorMessage: 'aborted' });
+    await tick();
+    expect(c.last('turn.end')?.payload.status).toBe('cancelled');
+  });
+
+  it('账号边界的中止不是用户喊停: 仍走 abortSession(不暂停 Goal)', async () => {
+    const fr = fakeRunner();
+    const abortSession = vi.fn(async () => undefined);
+    const stopSessionExplicitly = vi.fn(async () => undefined);
+    const d = createHookDispatcher({
+      getConnection: () => CONFIG,
+      bindings: memoryBindings(),
+      runner: fr.runner,
+      abortSession,
+      stopSessionExplicitly,
+      log: noopLog,
+    });
+    const c = collector();
+    d.handleDispatch('conn-1', dispatch(), c.send);
+    await tick();
+    const deactivated = d.deactivateAccount();
+    await tick();
+    expect(abortSession).toHaveBeenCalledWith(fr.calls[0].sessionId);
+    expect(stopSessionExplicitly).not.toHaveBeenCalled();
+    fr.finish();
+    await deactivated;
   });
 });

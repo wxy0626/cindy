@@ -6,6 +6,7 @@ import type { DesktopLoginAction } from '@/lib/authService';
 interface UseLoginReturn {
   isLoading: boolean;
   errorCode: string | null;
+  retryAt: number | undefined;
   loginState: ReturnType<typeof useAuth>['loginState'];
   hasAccountDeletionReceipt: boolean;
   getAccountDeletionStatus: ReturnType<typeof useAuth>['getAccountDeletionStatus'];
@@ -62,13 +63,8 @@ export function useLogin({ autoLoad = true }: { autoLoad?: boolean } = {}): UseL
     setIsLoading(true);
     void loadLoginState()
       .then((result) => {
-        if (actionRequestIdRef.current === requestId && !result.success) {
+        if (!result.success) {
           setErrorCode(result.code);
-        }
-      })
-      .catch(() => {
-        if (actionRequestIdRef.current === requestId) {
-          setErrorCode('AUTH_SERVICE_UNAVAILABLE');
         }
       })
       .finally(() => {
@@ -155,6 +151,10 @@ export function useLogin({ autoLoad = true }: { autoLoad?: boolean } = {}): UseL
   return {
     isLoading,
     errorCode,
+    retryAt:
+      (errorCode ?? (loginState?.step === 'error' ? loginState.code : null)) === 'RATE_LIMITED'
+        ? loginState?.retryAt
+        : undefined,
     loginState,
     hasAccountDeletionReceipt,
     getAccountDeletionStatus,
@@ -163,7 +163,9 @@ export function useLogin({ autoLoad = true }: { autoLoad?: boolean } = {}): UseL
     dispatch,
     selectLoginRegion,
     dispatchWithResult,
-    clearError: () => setErrorCode(null),
+    clearError: () => {
+      setErrorCode(null);
+    },
     enterLocalMode,
     beginAddAccount,
   };

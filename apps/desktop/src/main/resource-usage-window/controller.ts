@@ -34,6 +34,18 @@ export interface ResourceUsageOwnerWindow {
 
 export interface ResourceUsageWindowControllerDeps {
   createWindow: () => BrowserWindow;
+  /** Optional surface adapter; defaults preserve the resource monitor. */
+  activityChannel?: string;
+  activityPayload?: (active: boolean) => unknown;
+  localeChannel?: string;
+  prewarmWork?: boolean;
+  /**
+   * 原生 hide / minimize 是否暂停窗口工作；默认 true。只有用户关闭（hideWindow）才应结束
+   * 工作的窗口传 false——macOS 会把切换 Space、原生全屏切换和完全遮挡都报告成 hide / show。
+   */
+  pauseWhenHidden?: boolean;
+  onActivityChanged?: (window: BrowserWindow, active: boolean) => void;
+  onCloseRequested?: (window: BrowserWindow) => void;
   isOpenSender: (sender: WebContents) => boolean;
   /** 打开监视器的那扇应用窗；用于跟随显隐并在关闭监视器后恢复焦点。 */
   getOwnerWindow?: (sender: WebContents) => ResourceUsageOwnerWindow | null;
@@ -130,7 +142,9 @@ export class ResourceUsageWindowController {
       this.showAndFocus(win);
       return true;
     }
-    if (!this.visible && !this.pendingOpen) this.setSamplingActive(win, false);
+    // 隐藏不暂停的窗口（远程桌面）在隐藏后才就绪时保留会话，只是不再显示。
+    if (!this.visible && !this.pendingOpen && this.deps.pauseWhenHidden !== false)
+      this.setSamplingActive(win, false);
     return true;
   }
 
@@ -171,7 +185,7 @@ export class ResourceUsageWindowController {
   private sendLocale(win: BrowserWindow, locale: SupportedLocale): void {
     if (win.webContents.isDestroyed()) return;
     try {
-      win.webContents.send(RESOURCE_USAGE_WINDOW_LOCALE_CHANGED_CHANNEL, locale);
+      win.webContents.send(this.deps.localeChannel ?? RESOURCE_USAGE_WINDOW_LOCALE_CHANGED_CHANNEL, locale);
     } catch {
       // 窗口可能在 isDestroyed 检查与 send 之间被系统销毁。
     }
@@ -229,14 +243,15 @@ export class ResourceUsageWindowController {
     this.visible = false;
     // Windows 预热只加载 BrowserWindow / renderer。昂贵且可能触发安全软件管道异常的
     // OS 扫描必须等用户显式 open；其他平台保留既有首份快照预热体验。
-    this.samplingActive = this.pendingOpen || this.platform() !== 'win32';
+    this.samplingActive = this.pendingOpen || (this.deps.prewarmWork ?? this.platform() !== 'win32');
     this.destroyingWindow = false;
     this.applyNativeTitle(win);
     if (this.locale) this.sendLocale(win, this.locale);
     win.on('close', (event) => {
       if (this.destroyingWindow || this.disposed) return;
       event.preventDefault();
-      this.hideWindow(win);
+      if (this.deps.onCloseRequested) this.deps.onCloseRequested(win);
+      else this.hideWindow(win);
     });
     win.on('closed', () => this.onClosed(win));
     win.on('show', () => this.onNativeVisibilityChanged(win, true));
@@ -422,9 +437,10 @@ export class ResourceUsageWindowController {
 
   private setSamplingActive(win: BrowserWindow, active: boolean): void {
     this.samplingActive = active;
+    this.deps.onActivityChanged?.(win, active);
     if (win.isDestroyed() || win.webContents.isDestroyed()) return;
     try {
-      win.webContents.send(RESOURCE_USAGE_WINDOW_SAMPLING_ACTIVE_CHANNEL, active);
+      win.webContents.send(this.deps.activityChannel ?? RESOURCE_USAGE_WINDOW_SAMPLING_ACTIVE_CHANNEL, this.deps.activityPayload?.(active) ?? active);
     } catch {
       // 窗口可能在 isDestroyed 检查与 send 之间被系统销毁。
     }
@@ -438,7 +454,7 @@ export class ResourceUsageWindowController {
   private onNativeVisibilityChanged(win: BrowserWindow, visible: boolean): void {
     if (win !== this.winRef || win.isDestroyed()) return;
     this.visible = visible;
-    this.setSamplingActive(win, visible);
+    if (this.deps.pauseWhenHidden !== false) this.setSamplingActive(win, visible);
     if (!visible && this.pendingOpen) {
       this.pendingOpen = false;
       this.clearOpenTimeout();
@@ -517,7 +533,7 @@ export class ResourceUsageWindowController {
     if (this.visible) win.hide();
     this.rendererReady = false;
     this.presentationReady = false;
-    this.setSamplingActive(win, shouldRestore || this.platform() !== 'win32');
+    this.setSamplingActive(win, shouldRestore || (this.deps.prewarmWork ?? this.platform() !== 'win32'));
     if (shouldRestore) {
       this.pendingOpen = true;
       this.scheduleOpenFallback(win);
