@@ -334,7 +334,7 @@ describe('折叠态 v1/v2 → v3 迁移(other 恢复旧语义,新增 ungrouped)'
   });
 });
 
-it('ordinary toggles preserve opt-in compatibility and can still enable hidden native models', () => {
+it('ordinary toggles enable every configured engine', () => {
   const native = { ...model('gpt-6'), defaultEnabled: true };
   const bridge = { ...model('chatgpt/gpt-6'), defaultEnabled: false };
   const row = {
@@ -346,11 +346,13 @@ it('ordinary toggles preserve opt-in compatibility and can still enable hidden n
   const mutableRow = { ...row, avail: [...row.avail] };
   expect(modelVisibilityTargets({ ...provider, id: 'openai' }, mutableRow, true)).toEqual([
     { agent: 'codex', modelId: 'gpt-6' },
+    { agent: 'claude-code', modelId: 'chatgpt/gpt-6' },
   ]);
   expect(modelVisibilityTargets({ ...provider, id: 'openai' }, mutableRow, false)).toHaveLength(2);
   native.defaultEnabled = false;
   expect(modelVisibilityTargets({ ...provider, id: 'openai' }, mutableRow, true)).toEqual([
     { agent: 'codex', modelId: 'gpt-6' },
+    { agent: 'claude-code', modelId: 'chatgpt/gpt-6' },
   ]);
 });
 
@@ -400,19 +402,20 @@ describe('canWriteModelVisibility', () => {
 });
 
 
-it('enables both native Claude and Pi while leaving Codex compatibility opt-in', () => {
+it('enables every configured engine regardless of native protocol', () => {
   const entry = { ...model('anthropic/claude-test'), api: 'anthropic-messages' as const,
     nativeApi: 'anthropic-messages' as const, defaultEnabled: false };
   const p = { ...provider, agents: ['claude-code', 'codex', 'pi'] as ProviderView['agents'], models: { 'claude-code': [entry], codex: [entry], pi: [entry] } };
   const row = buildUnionRows(p)[0]!;
   expect(modelVisibilityTargets(p, row, true)).toEqual([
     { agent: 'claude-code', modelId: entry.id },
+    { agent: 'codex', modelId: entry.id },
     { agent: 'pi', modelId: entry.id },
   ]);
   expect(modelVisibilityTargets(p, row, false)).toHaveLength(3);
 });
 
-it('enabling an imported Gemini row only enables Pi even when the supplier exposes three APIs', () => {
+it('enables all three supplier APIs for an imported Gemini row', () => {
   const entry = { ...model('google/gemini-3.8-flash'), nativeApi: 'google-generative-ai' as const, defaultEnabled: false };
   const p = { ...provider, agents: ['claude-code', 'codex', 'pi'] as ProviderView['agents'], models: {
     'claude-code': [{ ...entry, api: 'anthropic-messages' as const }],
@@ -420,6 +423,10 @@ it('enabling an imported Gemini row only enables Pi even when the supplier expos
     pi: [{ ...entry, api: 'openai-completions' as const }],
   } };
   const row = buildUnionRows(p)[0]!;
-  expect(modelVisibilityTargets(p, row, true)).toEqual([{ agent: 'pi', modelId: entry.id }]);
+  expect(modelVisibilityTargets(p, row, true)).toEqual([
+    { agent: 'claude-code', modelId: entry.id },
+    { agent: 'codex', modelId: entry.id },
+    { agent: 'pi', modelId: entry.id },
+  ]);
   expect(modelVisibilityTargets(p, row, false)).toHaveLength(3);
 });

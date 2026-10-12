@@ -39,6 +39,7 @@ import {
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
+  EllipsisVertical,
   Hammer,
   MessagesSquare,
   MonitorSmartphone,
@@ -48,6 +49,13 @@ import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
 import { Tip } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useEffectiveSelectedMachineId } from '@/features/device-link/useMachineSwitcher';
 import { useRemoteDevices } from '@/features/device-link/remoteProjectsStore';
 import {
@@ -109,11 +117,14 @@ import { MainListScopeHeader } from '../MainListScopeHeader';
 import { DeviceSectionHeader } from '../DeviceSectionHeader';
 import { SectionCollapse } from '../SectionCollapse';
 import { SessionEntryList, SessionEntryRows } from '../SessionEntryList';
+import { MountedMenuContent } from '../MountedMenuContent';
+import { MENU_ITEM_CLASS } from '../menuStyles';
 import { useCollapsibleShowAll } from '../hooks/useCollapsibleShowAll';
 import { useAutomationGroupsCollapsed } from '../../hooks/useAutomationGroupCollapsed';
 import type { SessionClickHandler } from '../SessionItem';
 import type { ProjectNode as ProjectNodeData } from '../../lib/projectGrouping';
-import type { UseSidebarFilterReturn } from '../../hooks/useSidebarFilter';
+import type { FilterStatus, UseSidebarFilterReturn } from '../../hooks/useSidebarFilter';
+import { projectBulkArchiveActionForStatus } from '../../lib/projectBulkArchiveAction';
 import type {
   AutomationScheduleAction,
   AutomationScheduleSessionInfo,
@@ -255,7 +266,7 @@ export interface ProjectsSectionProps {
   /** 进入 workdir 文件浏览模式 (vscode-style file tree + body viewer)。 */
   onBrowseFiles: (project: ProjectNodeData) => void;
   /** 右键菜单 → 归档该 project 下所有非执行中的 session（带二次确认）。 */
-  onArchiveAll: (project: ProjectNodeData) => void;
+  onArchiveAll: (project: ProjectNodeData, sessions?: Session[]) => void;
   /**
    * E 期「按设备分组」:远程设备的展示顺序与名称/在线状态(设备切换栏同源)。
    * 含断线缓存设备；null / 空 map = 没有可选远程设备 → 设备分组选项隐藏、不切段。
@@ -1023,6 +1034,21 @@ export function ProjectsSection({
         targetDeviceOffline;
       // The settings dialog creates on this computer; never expose it on a remote-only group.
       const canCreateMake = entry.sessions.some((session) => !session.deviceLinkDeviceId);
+      const dialogueProject: ProjectNodeData | undefined = isMake
+        ? undefined
+        : {
+            projectKey: `dialogue:${dialogueGroupKey}`,
+            scope: 'local',
+            workingDir: '',
+            remoteHostId: null,
+            deviceLinkDeviceId: dialogueDeviceTarget?.deviceId ?? null,
+            deviceLinkDeviceName: dialogueDeviceTarget?.deviceName ?? null,
+            deviceLinkConnectionStatus: targetDeviceOffline ? 'disconnected' : 'connected',
+            displayName: t('ccAgent.sidebar.dialogues'),
+            segments: 1,
+            sessions: entry.sessions,
+            latestActivityAt: entry.sessions[0]?.updatedAt ?? '',
+          };
       return (
         <SessionGroupNode
           key={`${entry.kind}:${dialogueGroupKey}`}
@@ -1037,6 +1063,14 @@ export function ProjectsSection({
           }
           collapsed={isCollapsed}
           onToggle={() => setDialogueCollapsed([groupKey], !isCollapsed)}
+          menuEnabled={!isMake}
+          statusFilter={filter.status}
+          onSearch={dialogueProject ? () => onOpenConversationSearch(dialogueProject) : undefined}
+          onArchiveAll={
+            dialogueProject
+              ? () => onArchiveAll(dialogueProject, entry.sessions)
+              : undefined
+          }
           onCreateDialogue={
             isMake
               ? canCreateMake
@@ -1337,6 +1371,10 @@ export function SessionGroupNode({
   groupRunningMarker = 'icon',
   groupTitle,
   createLabel,
+  menuEnabled = false,
+  statusFilter = 'active',
+  onSearch,
+  onArchiveAll,
   isCreateDisabled,
   createDisabledReason,
   parentSectionCollapsed,
@@ -1376,6 +1414,11 @@ export function SessionGroupNode({
   groupTitle?: string;
   /** 新建按钮的 tooltip / aria 文案。省略 = 「新建对话」。 */
   createLabel?: string;
+  /** 对话组右键菜单与 hover 菜单，项目专属动作不会出现在这里。 */
+  menuEnabled?: boolean;
+  statusFilter?: FilterStatus;
+  onSearch?: () => void;
+  onArchiveAll?: () => void;
   /**
    * 组头右侧的新建入口(与项目行 SquarePen 等位):新建不绑项目的对话任务。
    * 目标设备由父层按所在设备段决定(闭包传入),本组件不关心。
@@ -1402,6 +1445,8 @@ export function SessionGroupNode({
   sessionVariant: 'text' | 'list';
 }) {
   const { t } = useTranslation();
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const archiveAction = projectBulkArchiveActionForStatus(statusFilter);
   // 与 ProjectNode 同款:标题右侧 hover 渐显的展开/收起指示箭头。
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   const showRunning = collapsed && lamp?.running;
@@ -1420,6 +1465,12 @@ export function SessionGroupNode({
             e.preventDefault();
             onToggle();
           }
+        }}
+        onContextMenu={(event) => {
+          if (!menuEnabled) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setMenuPos({ x: event.clientX, y: event.clientY });
         }}
         className={cn(
           'group flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-full pl-3 pr-2',
@@ -1461,39 +1512,147 @@ export function SessionGroupNode({
             <SidebarRightStatusIndicator kind={lamp.dotTone} isActive={false} />
           </div>
         )}
-        {/* 悬浮工具组:与 ProjectNode Header 同款——常态隐藏,hover 整行淡入。
-            对话组没有项目那套 More 菜单,只保留新建(SquarePen,与项目行等位)。 */}
-        {onCreateDialogue && (
+        {/* 悬浮工具组:与 ProjectNode Header 同款——常态隐藏,hover 整行淡入。 */}
+        {(menuEnabled || onCreateDialogue) && (
           <div
             className={cn(
               'flex shrink-0 items-center gap-0.5',
               'opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100',
+              menuPos !== null && 'opacity-100',
             )}
           >
-            <Tip text={createDisabledReason ?? createLabel ?? t('ccAgent.sidebar.newDialogue')}>
-              <button
-                type="button"
-                aria-label={createDisabledReason ?? createLabel ?? t('ccAgent.sidebar.newDialogue')}
-                disabled={isCreateDisabled}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!isCreateDisabled) onCreateDialogue();
-                }}
-                onPointerDown={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-                className={cn(
-                  'flex size-6 shrink-0 items-center justify-center rounded-full',
-                  'text-sidebar-action-icon hover:text-foreground',
-                  'hover:bg-sidebar-item-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
-                  'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent',
-                )}
-              >
-                <SquarePen size={14} strokeWidth={2} />
-              </button>
-            </Tip>
+            {menuEnabled && (
+              <Tip text={t('ccAgent.common.moreActions')}>
+                <button
+                  type="button"
+                  aria-label={t('ccAgent.common.moreActions')}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setMenuPos({ x: rect.left, y: rect.bottom + 2 });
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  className={cn(
+                    'flex size-6 shrink-0 items-center justify-center rounded-full',
+                    'text-sidebar-action-icon hover:text-foreground',
+                    'hover:bg-sidebar-item-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+                  )}
+                >
+                  <EllipsisVertical size={14} strokeWidth={2} />
+                </button>
+              </Tip>
+            )}
+            {onCreateDialogue && (
+              <Tip text={createDisabledReason ?? createLabel ?? t('ccAgent.sidebar.newDialogue')}>
+                <button
+                  type="button"
+                  aria-label={createDisabledReason ?? createLabel ?? t('ccAgent.sidebar.newDialogue')}
+                  disabled={isCreateDisabled}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!isCreateDisabled) onCreateDialogue();
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className={cn(
+                    'flex size-6 shrink-0 items-center justify-center rounded-full',
+                    'text-sidebar-action-icon hover:text-foreground',
+                    'hover:bg-sidebar-item-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+                    'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent',
+                  )}
+                >
+                  <SquarePen size={14} strokeWidth={2} />
+                </button>
+              </Tip>
+            )}
           </div>
         )}
       </div>
+      {menuEnabled && (
+        <DropdownMenu
+          open={menuPos !== null}
+          onOpenChange={(open) => {
+            if (!open) setMenuPos(null);
+          }}
+        >
+          <DropdownMenuTrigger asChild>
+            <span
+              aria-hidden
+              style={{
+                position: 'fixed',
+                left: menuPos?.x ?? 0,
+                top: menuPos?.y ?? 0,
+                width: 0,
+                height: 0,
+                pointerEvents: 'none',
+              }}
+            />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" sideOffset={2} className="min-w-40 overflow-hidden">
+            <MountedMenuContent>
+              {() => (
+                <>
+                  {onSearch && (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setMenuPos(null);
+                        onSearch();
+                      }}
+                      className={MENU_ITEM_CLASS}
+                    >
+                      {t('ccAgent.sidebar.projectAction.search')}
+                    </DropdownMenuItem>
+                  )}
+                  {onCreateDialogue && (
+                    <DropdownMenuItem
+                      disabled={isCreateDisabled}
+                      onClick={() => {
+                        setMenuPos(null);
+                        onCreateDialogue();
+                      }}
+                      className={MENU_ITEM_CLASS}
+                    >
+                      {createLabel ?? t('ccAgent.sidebar.newDialogue')}
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setMenuPos(null);
+                      onToggle();
+                    }}
+                    className={MENU_ITEM_CLASS}
+                  >
+                    {t(
+                      collapsed
+                        ? 'ccAgent.sidebar.dialoguesToggleExpand'
+                        : 'ccAgent.sidebar.dialoguesToggleCollapse',
+                    )}
+                  </DropdownMenuItem>
+                  {onArchiveAll && sessions.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setMenuPos(null);
+                          onArchiveAll();
+                        }}
+                        className={MENU_ITEM_CLASS}
+                      >
+                        {t(
+                          archiveAction === 'unarchive'
+                            ? 'ccAgent.sidebar.projectAction.unarchiveAll'
+                            : 'ccAgent.sidebar.projectAction.archivedAll',
+                        )}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </>
+              )}
+            </MountedMenuContent>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       {/* 组内会话:与 ProjectNode 的会话区同款容器(gap / pt / pb 呼吸、list 缩进)
           与同一份折叠上限(getProjectSessionCollapseLimit)。 */}
       <SectionCollapse collapsed={collapsed} data-no-drag>

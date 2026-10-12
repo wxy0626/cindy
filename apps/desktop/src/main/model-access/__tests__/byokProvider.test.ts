@@ -135,10 +135,10 @@ describe('buildByokProvider model types', () => {
 
 
 it.each([
-  ['openai-responses', ['codex', 'pi']],
-  ['anthropic-messages', ['claude-code', 'pi']],
-  ['openai-completions', ['pi']],
-] as const)('keeps managed model enablement separate from %s compatibility', (nativeApi, enabled) => {
+  'openai-responses',
+  'anthropic-messages',
+  'openai-completions',
+] as const)('enables every managed engine for %s compatibility', (nativeApi) => {
   const model = { ...chatModel, nativeApi, defaultEnabled: true,
     maxOutputTokens: 32000, supportsFastMode: false,
     agents: ['claude-code', 'codex', 'pi'] as Array<'claude-code' | 'codex' | 'pi'>,
@@ -148,7 +148,7 @@ it.each([
   const provider = buildByokProvider({ provider: { id: 'byok-a', name: 'Enterprise',
     connectionRevision: 1, models: [model] }, credential });
   for (const agent of model.agents)
-    expect(provider.models[agent]?.[0]?.defaultEnabled).toBe((enabled as readonly string[]).includes(agent));
+    expect(provider.models[agent]?.[0]?.defaultEnabled).toBe(true);
   expect(byokNativeConfigs([provider])[0]?.runtimes.pi?.models[0]).toMatchObject({
     nativeApi, maxOutputTokens: 32000, supportsFastMode: false,
   });

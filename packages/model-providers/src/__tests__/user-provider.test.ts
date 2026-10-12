@@ -302,7 +302,7 @@ describe("buildUserProvider (per-runtime)", () => {
       efforts: [],
       defaultEffort: null,
       group: "custom:openrouter",
-      defaultEnabled: false,
+      defaultEnabled: true,
     });
   });
 
@@ -1745,13 +1745,13 @@ describe("official Pi catalog defaults for preset-marked sources (#4295)", () =>
 });
 
 
-describe('imported model native engine defaults', () => {
+describe('imported model all-engine defaults', () => {
   it.each([
-    ['anthropic-messages', [true, false, true]],
-    ['openai-responses', [false, true, true]],
-    ['openai-completions', [false, false, true]],
-    ['google-generative-ai', [false, false, true]],
-  ] as const)('%s only enables native engines', (api, expected) => {
+    ['anthropic-messages', [true, true, true]],
+    ['openai-responses', [true, true, true]],
+    ['openai-completions', [true, true, true]],
+    ['google-generative-ai', [true, true, true]],
+  ] as const)('%s enables every configured engine by default', (api, expected) => {
     const agents = ['claude-code', 'codex', 'pi'] as const;
     const config: CustomProviderConfig = {
       id: 'native-default-test', name: 'Test',
@@ -1770,11 +1770,11 @@ describe('imported model native engine defaults', () => {
   });
 
   it.each([
-    [null, 'openai-responses', null, [false, false, true]],
-    ['anthropic-messages', 'openai-responses', 'anthropic-messages', [true, false, true]],
-    ['openai-responses', 'anthropic-messages', 'openai-responses', [false, true, true]],
-    [undefined, 'anthropic-messages', 'anthropic-messages', [true, false, true]],
-    [undefined, undefined, 'openai-responses', [false, true, true]],
+    [null, 'openai-responses', null, [true, true, true]],
+    ['anthropic-messages', 'openai-responses', 'anthropic-messages', [true, true, true]],
+    ['openai-responses', 'anthropic-messages', 'openai-responses', [true, true, true]],
+    [undefined, 'anthropic-messages', 'anthropic-messages', [true, true, true]],
+    [undefined, undefined, 'openai-responses', [true, true, true]],
   ] as const)('applies current native declaration %s ahead of live %s and bundled fallback',
     (declaration, live, expectedApi, expectedEnabled) => {
       const agents = ['claude-code', 'codex', 'pi'] as const;

@@ -84,7 +84,6 @@ import {
 import {
   isAgentSelectableModel,
   pickRecommendedAgent,
-  nativeModelAgents,
   resolveModelIconKind,
 } from '@cindy/model-providers';
 import type { AgentKind, CatalogModel, ProviderView } from '@cindy/model-providers';
@@ -342,7 +341,7 @@ export function isCapabilityRow(row: UnionModelRow, userProvider: boolean): bool
   );
 }
 
-/** A normal list toggle enables native engines; compatibility engines remain opt-in. */
+/** 普通模型开关一次启用全部可用引擎，兼容协议由运行层处理。 */
 export function modelVisibilityTargets(
   provider: ProviderView,
   row: UnionModelRow,
@@ -362,8 +361,7 @@ export function modelVisibilityTargets(
         ? [{ agent, modelId: model.id }]
         : [];
     });
-  // A model-level enable activates every native engine, not only the recommended one.
-  // Compatibility engines are untouched; an explicit enable may fall back if none are native.
+  // 本地开发版规则：启用模型即启用它在当前供应商声明的全部可用引擎。
   const usable = row.avail.filter((agent) => {
     const model = row.byAgent[agent];
     return (
@@ -374,12 +372,7 @@ export function modelVisibilityTargets(
       model.availability !== 'requires_payment'
     );
   });
-  const native = nativeModelAgents(provider, row.byAgent).filter((agent) => usable.includes(agent));
-  if (native.length) return native.map((agent) => ({ agent, modelId: row.byAgent[agent]!.id }));
-  const defaults = usable.filter((agent) => row.byAgent[agent]?.defaultEnabled !== false);
-  const agent = pickRecommendedAgent(provider, row.id, defaults.length ? defaults : usable);
-  const model = agent ? row.byAgent[agent] : undefined;
-  return agent && model ? [{ agent, modelId: model.id }] : [];
+  return usable.map((agent) => ({ agent, modelId: row.byAgent[agent]!.id }));
 }
 
 /** 普通模式的单开关显示值:任一可用 agent 开启即视为开(拨动才归一)。 */

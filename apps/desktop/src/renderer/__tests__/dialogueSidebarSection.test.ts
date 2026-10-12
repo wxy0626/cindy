@@ -100,6 +100,16 @@ describe('Mixed main list (sidebar-redesign D 期)', () => {
     expect(projectsSectionSource).toContain("groupTitle ?? t('ccAgent.sidebar.dialogues')");
   });
 
+  it('restores the dialogue group context menu without project-only actions', () => {
+    expect(projectsSectionSource).toContain('onContextMenu={(event) => {');
+    expect(projectsSectionSource).toContain("t('ccAgent.common.moreActions')");
+    expect(projectsSectionSource).toContain("'ccAgent.sidebar.projectAction.archivedAll'");
+    expect(projectsSectionSource).toContain("'ccAgent.sidebar.projectAction.unarchiveAll'");
+    expect(projectsSectionSource).not.toContain(
+      "t('ccAgent.sidebar.projectAction.rename')",
+    );
+  });
+
   it('loads archived sessions on demand for the selected connected remote devices', () => {
     expect(sidebarSource).toContain("if (filter.status === 'active') return;");
     expect(sidebarSource).toContain("requestRemoteSessionStatus(device.deviceId, 'archived')");

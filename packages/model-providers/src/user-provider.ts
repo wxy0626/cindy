@@ -1,6 +1,5 @@
 import { previousModelGenerations, generationCapabilities } from './modelGeneration.js';
 import { alignModelApiRoute, providerInterfaceModelRoute, hasDeclaredProviderInterface, providerWireProtocolForApi, providerBaseUrlForApi } from './providerInterfaceRoutes.js';
-import { nativeModelAgents } from './modelProtocol.js';
 import { isMimoTokenPlanProvider } from './mimoPresentation.js';
 import { resolveCatalogModelNativeApi, resolveModelNativeApi } from './modelRegistry.js';
 import { providerEndpointBindings, bindProviderEndpoint, bindProviderPresetRuntime, canonicalProviderEndpoint } from './providerEndpointTemplate.js';
@@ -698,11 +697,11 @@ export function buildUserProvider(
       imageDefaults: undefined,
     };
   }
-  // Selection/import membership does not opt the user into compatibility harnesses.
-  // Keep explicit configuration defaults; visibility preferences remain a separate override.
+  // 本地开发版规则：普通模型默认开启全部已配置引擎，兼容运行由协议层自动处理。
+  // 显式 defaultEnabled 与用户可见性 override 仍优先，不能被目录默认覆盖。
   for (const agent of agents) for (const model of models[agent] ?? []) {
     if (!providerMediaField(model.mode) && model.userModelConfig?.defaultEnabled === undefined) {
-      model.defaultEnabled = nativeModelAgents({ id: config.id, routing, source: 'user' }, { [agent]: model }).includes(agent);
+      model.defaultEnabled = true;
     }
   }
   const mediaLists: Partial<

@@ -3405,15 +3405,18 @@ function ExpandedView({
    * 两个方向都逐条写入，单条失败不会阻断其余会话，最后统一 refresh。
    */
   const handleArchiveAllInProject = useCallback(
-    async (project: ProjectNode) => {
+    async (project: ProjectNode, actionSessions?: Session[]) => {
       if (isDeviceLinkWriteBlocked(project)) {
         toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
         return;
       }
       const targetProjectKey = project.projectKey;
       const action = projectBulkArchiveActionForStatus(filter.status);
+      const scopedSessions = actionSessions
+        ? actionSessions.filter((session) => !session.deviceLinkDeviceId)
+        : sessions;
       const belongsToProject = (session: Session): boolean =>
-        projectIdentityKeyForSession(session) === targetProjectKey;
+        actionSessions !== undefined || projectIdentityKeyForSession(session) === targetProjectKey;
 
       // 只对**本地** sessions 归档:device-link 远程会话的运行态不在本渲染进程(runningSessionIds 是
       // 本地 makerChatStore 的),无法像本地那样把「正在运行」的排除掉 —— 批量归档时可能把被控端正在
@@ -3422,7 +3425,7 @@ function ExpandedView({
       // pinned 是用户主动表达 "留住这个会话"，archive all 必须排除（跟 running 是两个独立维度）。
       // 既 pinned 又 running 的：归到 pinned 那类（用户意图明确，running 只是临时状态）。
       const { candidates, skippedPinned, skippedRunning } = selectProjectBulkArchiveCandidates(
-        sessions,
+        scopedSessions,
         action,
         runningSessionIds,
         belongsToProject,

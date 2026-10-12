@@ -1,7 +1,6 @@
 import {
   isByokImageMode,
   BUNDLED_CATALOG,
-  nativeModelAgents,
   catalogModelMetadata,
   pickModelMetadata,
   resolveCatalogModelNativeApi,
@@ -111,8 +110,8 @@ export function buildByokProvider({ provider, credential }: ByokConnection): Pro
         resolved.efforts = resolved.efforts.filter(effort => effort !== 'ultra');
         if (resolved.defaultEffort && !resolved.efforts.includes(resolved.defaultEffort)) resolved.defaultEffort = null;
       }
-      resolved.defaultEnabled = (defaults.defaultEnabled ?? model.defaultEnabled ?? true) &&
-        nativeModelAgents({ id: provider.id, routing }, { [agent]: resolved }).includes(agent);
+      // 本地开发版规则：托管/BYOK 模型默认对所有已声明引擎可见。
+      resolved.defaultEnabled = defaults.defaultEnabled ?? model.defaultEnabled ?? true;
       return resolved;
     });
   }

@@ -13,7 +13,7 @@ describe('documented supplier interfaces', () => {
     for (const agent of provider.agents) {
       expect(provider.models[agent]?.[0]).toMatchObject({
         contextWindow: 1_000_000, maxOutput: 384_000, supportsImageInput: true,
-        efforts: ['high', 'max'], defaultEffort: 'high', defaultEnabled: agent === 'pi',
+        efforts: ['high', 'max'], defaultEffort: 'high', defaultEnabled: true,
       });
     }
   });
@@ -87,7 +87,7 @@ describe('protocol and endpoint repair', () => {
       }])) }, { presets: [preset] });
     for (const agent of provider.agents) {
       const model = provider.models[agent]![0];
-      expect(model).toMatchObject({ api: 'google-generative-ai', defaultEnabled: agent === 'pi',
+      expect(model).toMatchObject({ api: 'google-generative-ai', defaultEnabled: true,
         route: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta', wireProtocol: 'google-generative-ai' } });
       expect(model.userModelConfig).toEqual({ id, name: id });
       expect(model.contextWindow).toBeGreaterThan(0);
@@ -112,7 +112,7 @@ describe('protocol and endpoint repair', () => {
       [agent]: { baseUrl: 'https://private.example/v1beta', wireProtocol: 'google-generative-ai', models: [{ id: 'new-deployment', name: 'New' }] },
     } });
     expect(p.models[agent]![0].api).toBe('google-generative-ai');
-    expect(p.models[agent]![0].defaultEnabled).toBe(agent === 'pi');
+    expect(p.models[agent]![0].defaultEnabled).toBe(true);
   });
 });
 

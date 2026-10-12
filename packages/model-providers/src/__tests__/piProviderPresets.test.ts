@@ -84,7 +84,7 @@ it('selects a direct Messages endpoint for a Messages model and carries its cont
     }],
   } });
   expect(provider.models['claude-code']![0]).toMatchObject({ api: 'anthropic-messages', contextWindow: 128000, defaultEnabled: true, route: { baseUrl: 'https://gateway.example/anthropic' } });
-  expect(provider.models.codex![0]).toMatchObject({ contextWindow: 64000, defaultEnabled: false });
+  expect(provider.models.codex![0]).toMatchObject({ contextWindow: 64000, defaultEnabled: true });
   expect(modelProtocolComparison(provider, { codex: provider.models.codex![0] }).forAgent('codex')).toMatchObject({
     outbound: 'openai-responses', mode: 'compatibility', localConversion: false,
   });
