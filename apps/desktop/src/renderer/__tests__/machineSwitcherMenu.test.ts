@@ -400,7 +400,9 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
 
   it('空态 / 远程任务 loading-error / 设备目录 loading / 连接中占位都挂范围标题', () => {
     const headerSource = read('features', 'cc-agent', 'sidebar', 'MainListScopeHeader.tsx');
-    expect(headerSource).toContain('<MachineSwitcherMenu onOpenDisplaySettings=');
+    // 段头把筛选状态透传给分段滑块,并把同一份「侧边栏显示设置」菜单交给范围下拉。
+    expect(headerSource).toContain('onStatusChange={filter.setStatus}');
+    expect(headerSource).toContain('onOpenDisplaySettings=');
     expect(headerSource).not.toContain('filterActiveBadge');
     expect(headerSource).toContain('<SidebarFilterPopover');
     expect(projectsSectionSource).toContain('<MainListScopeHeader');
@@ -474,19 +476,27 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
     expect(menuSource).not.toContain('group-hover/sidebar-header');
   });
 
-  it('trigger 是段头标题形态(范围文字 + 小箭头),不再是导航 pill 行(2026-08-13 定稿)', () => {
-    // 标题文字 = 当前范围:全部任务 / 本机任务 / 设备名 / N 台机器。
-    expect(menuSource).toContain('triggerText');
+  it('段头是「项目 / 归档」分段滑块,机器范围缩成小箭头 trigger(2026-09-03 定稿)', () => {
+    // 状态切换为常驻分段滑块:项目 / 归档两个 radio 按钮并列切换,与整理菜单同一份
+    // filter.status 状态源。
+    expect(menuSource).toContain('role="radiogroup"');
+    expect(menuSource).toContain('role="radio"');
+    expect(menuSource).toContain('aria-checked={isActiveScope}');
+    expect(menuSource).toContain("onStatusChange('active')");
+    expect(menuSource).toContain("onStatusChange('archived')");
     expect(menuSource).toContain("t('ccAgent.sidebar.allSessions')");
+    expect(menuSource).toContain("t('ccAgent.sidebar.archivedTasks')");
+    expect(menuSource).toContain("t('ccAgent.sidebar.activeTasks')");
+    // 机器范围 trigger 不再占据主标题:小箭头按钮保留当前范围文字作 aria / title。
+    expect(menuSource).toContain('triggerText');
     expect(menuSource).toContain("t('ccAgent.sidebar.scopeLocalSessions')");
-    expect(menuSource).toMatch(/<span className="truncate[^"]*">\{triggerText\}<\/span>/);
-    expect(menuSource).toContain('<ChevronDown size={13}');
-    // 段头标题样式(与原「全部任务」一致:淡灰 + hover 加深),不再是 pill 导航行。
-    expect(menuSource).toContain('SCOPE_TITLE_CLASS');
+    expect(menuSource).toContain('aria-label={`${triggerLabel}: ${triggerText}`}');
+    expect(menuSource).toContain('<ChevronDown size={14}');
+    // 分段滑块选中态用 chip 底色,未选中走侧栏淡灰;不是全宽导航 pill。
+    expect(menuSource).toContain('scopeSegmentButtonClass');
+    expect(menuSource).toContain('bg-[var(--chat-input-chip-bg)]');
     expect(menuSource).not.toContain('h-8 w-full');
-    expect(menuSource).not.toContain('hover:bg-sidebar-item-hover');
     expect(menuSource).not.toContain('filterActive');
-    expect(menuSource).not.toContain('--chat-input-chip-bg');
   });
 
   it('allMachinesLabel 孤儿 key 已从全部语言包删除(规则 18)', () => {
@@ -572,13 +582,14 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
     }
   });
 
-  it('段头标题固定承载远程任务读取 loading(spinner 附在箭头后,不进会话列表)', () => {
+  it('段头范围 trigger 固定承载远程任务读取 loading(spinner 顶替箭头,不进会话列表)', () => {
     expect(menuSource).toContain('useRemoteSessionBootstrapLoading(selectedDeviceId)');
     expect(menuSource).toContain('aria-busy={remoteSessionBootstrapLoading}');
+    // 读取中:小箭头位置换成 spinner(同一按钮内二选一),会话列表不插 loading 行。
     expect(menuSource).toMatch(
-      /<span className="truncate leading-none">\{triggerText\}<\/span>\s*<ChevronDown[\s\S]*?animate-spinner motion-reduce:animate-none/,
+      /\{remoteSessionBootstrapLoading \? \([\s\S]*?animate-spinner motion-reduce:animate-none[\s\S]*?\) : \(\s*<ChevronDown/,
     );
-    expect(menuSource).toContain('<Loader2 size={12} strokeWidth={1.8} />');
+    expect(menuSource).toContain('<Loader2 size={13} strokeWidth={1.8} />');
   });
 
   it('MachineSwitcherMenu 保留设备选择 / 显示设置 / 远程设置入口;无远程时仍带箭头只留设置项', () => {
