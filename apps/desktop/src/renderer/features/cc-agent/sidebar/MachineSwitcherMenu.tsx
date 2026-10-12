@@ -83,6 +83,7 @@ import {
   useRemoteSessionBootstrapLoading,
 } from '@/features/device-link/useMachineSwitcher';
 import { MENU_ITEM_CLASS, MENU_ROW_CLASS } from './menuStyles';
+import { Tip } from '@/components/ui/tooltip';
 import type { FilterStatus } from '../hooks/useSidebarFilter';
 
 export function MachineSwitcherMenu({
@@ -232,31 +233,33 @@ export function MachineSwitcherMenu({
       </div>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            aria-label={`${triggerLabel}: ${triggerText}`}
-            aria-busy={remoteSessionBootstrapLoading}
-            title={`${triggerLabel}: ${triggerText}`}
-            className={cn(
-              'flex h-6 w-6 shrink-0 items-center justify-center rounded-md',
-              'text-[var(--sidebar-list-muted)] transition-colors hover:bg-sidebar-item-hover hover:text-[var(--sidebar-nav-text)]',
-              'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--focus-ring)]',
-              // 菜单展开期间按钮保持加深(data-state=open):鼠标移进菜单后
-              // :hover 失效,按钮不能瞬间变淡、菜单像悬空没了锚点。
-              'data-[state=open]:text-[var(--sidebar-nav-text)]',
-            )}
-          >
-            {remoteSessionBootstrapLoading ? (
-              <span
-                aria-hidden="true"
-                className="inline-flex animate-spinner motion-reduce:animate-none"
-              >
-                <Loader2 size={13} strokeWidth={1.8} />
-              </span>
-            ) : (
-              <ChevronDown size={14} strokeWidth={2} />
-            )}
-          </button>
+          {/* 图标 trigger 走托管 Tip(原生 title 在受保护区被契约测试拦下)。 */}
+          <Tip text={`${triggerLabel}: ${triggerText}`} side="bottom">
+            <button
+              type="button"
+              aria-label={`${triggerLabel}: ${triggerText}`}
+              aria-busy={remoteSessionBootstrapLoading}
+              className={cn(
+                'flex h-6 w-6 shrink-0 items-center justify-center rounded-md',
+                'text-[var(--sidebar-list-muted)] transition-colors hover:bg-sidebar-item-hover hover:text-[var(--sidebar-nav-text)]',
+                'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--focus-ring)]',
+                // 菜单展开期间按钮保持加深(data-state=open):鼠标移进菜单后
+                // :hover 失效,按钮不能瞬间变淡、菜单像悬空没了锚点。
+                'data-[state=open]:text-[var(--sidebar-nav-text)]',
+              )}
+            >
+              {remoteSessionBootstrapLoading ? (
+                <span
+                  aria-hidden="true"
+                  className="inline-flex animate-spinner motion-reduce:animate-none"
+                >
+                  <Loader2 size={13} strokeWidth={1.8} />
+                </span>
+              ) : (
+                <ChevronDown size={14} strokeWidth={2} />
+              )}
+            </button>
+          </Tip>
         </DropdownMenuTrigger>
       <DropdownMenuContent
         // 标题下方展开、左边贴齐标题左边;空间不足时 Radix 自动翻到上方。

@@ -487,7 +487,7 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
     expect(menuSource).toContain("t('ccAgent.sidebar.allSessions')");
     expect(menuSource).toContain("t('ccAgent.sidebar.archivedTasks')");
     expect(menuSource).toContain("t('ccAgent.sidebar.activeTasks')");
-    // 机器范围 trigger 不再占据主标题:小箭头按钮保留当前范围文字作 aria / title。
+    // 机器范围 trigger 不再占据主标题:小箭头按钮保留当前范围文字作 aria / Tip 文案。
     expect(menuSource).toContain('triggerText');
     expect(menuSource).toContain("t('ccAgent.sidebar.scopeLocalSessions')");
     expect(menuSource).toContain('aria-label={`${triggerLabel}: ${triggerText}`}');
@@ -512,12 +512,14 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
     }
   });
 
-  it('MachineSwitcherMenu 展开菜单无标题行、无 trigger tooltip', () => {
+  it('MachineSwitcherMenu 展开菜单无标题行、trigger 走托管 Tip 而非原生 title', () => {
     // 「远程机器」标题行已移除(2026-07 用户定稿);有远程时菜单从「所有」开始,
-    // 无远程时从两个设置入口开始。trigger 也不包 <Tip>。
+    // 无远程时从两个设置入口开始。trigger 已缩成纯图标箭头,受 iconButtonTooltips
+    // 契约约束:提示只能由托管 <Tip> 承载,原生 title 会被该契约拦下。
     expect(menuSource).not.toContain('py-1.5 text-xs font-medium');
-    expect(menuSource).not.toMatch(/<Tip\b/);
-    expect(menuSource).not.toContain("from '@/components/ui/tooltip'");
+    expect(menuSource).toMatch(/<Tip\b/);
+    expect(menuSource).toContain("from '@/components/ui/tooltip'");
+    expect(menuSource).not.toContain('title={`${triggerLabel}: ${triggerText}`}');
   });
 
   it('菜单项默认单选(整体替换选择),多选走行尾 hover 浮现的多选框', () => {
