@@ -22,13 +22,14 @@ import { clearTimeout as clearNodeTimeout, setTimeout as setNodeTimeout } from '
 
 import type { AgentKind } from './types/common.js';
 import type { Capabilities } from './types/capabilities.js';
-import type { ForkSdkSessionOptions, ForkSdkSessionResult } from './types/events.js';
+import type { AgentEvent, ForkSdkSessionOptions, ForkSdkSessionResult } from './types/events.js';
 import type {
   ScanAtResourcesOptions,
   ScanAtResourcesResult,
   AgentBuiltinCommand,
   ListAgentSkillsOptions,
   ListAgentSkillsResult,
+  ListRuntimeSkillsOptions,
 } from './types/palette.js';
 import type {
   ListCustomizationsOptions,
@@ -38,6 +39,7 @@ import type { PiRuntimeCapabilityManifest } from './types/pi-runtime-capabilitie
 import { piExplicitSkillRuntimePath } from './agents/pi/skill-runtime-provenance.js';
 import { fingerprintPiProjectSkillEntrypoint } from './agents/pi/project-resource-assembly.js';
 import { Session, generateSessionId, type SessionStartupPreferences } from './session.js';
+import { NotSupportedError } from './types/capabilities.js';
 import {
   AgentNotAuthenticatedError,
   AgentStartupCleanupPendingError,
@@ -119,6 +121,15 @@ export interface SessionLifecycleHooks {
 
 export interface MakerDeps {
   agents: Partial<Record<AgentKind, BaseAgent>>;
+  /**
+   * 可选：在同账号另一台电脑上启动 Agent(CreateSessionOptions.agentDeviceId)。返回的句柄由
+   * host 实现(对方运行 Agent、本机执行文件与命令)。缺省时这类会话无法创建。
+   */
+  startDeviceAgentSession?: (input: {
+    agentKind: AgentKind;
+    deviceId: string;
+    options: StartSessionOptions;
+  }) => Promise<AgentSessionHandle>;
   storage: SessionStorage;
   logger: Logger;
   /** 可选: session 生命周期副作用钩子 (host 层注入)。详见 SessionLifecycleHooks。 */
@@ -136,6 +147,11 @@ export interface MakerDeps {
    * 零干扰（见 docs/vision-bridge-design.md 层 B）。
    */
   visionBridge?: import('./types/vision-bridge.js').VisionBridgeHook;
+  /**
+   * 可选: Pi / Codex 工具循环疑似命中时的辅助模型复核入口。Claude Code 在 agent 内
+   * 检测,由 AgentDeps.toolLoopReviewer 注入同一实现。缺省 = 疑似即中断。
+   */
+  toolLoopReviewer?: import('./agents/shared/tool-loop-review.js').ToolLoopReviewer;
 }
 
 export interface CreateSessionOptions extends StartSessionOptions {
@@ -151,6 +167,12 @@ export interface CreateSessionOptions extends StartSessionOptions {
   visionBridge?: import('./types/vision-bridge.js').VisionBridgeHook;
   /** 可选：父会话 id，用于 fork / orchestration 等会话关系。 */
   parentSessionId?: string;
+  /**
+   * 可选：Agent 在同账号的另一台电脑上运行(那台电脑的设备 id)。任务、项目文件与命令留在本机，
+   * Agent 用那台电脑的程序、登录、供应商与网络。由 MakerDeps.startDeviceAgentSession 启动；
+   * 持久化到 SessionMeta.agentDeviceId，恢复时据此找回那台电脑。与 remoteHostId 互斥。
+   */
+  agentDeviceId?: string;
   /**
    * 可选：调用方提供的 sessionId(通常来自外部 DB row)。提供后:
    *   - storage 已有同 id 的 row → 跳过 create, 直接复用
@@ -178,11 +200,31 @@ export type MakerEvent =
 
 export type MakerEventListener = (event: MakerEvent) => void;
 
+/** Codex thread 归属键：SSH 主机或运行 Agent 的另一台电脑(两者的 thread 都不在本机)。 */
+function codexThreadOwnerKey(opts: { remoteHostId?: string; agentDeviceId?: string }): string | undefined {
+  return opts.remoteHostId ?? (opts.agentDeviceId ? `device:${opts.agentDeviceId}` : undefined);
+}
+
 function capabilitiesForSession(
   agentKind: AgentKind,
   base: Capabilities,
   remoteHostId?: string | null,
+  agentDeviceId?: string | null,
+  handle?: AgentSessionHandle,
 ): Capabilities {
+  if (agentDeviceId) {
+    // Agent 在另一台电脑上：对话在那台截断(handle 转发 commitRewindFiles)，文件由本机按保存点
+    // 回退。那台的 Cindy 不支持转发时不提供。
+    if (base.rewind.supported && typeof handle?.commitRewindFiles === 'function') return base;
+    return {
+      ...base,
+      rewind: {
+        supported: false,
+        reason: 'platform-limited',
+        message: 'Update Cindy on the computer running the agent to rewind this task',
+      },
+    };
+  }
   if (agentKind !== 'codex' || !remoteHostId) return base;
   return {
     ...base,
@@ -294,21 +336,21 @@ async function mergePiRuntimeSkillStatuses(
     const baseDir = command.sourceInfo.baseDir;
     if (command.source !== 'skill' || !command.name.startsWith('skill:')) continue;
     const skillName = command.name.slice('skill:'.length);
+    // Explicit --skill is `project` on Windows and `temporary` on macOS.
+    // Match that provenance by path first so frontmatter aliases still load.
+    const explicitPath = piExplicitSkillRuntimePath(command);
+    if (explicitPath) {
+      loadedExplicitSkills.set(canonicalPiRuntimePath(explicitPath), command.name);
+      if (typeof command.sourceInfo.path === 'string') {
+        loadedExplicitSkills.set(canonicalPiRuntimePath(command.sourceInfo.path), command.name);
+      }
+      continue;
+    }
     if (command.sourceInfo.scope === 'project' && typeof baseDir === 'string') {
       loadedLegacyProjectSkills.set(
         [skillName, canonicalPiRuntimePath(baseDir)].join('\0'),
         command.name,
       );
-      continue;
-    }
-    // Pinned Pi reports explicit --skill with a paired baseDir + SKILL.md path.
-    // The shared helper rejects partial/mismatched provenance before a
-    // user/global collision can mark a project scanner result loaded. Match
-    // explicit resources by path because frontmatter names need not equal
-    // their containing folder names.
-    const explicitPath = piExplicitSkillRuntimePath(command);
-    if (explicitPath) {
-      loadedExplicitSkills.set(canonicalPiRuntimePath(explicitPath), command.name);
     }
   }
   if (
@@ -328,7 +370,8 @@ async function mergePiRuntimeSkillStatuses(
         const canonicalSkillPath = canonicalPiRuntimePath(skill.path);
         if (!changedProjectSkills.has(canonicalSkillPath)) {
           runtimeCommandName = loadedExplicitSkills.get(canonicalSkillPath)
-            ?? [skill.path, path.dirname(path.dirname(skill.path))]
+            ?? loadedExplicitSkills.get(canonicalPiRuntimePath(path.dirname(skill.path)))
+            ?? [skill.path, path.dirname(skill.path), path.dirname(path.dirname(skill.path))]
               .map(canonicalPiRuntimePath)
               .map((skillPath) => loadedLegacyProjectSkills.get([skill.name, skillPath].join('\0')))
               .find((commandName) => commandName !== undefined);
@@ -440,11 +483,15 @@ export class Maker {
   public readonly makerMemory: MakerMemoryManager | undefined;
   /** 视觉桥钩子（层 B）全局默认（可选）。见 MakerDeps.visionBridge。 */
   protected readonly visionBridge: import('./types/vision-bridge.js').VisionBridgeHook | undefined;
+  private readonly toolLoopReviewer: import('./agents/shared/tool-loop-review.js').ToolLoopReviewer | undefined;
+  private readonly startDeviceAgentSession: MakerDeps['startDeviceAgentSession'];
 
   constructor(deps: MakerDeps) {
     this.agents = deps.agents;
     this.storage = deps.storage;
+    this.startDeviceAgentSession = deps.startDeviceAgentSession;
     this.visionBridge = deps.visionBridge;
+    this.toolLoopReviewer = deps.toolLoopReviewer;
     // 不 child 自己名字 — host 传进来的 logger 通常已经命名(如 'maker'),
     // 再 child 'maker' 会变成 'maker/maker'。host 自己决定 root scope 名字。
     this.logger = deps.logger;
@@ -704,12 +751,37 @@ export class Maker {
         codexThreadClaim = this.claimCodexThread({
           sessionId: id,
           sessionInstanceId,
-          remoteHostId: startOpts.remoteHostId,
+          remoteHostId: codexThreadOwnerKey(startOpts),
           threadId: startOpts.resumeSessionId,
         });
       }
       agentStartAttempted = true;
-      handle = await agent.startSession({
+      if (startOpts.agentDeviceId) {
+        if (startOpts.remoteHostId) {
+          throw new Error('A session cannot run its agent on another computer and on an SSH host at the same time');
+        }
+        if (!this.startDeviceAgentSession) {
+          throw new NotSupportedError('remoteSession', {
+            supported: false,
+            reason: 'not-implemented',
+            message: 'Running the agent on another computer is not available in this host',
+          });
+        }
+        handle = await this.startDeviceAgentSession({
+          agentKind: opts.agentKind,
+          deviceId: startOpts.agentDeviceId,
+          options: {
+            ...startOpts,
+            sessionId: id,
+            sessionInstanceId,
+            onInvalidResumeSession:
+              opts.agentKind === 'claude-code' || opts.agentKind === 'pi'
+                ? (expectedSdkSessionId) =>
+                    this.invalidateAndClearSdkSessionId(id, expectedSdkSessionId)
+                : undefined,
+          },
+        });
+      } else handle = await agent.startSession({
         ...startOpts,
         sessionId: id,
         sessionInstanceId,
@@ -756,7 +828,7 @@ export class Maker {
           codexThreadClaim = this.claimCodexThread({
             sessionId: id,
             sessionInstanceId,
-            remoteHostId: startOpts.remoteHostId,
+            remoteHostId: codexThreadOwnerKey(startOpts),
             threadId: handle.id,
           });
         }
@@ -836,11 +908,13 @@ export class Maker {
           effort: opts.effort,
           permissionMode: opts.permissionMode,
           fastMode: opts.fastMode,
+          ...(typeof opts.planMode === 'boolean' ? { planMode: opts.planMode } : {}),
           reviewMode: opts.reviewMode,
           parentSessionId: opts.parentSessionId,
           // remoteHostId: 远端 session 把目标机器持久化, 之后 resume / list 都能识别。
           // 本地 session 留 undefined (sqlite 落空), 跟历史行为兼容。
           remoteHostId: opts.remoteHostId,
+          ...(opts.agentDeviceId ? { agentDeviceId: opts.agentDeviceId } : {}),
           sdkSessionId: handle.id !== '<pending>' ? handle.id : undefined,
         });
         createdMetadata = true;
@@ -978,14 +1052,23 @@ export class Maker {
       workDir: startOpts.workingDir,
       handle,
       hostStartupPreferences: opts.hostStartupPreferences,
-      capabilities: capabilitiesForSession(meta.agentKind, agent.capabilities, meta.remoteHostId),
+      capabilities: capabilitiesForSession(
+        meta.agentKind,
+        agent.capabilities,
+        meta.remoteHostId,
+        meta.agentDeviceId ?? startOpts.agentDeviceId,
+        handle,
+      ),
       logger: this.logger,
       permissionMode: startOpts.permissionMode,
       // 透传 remoteHostId 让 host 层在 hot path 上能 O(1) 判 local/remote
       // (不用每次 send 回 DB 读 SessionMeta — register.ts checkWorkDirExists 走这条)。
       remoteHostId: meta.remoteHostId ?? null,
+      // 取实际决定启动分支的 startOpts：任务记录事后读回的旧值不能把本机启动的会话标成远端。
+      agentDeviceId: startOpts.agentDeviceId || null,
       // 层 B：视觉桥钩子（per-session 优先，否则全局默认；缺省不传 = 零干扰）。
       visionBridge: startOpts.visionBridge ?? this.visionBridge,
+      toolLoopReviewer: this.toolLoopReviewer,
     });
 
     // 当 SDK 回填 sdkSessionId 时持久化
@@ -999,7 +1082,7 @@ export class Maker {
               codexThreadClaim = this.claimCodexThread({
                 sessionId: id,
                 sessionInstanceId,
-                remoteHostId: startOpts.remoteHostId,
+                remoteHostId: codexThreadOwnerKey(startOpts),
                 threadId: evt.data,
               });
             }
@@ -1160,12 +1243,19 @@ export class Maker {
   async closeSessionIfCurrent(
     session: Session,
     reason: Exclude<MakerSessionCloseReason, 'unexpected'> = 'requested',
-  ): Promise<void> {
+    opts?: { afterCurrentTurn?: boolean; failureEvent?: () => AgentEvent },
+  ): Promise<'closed' | 'deferred' | void> {
     if (this.activeSessions.get(session.id) !== session) return;
-    // First closer owns the cause. A later concurrent close must not relabel
-    // a user-requested close as an internal replacement (or vice versa).
-    if (!this.closeReasons.has(session)) this.closeReasons.set(session, reason);
+    // Deferred internal retirement is only intent. An explicit closer may
+    // take ownership until Session actually starts teardown; after that the
+    // cause stays fixed even if exit confirmation fails or another close races.
+    const previousReason = this.closeReasons.get(session);
+    if (previousReason === undefined || (
+      previousReason === 'runtime-refresh' && !opts?.afterCurrentTurn && !session.hasStartedClosing()
+    )) this.closeReasons.set(session, reason);
+    if (opts?.afterCurrentTurn) return session.closeAfterCurrentTurn(opts);
     await session.close();
+    return 'closed';
     // status listener 会自动清理 activeSessions 并 emit
   }
 
@@ -1345,6 +1435,17 @@ export class Maker {
   }
 
   /**
+   * 设备托管：同账号另一台电脑上的任务让 Agent 在本机运行。直接用本机的 agent 启动会话，
+   * 不建本机 Session 与持久化记录(任务、消息与状态都在对方电脑上)；opts.deviceHosted 必填。
+   */
+  async startHostedAgentSession(kind: AgentKind, opts: StartSessionOptions): Promise<AgentSessionHandle> {
+    if (this.shutdownStarted) throw new Error('Maker is shutting down; refusing to start a hosted session');
+    if (!opts.deviceHosted) throw new Error('hosted sessions require deviceHosted');
+    if (opts.remoteHostId) throw new Error('hosted sessions cannot target an SSH host');
+    return this.requireAgent(kind).startSession(opts);
+  }
+
+  /**
    * Agent 内置 command (palette 'agent-builtin' 类目) —— 同步硬编码白名单。
    * 见 agents/<kind>/commands.ts。
    */
@@ -1386,6 +1487,22 @@ export class Maker {
       return result;
     }
     return filter(await mergePiRuntimeSkillStatuses(result, session.getRuntimeCapabilities()));
+  }
+
+  /** Host-only runtime view used when a capability must match the live engine winner. */
+  async listAgentRuntimeSkills(
+    agentKind: AgentKind,
+    opts: ListRuntimeSkillsOptions & { sessionId?: string },
+  ): Promise<ListAgentSkillsResult> {
+    const { sessionId, ...agentOpts } = opts;
+    const agent = this.requireAgent(agentKind);
+    const session = sessionId ? this.getSession(sessionId) : undefined;
+    const result = await agent.listRuntimeSkills(agentOpts);
+    return agent.filterActiveSkillCommands(
+      result,
+      agentOpts.remoteHostId ?? session?.remoteHostId ?? undefined,
+      session?.agentKind === agentKind ? session.getDisabledSkillPaths() : undefined,
+    );
   }
 
   /** ChatInput `@` palette entries, routed by agent kind. */
@@ -1454,6 +1571,12 @@ export class Maker {
    */
   async forkSdkSession(agentKind: AgentKind, opts: ForkSdkSessionOptions): Promise<ForkSdkSessionResult> {
     return this.requireAgent(agentKind).forkSdkSession(opts);
+  }
+
+  async requiresCodexThreadHostTransfer(
+    opts: Parameters<BaseAgent['requiresCodexThreadHostTransfer']>[0],
+  ): Promise<boolean> {
+    return this.requireAgent('codex').requiresCodexThreadHostTransfer(opts);
   }
 
   // ── Agent 鉴权 ───────────────────────────────────────────────────────────

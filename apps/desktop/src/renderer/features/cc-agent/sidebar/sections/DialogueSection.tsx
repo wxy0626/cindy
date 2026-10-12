@@ -31,7 +31,7 @@ import { sessionActivityMs } from '../../lib/dateSessionGrouping';
 import { SectionCollapse } from '../SectionCollapse';
 import { getDialogueCollapseLimit } from '../../lib/sidebarCollapseConfig';
 import { SessionEntryList } from '../SessionEntryList';
-import type { SessionAction, SessionClickHandler } from '../SessionItem';
+import type { SessionClickHandler } from '../SessionItem';
 import type {
   AutomationScheduleAction,
   AutomationScheduleSessionInfo,
@@ -40,12 +40,7 @@ import type {
 import type { Session } from '@/lib/ccAgent.types';
 import type { FolderPickerOption } from '@/components/new-chat/FolderPickerPopover';
 import type { SessionMoveTarget } from '../sessionMoveTarget';
-import {
-  MENU_CONTENT_CLASS,
-  MENU_ITEM_CLASS,
-  MENU_ROW_CLASS,
-  MENU_SUB_CONTENT_CLASS,
-} from '../menuStyles';
+import { MENU_ITEM_CLASS, MENU_ROW_CLASS } from '../menuStyles';
 
 export type DialogueSortBy = 'recency' | 'time' | 'title';
 
@@ -79,7 +74,7 @@ export interface DialogueSectionProps {
   scheduleSessionIndex: ReadonlyMap<string, AutomationScheduleSessionInfo>;
   selectedSessionIds?: ReadonlySet<string>;
   onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: SessionAction) => void;
+  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   onMoveSession?: (id: string, target: SessionMoveTarget) => void;
@@ -204,12 +199,7 @@ export function DialogueSection({
                 </button>
               </Tip>
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-              side="bottom"
-              align="start"
-              sideOffset={8}
-              className={cn(MENU_CONTENT_CLASS, 'w-[196px]')}
-            >
+            <DropdownMenuContent side="bottom" align="start" sideOffset={8} className="w-[196px]">
               <div className="px-2 py-1.5 text-xs font-medium text-[var(--cmd-palette-item-meta)]">
                 {t('ccAgent.sidebar.dialogueSettings')}
               </div>
@@ -224,10 +214,7 @@ export function DialogueSection({
                     className="shrink-0 text-[var(--cmd-palette-item-meta)]"
                   />
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent
-                  sideOffset={8}
-                  className={cn(MENU_SUB_CONTENT_CLASS, 'w-[180px]')}
-                >
+                <DropdownMenuSubContent sideOffset={8} className="w-[180px]">
                   {DIALOGUE_SORT_OPTIONS.map((option) => (
                     <DropdownMenuItem
                       key={option.value}

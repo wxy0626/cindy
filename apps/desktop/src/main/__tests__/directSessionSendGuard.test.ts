@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
@@ -180,9 +180,10 @@ function findDirectSendViolations(program: ts.Program): SendViolation[] {
 
 function isMakerSessionSendCall(node: ts.CallExpression, checker: ts.TypeChecker): boolean {
   if (!ts.isPropertyAccessExpression(node.expression)) return false;
-  if (node.expression.name.text !== 'send') return false;
+  const methodName = node.expression.name.text;
+  if (methodName !== 'send' && methodName !== 'sendHostTurnContinuation') return false;
   const receiverType = checker.getTypeAtLocation(node.expression.expression);
-  const sendSymbol = receiverType.getProperty('send') ?? checker.getSymbolAtLocation(node.expression.name);
+  const sendSymbol = receiverType.getProperty(methodName) ?? checker.getSymbolAtLocation(node.expression.name);
   const declarations = sendSymbol?.getDeclarations() ?? [];
   return declarations.some((declaration) => {
     const sourceFile = normalizePath(declaration.getSourceFile().fileName);
@@ -437,6 +438,8 @@ function collectRuntimeSessionSendGuardFiles(): string[] {
         continue;
       }
       if (!entry.endsWith('.ts') || entry.endsWith('.d.ts')) continue;
+      // guard 只关心 Session.send 的调用点；避免把整棵 main 源码树都交给 TS Program。
+      if (!readFileSync(fullPath, 'utf8').includes('.send')) continue;
       files.push(fullPath);
     }
   };

@@ -82,9 +82,10 @@ describe('Bot canonical Session creation retry', () => {
   });
 });
 
-describe('伙伴创建统一使用弹窗，并兼容旧创建链接', () => {
+describe('伙伴创建统一使用阵容页入口，并兼容旧创建链接', () => {
   const router = readFileSync(resolve(__dirname, '..', '..', '..', 'router.tsx'), 'utf8');
   const home = readFileSync(resolve(__dirname, '..', 'BotsHomeView.tsx'), 'utf8');
+  const roster = readFileSync(resolve(__dirname, '..', 'BotRosterView.tsx'), 'utf8');
   const sidebar = readFileSync(resolve(__dirname, '..', 'BotsSidebar.tsx'), 'utf8');
 
   it('挂在 /bots/roster,且静态段排在 :botId 之前', () => {
@@ -95,11 +96,13 @@ describe('伙伴创建统一使用弹窗，并兼容旧创建链接', () => {
     expect(router.indexOf("path: 'roster'")).toBeLessThan(router.indexOf("path: ':botId'"));
   });
 
-  it('没有伙伴时提供创建弹窗入口，不堆叠卖点卡', () => {
-    expect(home).toContain("<BotCreateMenu label={t('bots.add')} />");
-    // 四张功能卖点卡整体删除:它用产品内部术语介绍一个靠「挑一个合拍的」就能懂的东西。
+  it('没有伙伴时由阵容页直接提供创建表单，不堆叠卖点卡', () => {
+    // 阵容页面化后，空态创建直接成为 roster 页表单，不再在首页叠卖点卡。
+    expect(roster).toContain("t(importing ? 'bots.import.title' : 'bots.guided.title')");
+    expect(roster).toContain("t('bots.guided.generate')");
     expect(home).not.toContain('emptyBenefits');
     expect(home).not.toContain('AddBotDialog');
+    expect(home).not.toContain('BotCreateMenu');
   });
 
   it('旧 ?add=1 深链进入同一个创建入口', () => {
@@ -149,7 +152,7 @@ describe('Bot task route recovery', () => {
       "botMentions={visibleGate.kind === 'ready' ? visibleGate.mentions : undefined}",
     );
     expect(source).toContain(
-      "botIdentity={visibleGate.kind === 'ready' ? visibleGate.identity : undefined}",
+      "botIdentity={visibleGate.kind === 'ready' ? identity ?? visibleGate.identity : undefined}",
     );
     expect(source).toContain(
       "visibleGate.kind === 'ready' ? visibleGate.unreadBoundaryAt : null",

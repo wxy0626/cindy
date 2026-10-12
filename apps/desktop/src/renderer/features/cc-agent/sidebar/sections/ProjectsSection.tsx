@@ -1,3 +1,4 @@
+import { isCindyMakeFamilySource } from '../../../../../shared/cindyMakeMerge';
 /**
  * ProjectsSection — Sidebar 中部的 Projects 段
  * ---------------------------------------------------------------------------
@@ -23,12 +24,22 @@
  *   manualProjectOrder。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
+  Hammer,
   MessagesSquare,
   MonitorSmartphone,
   SquarePen,
@@ -38,7 +49,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Tip } from '@/components/ui/tooltip';
 import { useEffectiveSelectedMachineId } from '@/features/device-link/useMachineSwitcher';
-import { MACHINE_ALL } from '@/features/device-link/selectedMachineStore';
+import { useRemoteDevices } from '@/features/device-link/remoteProjectsStore';
 import {
   projectOrderWriteLedger,
   resolveDisplayedProjectOrder,
@@ -68,17 +79,23 @@ import {
   DIALOGUE_GROUP_ALL_KEY,
 } from '../../hooks/helpers/sidebarFilterCore';
 import {
-  advanceViewedPriorityHold,
-  buildMainListEntries,
+  CINDY_MAKE_GROUP_KEY,
   getMainListEntrySessions,
   holdViewedPriorityRank,
+  onlineDeviceSectionIds,
   splitEntriesByDevice,
   type MainListDeviceSection,
   type MainListEntry,
   type ViewedPriorityHoldState,
 } from '../../lib/mainListModel';
-import type { BotGroupNode } from '../../lib/projectGrouping';
+import { useMainListEntries } from '../../hooks/useMainListEntries';
+import { sidebarPriorityContext } from '../../lib/sidebarPriorityContext';
+import { useViewedPriorityHold } from '../../hooks/useViewedPriorityHold';
+import { projectKeyComparisonKey, type BotGroupNode } from '../../lib/projectGrouping';
 import { buildSessionSourceLabelMap } from '../../lib/sessionSourceLabel';
+import { aggregateSessionLamps, type SessionLampAggregate } from '../../lib/sessionLampAggregation';
+import { AttentionDot } from '@/components/sidebar/AttentionDot';
+import { SidebarRightStatusIndicator } from '../SidebarRightStatusIndicator';
 import { useSessionAttentionKinds } from '@/lib/sessionAttentionStore';
 import { useSessionAttentionUrgencySet } from '../../contexts/SessionAttentionUrgencyContext';
 import {
@@ -89,11 +106,12 @@ import {
 import { absorbSessionStarting } from '@/lib/sessionStartingStore';
 import type { DialogueDeviceTarget } from '../../lib/dialogueCreateTarget';
 import { MainListScopeHeader } from '../MainListScopeHeader';
+import { DeviceSectionHeader } from '../DeviceSectionHeader';
 import { SectionCollapse } from '../SectionCollapse';
 import { SessionEntryList, SessionEntryRows } from '../SessionEntryList';
 import { useCollapsibleShowAll } from '../hooks/useCollapsibleShowAll';
 import { useAutomationGroupsCollapsed } from '../../hooks/useAutomationGroupCollapsed';
-import type { SessionAction, SessionClickHandler } from '../SessionItem';
+import type { SessionClickHandler } from '../SessionItem';
 import type { ProjectNode as ProjectNodeData } from '../../lib/projectGrouping';
 import type { UseSidebarFilterReturn } from '../../hooks/useSidebarFilter';
 import type {
@@ -107,6 +125,12 @@ import type { FolderPickerOption } from '@/components/new-chat/FolderPickerPopov
 import type { SessionMoveTarget } from '../sessionMoveTarget';
 import { resolveCollapsedProjectAttentionTone } from '../projectCollapsedAttention';
 
+const CindyMakeCreateDialog = lazy(() =>
+  import('@/components/cindy-make/CindyMakeCreateDialog').then((module) => ({
+    default: module.CindyMakeCreateDialog,
+  })),
+);
+
 /** 手动排序只从项目标题行起手。点击折叠仍走标题行；SortableJS 的
  *  fallbackTolerance + ignoreNextClick 把点击和拖拽分开。 */
 const MANUAL_PROJECT_SORT_HANDLE = '[data-project-header]';
@@ -114,101 +138,11 @@ const MANUAL_PROJECT_SORT_HANDLE = '[data-project-header]';
 /** 标题行里的按钮、以及子任务区,都不能当成"拖整个项目"的起点。 */
 const MANUAL_PROJECT_SORT_FILTER = 'button, input, textarea, select, a, [data-no-drag]';
 
-/** 带标题的 Bot/对话分组，复用项目内会话行与折叠策略。 */
-function SessionGroupNode({
-  sessions, collapsed, onToggle, onCreateDialogue, groupIcon, groupTitle, createLabel,
-  isCreateDisabled, parentSectionCollapsed, disableSessionCollapse, activeSessionId,
-  runningSessionIds, attachedSessionIds, notifications, scheduleSessionIndex, selectedSessionIds,
-  onSessionClick, onAction, onRename, onTogglePin, onMoveSession, projectOptions,
-  onScheduleAction, sessionVariant,
-}: {
-  sessions: Session[];
-  collapsed: boolean;
-  onToggle: () => void;
-  onCreateDialogue: () => void;
-  groupIcon?: ReactNode;
-  groupTitle?: string;
-  createLabel?: string;
-  isCreateDisabled: boolean;
-  parentSectionCollapsed: boolean;
-  disableSessionCollapse: boolean;
-  activeSessionId?: string;
-  runningSessionIds: ReadonlySet<string>;
-  attachedSessionIds: ReadonlySet<string>;
-  notifications: ReadonlySet<string>;
-  scheduleSessionIndex: ReadonlyMap<string, AutomationScheduleSessionInfo>;
-  selectedSessionIds?: ReadonlySet<string>;
-  onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: SessionAction) => void;
-  onRename: (id: string, title: string) => void;
-  onTogglePin: (id: string, currentlyPinned: boolean) => void;
-  onMoveSession?: (id: string, target: SessionMoveTarget) => void;
-  projectOptions?: readonly FolderPickerOption[];
-  onScheduleAction: (group: AutomationSessionGroup, action: AutomationScheduleAction) => void;
-  sessionVariant: 'text' | 'list';
-}) {
-  const { t } = useTranslation();
-  const Chevron = collapsed ? ChevronRight : ChevronDown;
-  return (
-    <div className="relative flex w-full select-none flex-col" data-no-drag>
-      <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={!collapsed}
-        onClick={onToggle}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggle(); }
-        }}
-        className="group flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-full pl-3 pr-1 text-sm font-normal text-[var(--sidebar-list-muted)] transition-colors hover:bg-sidebar-item-hover"
-      >
-        {groupIcon ?? <MessagesSquare size={15} strokeWidth={1.8} className="shrink-0" />}
-        <span className="min-w-0 flex-1 truncate">{groupTitle ?? t('ccAgent.sidebar.dialogues')}</span>
-        <Chevron size={13} className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
-        <Tip text={createLabel ?? t('ccAgent.sidebar.newDialogue')}>
-          <button
-            type="button"
-            aria-label={createLabel ?? t('ccAgent.sidebar.newDialogue')}
-            disabled={isCreateDisabled}
-            onClick={(event) => { event.stopPropagation(); onCreateDialogue(); }}
-            onPointerDown={(event) => event.stopPropagation()}
-            className="flex size-5 shrink-0 items-center justify-center rounded-md text-sidebar-action-icon hover:bg-sidebar-item-hover disabled:opacity-50"
-          >
-            <SquarePen size={14} strokeWidth={2} />
-          </button>
-        </Tip>
-      </div>
-      <SectionCollapse collapsed={collapsed} data-no-drag>
-        <div className={cn('flex flex-col gap-0.5 pt-0.5 pb-1.5 pr-0', sessionVariant === 'list' ? 'pl-3' : 'pl-0')}>
-          <SessionEntryList
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            runningSessionIds={runningSessionIds}
-            attachedSessionIds={attachedSessionIds}
-            notifications={notifications}
-            scheduleSessionIndex={scheduleSessionIndex}
-            selectedSessionIds={selectedSessionIds}
-            onSessionClick={onSessionClick}
-            onAction={onAction}
-            onRename={onRename}
-            onTogglePin={onTogglePin}
-            onMoveSession={onMoveSession}
-            projectOptions={projectOptions}
-            onScheduleAction={onScheduleAction}
-            indented
-            collapsible
-            collapseLimit={getProjectSessionCollapseLimit()}
-            disableCollapse={disableSessionCollapse}
-            sectionCollapsed={parentSectionCollapsed || collapsed}
-            sessionVariant={sessionVariant}
-          />
-        </div>
-      </SectionCollapse>
-    </div>
-  );
-}
-
 /** 设备段折叠/对话组折叠共用的段 key:本机段 'local',远程段用 deviceId。 */
 const deviceSectionKey = (deviceId: string | null) => deviceId ?? 'local';
+// 单段保留既有伙伴 key;设备分组与对话组同样按段独立记忆,不依赖任务顺序或组名。
+const botGroupKey = (botId: string, sectionKey: string) =>
+  sectionKey === DIALOGUE_GROUP_ALL_KEY ? `bot:${botId}` : `bot:${botId}:${sectionKey}`;
 
 // 优先级排序的「看的时候钉住;只有从完成未读切走才置顶」是模块生命周期内的展示态,
 // 不落盘。放模块级而不是组件 ref:ProjectsSection 重挂(含 React Strict Mode
@@ -225,6 +159,7 @@ export function holdSidebarViewedPriority(
 ): void {
   holdViewedPriorityRank(viewedPriorityHold, sessionId, ctx);
 }
+
 /** 顶层条目折叠的「显示全部 N 项」页脚(单段路径与设备分组的每段共用同一份样式)。 */
 function ShowAllEntriesButton({ count, onClick }: { count: number; onClick: () => void }) {
   const { t } = useTranslation();
@@ -290,7 +225,7 @@ export interface ProjectsSectionProps {
   scheduleSessionIndex: ReadonlyMap<string, AutomationScheduleSessionInfo>;
   selectedSessionIds?: ReadonlySet<string>;
   onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: SessionAction) => void;
+  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   onMoveSession?: (id: string, target: SessionMoveTarget) => void;
@@ -300,8 +235,6 @@ export interface ProjectsSectionProps {
   onToggleProjectPin: (project: ProjectNodeData, currentlyPinned: boolean) => void;
   onRenameProject: (project: ProjectNodeData, alias: string) => Promise<void>;
   onRemoveFromSidebar: (project: ProjectNodeData) => void;
-  /** 项目级归档/删除；可选会话集合供默认“对话”项目分组复用同一入口。 */
-  onDeleteProject: (project: ProjectNodeData, sessions?: Session[]) => void;
   onCollapseAll: () => void;
   onExpandAll: () => void;
   /**
@@ -322,10 +255,10 @@ export interface ProjectsSectionProps {
   /** 进入 workdir 文件浏览模式 (vscode-style file tree + body viewer)。 */
   onBrowseFiles: (project: ProjectNodeData) => void;
   /** 右键菜单 → 归档该 project 下所有非执行中的 session（带二次确认）。 */
-  onArchiveAll: (project: ProjectNodeData, sessions?: Session[]) => void;
+  onArchiveAll: (project: ProjectNodeData) => void;
   /**
    * E 期「按设备分组」:远程设备的展示顺序与名称/在线状态(设备切换栏同源)。
-   * null / 空数组 = 没有远程设备连接 → 设备分组选项隐藏、不切段。
+   * 含断线缓存设备；null / 空 map = 没有可选远程设备 → 设备分组选项隐藏、不切段。
    */
   remoteDeviceIndex?: ReadonlyMap<string, { name: string; online: boolean }> | null;
   /**
@@ -350,7 +283,6 @@ export function ProjectsSection({
   allProjectKeysForOrder,
   filter,
   collapsed,
-  isAllCollapsed,
   activeSessionId,
   viewedSessionId,
   runningSessionIds,
@@ -369,7 +301,6 @@ export function ProjectsSection({
   onToggleProjectPin,
   onRenameProject,
   onRemoveFromSidebar,
-  onDeleteProject,
   onCollapseAll,
   onExpandAll,
   onCreateInProject,
@@ -384,6 +315,17 @@ export function ProjectsSection({
   isCreateDialogueDisabled = false,
 }: ProjectsSectionProps) {
   const { t } = useTranslation();
+  const remoteDevices = useRemoteDevices();
+  // 分组索引会排除断线设备；已有缓存条目的段头仍需读取设备名，并跟随改名更新。
+  const cachedDeviceNames = useMemo(
+    () => new Map(remoteDevices.map((device) => [device.deviceId, device.deviceName])),
+    [remoteDevices],
+  );
+  const localPlatform = window.electronAPI.platform;
+  const projectComparisonKey = useCallback(
+    (projectKey: string) => projectKeyComparisonKey(projectKey, localPlatform) ?? projectKey,
+    [localPlatform],
+  );
   const reducedMotion = useReducedMotion();
   const selectedMachineForOrder = useEffectiveSelectedMachineId();
   const localHostProjectOrder = useLocalHostProjectOrder();
@@ -414,9 +356,10 @@ export function ProjectsSection({
     filter.groupBy === 'project' && displayedProjectOrder.projectOrder === 'custom';
   const projectDragEnabled = customProjectOrder;
   const projectKeysForOrderBaseline = allProjectKeysForOrder;
-  // 段级收起已随「项目 / 归档 = 分段滑块」取消(2026-09-03 用户定稿):
-  // 状态切换在段头滑块,机器范围走小箭头;「想要紧凑」由右侧「收起所有分组」承接。
+  // 段级收起已随「全部任务 = 范围下拉」取消(2026-08-13 用户定稿):标题的点击
+  // 语义让给机器范围切换;「想要紧凑」由右侧「收起所有分组」承接。
   const [showAllProjects, setShowAllProjects] = useCollapsibleShowAll(false);
+  const [makeCreateOpen, setMakeCreateOpen] = useState(false);
   // 设备段各自的「显示全部」(2026-08-13 复核 P2:共用一个标志会让点任一段的
   // 段内按钮把所有段一起展开——按钮看起来是段内操作,作用域也必须是段内)。
   const [expandedDeviceSections, setExpandedDeviceSections] = useState<ReadonlySet<string>>(
@@ -442,8 +385,9 @@ export function ProjectsSection({
         const fullOrder = normalizeManualProjectOrder(
           filter.manualProjectOrder,
           projectKeysForOrderBaseline,
+          localPlatform,
         );
-        const merged = mergeVisibleReorder(fullOrder, order);
+        const merged = mergeVisibleReorder(fullOrder, order, projectComparisonKey);
         filter.setManualProjectOrder(merged, projectKeysForOrderBaseline);
         if (filter.projectOrder !== 'custom') filter.setProjectOrder('custom');
       };
@@ -456,8 +400,9 @@ export function ProjectsSection({
         const fullOrder = normalizeManualProjectOrder(
           localHostProjectOrder.snapshot.manualProjectOrder,
           localKeys,
+          localPlatform,
         );
-        const next = mergeVisibleReorder(fullOrder, visibleNewOrder);
+        const next = mergeVisibleReorder(fullOrder, visibleNewOrder, projectComparisonKey);
         void localHostProjectOrder
           .apply({
             manualProjectOrder: next,
@@ -480,8 +425,8 @@ export function ProjectsSection({
         const current =
           controllerManualOrderForDevice(deviceId, remoteHostProjectOrders.orders.get(deviceId)) ??
           [];
-        const fullOrder = normalizeManualProjectOrder(current, remoteKeys);
-        const next = mergeVisibleReorder(fullOrder, visibleNewOrder);
+        const fullOrder = normalizeManualProjectOrder(current, remoteKeys, localPlatform);
+        const next = mergeVisibleReorder(fullOrder, visibleNewOrder, projectComparisonKey);
         void remoteHostProjectOrders
           .apply(deviceId, {
             manualProjectOrder: next,
@@ -500,6 +445,8 @@ export function ProjectsSection({
       projectKeysForOrderBaseline,
       remoteHostProjectOrders,
       selectedMachineForOrder,
+      localPlatform,
+      projectComparisonKey,
     ],
   );
 
@@ -534,52 +481,29 @@ export function ProjectsSection({
         notifications,
         attentionKinds,
         urgentSessionIds: urgentSet,
-        remotePhaseOf: (sessionId) => getRemoteSessionActivity(sessionId)?.phase,
+        remotePhaseOf: (sessionId, deviceId) =>
+          getRemoteSessionActivity(sessionId, deviceId)?.phase,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- remoteActivityRevision 代表 getRemoteSessionActivity 读到的整表内容
     [runningSessionIds, notifications, attentionKinds, urgentSet, remoteActivityRevision],
   );
   // 正在看的任务 id:files 路由下回落到被浏览文件所属任务。
   const viewedIdForSort = viewedSessionId ?? activeSessionId;
-  const priorityContext = useMemo(() => {
-    const running = new Set(runningSessionIds);
-    const attention = new Set(notifications);
+  const naturalPriorityContext = useMemo(() => {
     const waiting = new Set<string>(urgentSet);
     for (const [sessionId, kind] of attentionKinds) {
       if (kind === 'awaiting' || kind === 'error') waiting.add(sessionId);
     }
-    const considerRemote = (session: Session) => {
-      const activity = getRemoteSessionActivity(session.id);
-      if (!activity) return; // 本地会话 / 无活动条目:一次 Map 查找即返回
-      if (activity.phase === 'running') {
-        running.add(session.id);
-        return;
-      }
-      // needs-interaction / error → waiting;completed(镜像只保留未读终态,
-      // 已读收尾包会删条目)→ 完成未读档。
-      attention.add(session.id);
-      if (activity.phase === 'needs-interaction' || activity.phase === 'error') {
-        waiting.add(session.id);
-      }
-    };
-    for (const project of projects) for (const session of project.sessions) considerRemote(session);
-    for (const session of dialogues) considerRemote(session);
-    for (const session of unclassified) considerRemote(session);
-
-    const hold = advanceViewedPriorityHold(
-      viewedPriorityHold,
-      viewedIdForSort,
-      { runningSessionIds: running, attentionSessionIds: attention, waitingSessionIds: waiting },
-      Date.now(),
+    return sidebarPriorityContext(
+      { runningSessionIds, attentionSessionIds: notifications, waitingSessionIds: waiting },
+      [
+        ...projects.flatMap((project) => project.sessions),
+        ...bots.flatMap((bot) => bot.sessions),
+        ...dialogues,
+        ...unclassified,
+      ],
+      (session) => getRemoteSessionActivity(session.id, session.deviceLinkDeviceId)?.phase,
     );
-
-    return {
-      runningSessionIds: running,
-      attentionSessionIds: attention,
-      waitingSessionIds: waiting,
-      heldPriorityRanks: hold.heldPriorityRanks,
-      recentlyViewedAtMs: hold.recentlyViewedAtMs,
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- remoteActivityRevision 代表 getRemoteSessionActivity 读到的整表内容
   }, [
     runningSessionIds,
@@ -589,10 +513,36 @@ export function ProjectsSection({
     projects,
     dialogues,
     unclassified,
+    bots,
     remoteActivityRevision,
-    viewedIdForSort,
   ]);
+  const hold = useViewedPriorityHold(viewedPriorityHold, viewedIdForSort, naturalPriorityContext);
+  const priorityContext = useMemo(
+    () => ({
+      ...naturalPriorityContext,
+      heldPriorityRanks: hold.heldPriorityRanks,
+      recentlyViewedAtMs: hold.recentlyViewedAtMs,
+    }),
+    [naturalPriorityContext, hold],
+  );
 
+  // 聚合灯(2026-08 用户反馈:未读点只亮在最底层会话行,项目层与设备层没有
+  // 灯,多设备下找未读要逐层展开翻找)——项目行 / 对话组行 / 设备段头都从
+  // 各自下方**实际渲染的行集合**聚合灯语(sessionLampAggregation,rail 同源):
+  // running → 图标呼吸橙;未读 → AttentionDot(红 error > 蓝 awaiting > 绿 done)。
+  // remoteActivityRevision 已在上方订阅,依赖注释同 priorityContext。
+  const lampAgg = useCallback(
+    (list: readonly Session[]): SessionLampAggregate =>
+      aggregateSessionLamps(list, {
+        runningSessionIds,
+        notifications,
+        attentionKinds,
+        urgentSessionIds: urgentSet,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- remoteActivityRevision 代表 remoteLampOf 读到的整表内容
+    [runningSessionIds, notifications, attentionKinds, urgentSet, remoteActivityRevision],
+  );
+  const sortingPriorityContext = filter.sortBy === 'priority' ? priorityContext : undefined;
   // starting 只让位给真实 in-flight:本地 isRunning(见 useStartingSessionIds),
   // 远程 running / needs-interaction。终态 attention 不再吸收 —— 旧终态会误伤
   // 新发送,新终态又要代次才能和旧的区分,两边补丁会来回打。没经过 running
@@ -600,7 +550,11 @@ export function ProjectsSection({
   useEffect(() => {
     const settled = new Set<string>();
     const considerRemote = (session: Session) => {
-      if (isRemoteSessionActivityActive(getRemoteSessionActivity(session.id))) {
+      if (
+        isRemoteSessionActivityActive(
+          getRemoteSessionActivity(session.id, session.deviceLinkDeviceId),
+        )
+      ) {
         settled.add(session.id);
       }
     };
@@ -609,20 +563,19 @@ export function ProjectsSection({
     }
     for (const session of dialogues) considerRemote(session);
     for (const session of unclassified) considerRemote(session);
+    for (const bot of bots) for (const session of bot.sessions) considerRemote(session);
     absorbSessionStarting(settled);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- remoteActivityRevision 代表 getRemoteSessionActivity 读到的整表内容
-  }, [projects, dialogues, unclassified, remoteActivityRevision]);
+  }, [projects, dialogues, unclassified, bots, remoteActivityRevision]);
 
-  // E 期「按设备分组」:有远程设备连接 + 开关开 → 按设备切段(本机在前,
+  // E 期「按设备分组」:有可选远程设备（含断线缓存）+ 开关开 → 按设备切段(本机在前,
   // 远程按设备切换栏顺序);其余情况单段直渲。切段后按当前排序重排本段。
   // 自定义项目顺序可以和设备分组叠加:每段内项目行按全局序的子集排,段内可拖。
-  // 范围收窄到单台机器时同样退场(2026-08-13 用户定稿):只有一台无段可切,
-  // 唯一的段头还会和范围标题重复报同一个设备名;整理菜单的选项行同步隐藏
-  // (deviceGroupingAvailable),偏好照旧不改写、范围放宽自动恢复。
+  // 范围收窄到单台机器时照常保留分组与整理菜单选项(2026-10-05 用户定稿,推翻
+  // 2026-08-13「单机范围退场」):单段也挂设备段头,与多机范围同一套 UI。
   const hasRemoteDevices = (remoteDeviceIndex?.size ?? 0) > 0;
   const selectedMachineId = useEffectiveSelectedMachineId();
-  const singleMachineScope = selectedMachineId !== MACHINE_ALL && selectedMachineId.length === 1;
-  const deviceGroupingAvailable = hasRemoteDevices && !singleMachineScope;
+  const deviceGroupingAvailable = hasRemoteDevices;
   const deviceGroupingActive = deviceGroupingAvailable && filter.groupDevice;
   // F-PJ-10：未分类区在 projects 为具体多选状态时不渲染（spec 验收第 14 条）
   const unclassifiedHidden = filter.projects !== 'all';
@@ -630,47 +583,44 @@ export function ProjectsSection({
   // 混排模型(D 期):项目行 / 散排对话 / 对话组统一为顶层条目并按同一口径排序。
   // 这有意推翻旧「Dialogue 固定段在 Projects 之后」的裁决(mainListModel.ts 文件头)。
   // 设备分组开启时,未分类草稿并进混排再按设备切段;单段路径仍走顶部独立段。
-  const mixedEntries = useMemo(
+  const mixedUnclassified = useMemo(
     () =>
-      buildMainListEntries({
-        projects,
-        dialogues,
-        bots,
-        unclassified: deviceGroupingActive && !unclassifiedHidden ? unclassified : [],
-        groupBy: filter.groupBy,
-        groupDialogue: filter.groupDialogue,
-        sortBy: filter.sortBy,
-        projectOrder: displayedProjectOrder.projectOrder,
-        manualProjectOrder: displayedProjectOrder.manualProjectOrder,
-        priorityContext,
-        notifications,
-        scheduleSessionIndex,
-      }),
-    [
-      projects,
-      dialogues,
-      bots,
-      unclassified,
-      unclassifiedHidden,
-      deviceGroupingActive,
-      filter.groupBy,
-      filter.groupDialogue,
-      filter.sortBy,
-      displayedProjectOrder,
-      priorityContext,
-      notifications,
-      scheduleSessionIndex,
-    ],
+      unclassifiedHidden
+        ? []
+        : deviceGroupingActive
+          ? unclassified
+          : unclassified.filter((session) => isCindyMakeFamilySource(session.source)),
+    [unclassified, unclassifiedHidden, deviceGroupingActive],
   );
+  const mixedEntries = useMainListEntries({
+    projects,
+    dialogues,
+    bots,
+    unclassified: mixedUnclassified,
+    groupBy: filter.groupBy,
+    groupDialogue: filter.groupDialogue,
+    sortBy: filter.sortBy,
+    projectOrder: displayedProjectOrder.projectOrder,
+    manualProjectOrder: displayedProjectOrder.manualProjectOrder,
+    priorityContext,
+    notifications,
+    scheduleSessionIndex,
+  });
 
   // 顶层条目折叠:最多显示 N 条,超出收起 + 「显示全部 N 项」。与会话同一套
   // 规则(getSessionListCollapseView):始终保留"有需关注会话"的条目、以及包含当前会话的
   // 条目;任何排序/筛选下都生效。
   const entrySessions = getMainListEntrySessions;
   // 折叠视图共用一份参数:非设备分组 = 全列表一份;设备分组 = 每段各一份(见
-  // deviceSections)。attention 豁免用 priorityContext.attentionSessionIds——与
-  // 排序同一口径(含远程活动镜像),远程 waiting/unread 的条目不能被折进
-  // 「显示全部」。
+  // deviceSections)。豁免口径 = attention ∪ running(priorityContext,含远程
+  // 活动镜像)——与聚合灯同口径:上层灯为哪条会话点亮(未读或 running),
+  // 该条目就不能被折进「显示全部」(Greptile P1:此前只豁免 attention,
+  // running-only 会话会让呼吸灯指向不可见的条目)。
+  const lampFoldExemptIds = useMemo(() => {
+    const next = new Set(priorityContext.attentionSessionIds);
+    for (const id of priorityContext.runningSessionIds) next.add(id);
+    return next;
+  }, [priorityContext]);
   const collapseEntries = useCallback(
     (entries: readonly MainListEntry[], showAll: boolean) =>
       getSessionListCollapseView({
@@ -680,10 +630,9 @@ export function ProjectsSection({
         disableCollapse: false,
         isFiltering: false,
         isActiveEntry: (entry) => entrySessions(entry).some((s) => s.id === viewedIdForSort),
-        hasAttentionEntry: (entry) =>
-          entrySessions(entry).some((s) => priorityContext.attentionSessionIds.has(s.id)),
+        hasAttentionEntry: (entry) => entrySessions(entry).some((s) => lampFoldExemptIds.has(s.id)),
       }),
-    [viewedIdForSort, entrySessions, priorityContext],
+    [viewedIdForSort, entrySessions, lampFoldExemptIds],
   );
   const {
     visibleEntries: visibleMixedEntries,
@@ -724,10 +673,10 @@ export function ProjectsSection({
     const keys = preCustomVisualKeysRef.current;
     if (keys.length === 0) return;
     filter.setManualProjectOrder(
-      snapshotManualProjectOrder(keys, projectKeysForOrderBaseline),
+      snapshotManualProjectOrder(keys, projectKeysForOrderBaseline, localPlatform),
       projectKeysForOrderBaseline,
     );
-  }, [filter, projectKeysForOrderBaseline]);
+  }, [filter, projectKeysForOrderBaseline, localPlatform]);
 
   const deviceSections = useMemo<MainListDeviceSection[]>(() => {
     if (!deviceGroupingActive) return [{ deviceId: null, entries: [...visibleMixedEntries] }];
@@ -735,11 +684,10 @@ export function ProjectsSection({
     // review P1:此前先全局折叠再切段,排在前 N 名之外的设备连段头一起消失,
     // 看起来像"这台设备没有任务"——设备是最外层层级,折叠只能发生在段内)。
     return splitEntriesByDevice(mixedEntries, [...(remoteDeviceIndex?.keys() ?? [])], {
+      onlineDeviceIds: onlineDeviceSectionIds(remoteDeviceIndex, selectedMachineId),
       sortBy: filter.sortBy,
-      // 设备切段必须使用当前真正展示的项目顺序；单设备 host 可能以 host ledger
-      // 覆盖 viewer ledger，继续读取 filter 会把刚拖好的项目重新按活动时间排回去。
-      projectOrder: displayedProjectOrder.projectOrder,
-      manualProjectOrder: displayedProjectOrder.manualProjectOrder,
+      projectOrder: filter.projectOrder,
+      manualProjectOrder: filter.manualProjectOrder,
       priorityContext,
     });
   }, [
@@ -747,27 +695,18 @@ export function ProjectsSection({
     visibleMixedEntries,
     mixedEntries,
     remoteDeviceIndex,
+    selectedMachineId,
     filter.sortBy,
-    displayedProjectOrder,
+    filter.projectOrder,
+    filter.manualProjectOrder,
     priorityContext,
   ]);
   // 设备段折叠(E 期):本机段 key 'local'。
   const [collapsedDevices, setCollapsedDevices] = useState<ReadonlySet<string>>(new Set());
-  // 项目 / 对话组内「显示全部」的段级快照：折叠动画结束后子列表会卸载，
-  // 状态提到这里才能保证批量折叠再展开时恢复用户选择。
-  const [sessionShowAllKeys, setSessionShowAllKeys] = useState<ReadonlySet<string>>(new Set());
-  const setSessionShowAll = useCallback((key: string, next: boolean) => {
-    setSessionShowAllKeys((prev) => {
-      const nextSet = new Set(prev);
-      if (next) nextSet.add(key);
-      else nextSet.delete(key);
-      return nextSet;
-    });
-  }, []);
-  // 「对话」组折叠:与项目行同级的独立分组状态,由组头自行切换、不参与
-  // 「收起所有分组」批量操作(2026-09-03 用户定稿)。按分组 key 记忆——
-  // 单一列表只有一个组(DIALOGUE_GROUP_ALL_KEY);按设备分组时每个设备段各有
-  // 一个对话组,折叠互相独立(2026-08-12 实机反馈:共用一个 boolean 会点一个全展开)。
+  // 「对话」组折叠:与项目行折叠同级的分组状态(用户裁决:对话组的折叠交互与
+  // 项目分组一致,含「收起所有分组」批量操作)。按分组 key 记忆——单一列表只有
+  // 一个组(DIALOGUE_GROUP_ALL_KEY);按设备分组时每个设备段各有一个对话组,
+  // 折叠互相独立(2026-08-12 实机反馈:共用一个 boolean 会点一个全展开)。
   // 持久化为显示类本地偏好。
   const [collapsedDialogueGroups, setCollapsedDialogueGroups] = useState<ReadonlySet<string>>(() =>
     loadDialogueGroupCollapsedKeys(),
@@ -795,11 +734,31 @@ export function ProjectsSection({
   }, []);
 
   // 「展开/收起所有分组」按钮(E 期):
-  //   单层(仅项目文件夹层或仅设备层)→ 收起所有 ↔ 展开所有;
-  //   双层(设备 + 项目文件夹层同时存在)→ 循环:收项目层 → 收设备层 → 全部展开。
-  // 项目文件夹层 = 项目行。项目侧复用 ProjectNode 折叠状态;自动任务组与
-  // 「对话」组行由各自头行独立折叠,批量按钮不再触碰它们(用户定稿)。
-  const hasGroupLayer = mixedEntries.some((entry) => entry.kind === 'project');
+  //   单层(仅组层或仅设备层)→ 收起所有 ↔ 展开所有;
+  //   双层(设备 + 组层同时存在)→ 循环:收组层 → 收设备层 → 全部展开。
+  // 组层 = 项目行 + 自动任务组 + 「对话」组行。项目侧复用 ProjectNode 折叠状态,
+  // 自动任务组复用 owner-scoped 持久化状态,对话组沿用本地显示偏好。
+  const hasGroupLayer = mixedEntries.some((entry) => entry.kind !== 'session');
+  // 对话与 Cindy Make 分组按各自命名空间、设备段记忆折叠。
+  // 「收起/展开所有分组」只作用于这些可见 key,不动其它模式下的记忆。
+  const visibleSessionGroupKeys = useMemo<string[]>(() => {
+    const keysFor = (entries: readonly MainListEntry[], scope: string) =>
+      entries.flatMap((entry) => {
+        if (entry.kind === 'dialogue-group') return [scope];
+        if (entry.kind === 'cindy-make-group') return [`${CINDY_MAKE_GROUP_KEY}:${scope}`];
+        if (entry.kind === 'bot-group') return [botGroupKey(entry.bot.botId, scope)];
+        return [];
+      });
+    if (!deviceGroupingActive) {
+      return keysFor(visibleMixedEntries, DIALOGUE_GROUP_ALL_KEY);
+    }
+    return deviceSections.flatMap((section) =>
+      keysFor(section.entries, deviceSectionKey(section.deviceId)),
+    );
+  }, [deviceGroupingActive, visibleMixedEntries, deviceSections]);
+  const allSessionGroupsCollapsed =
+    visibleSessionGroupKeys.length === 0 ||
+    visibleSessionGroupKeys.every((key) => collapsedDialogueGroups.has(key));
   const visibleAutomationGroupKeys = useMemo(
     () =>
       mixedEntries
@@ -821,18 +780,23 @@ export function ProjectsSection({
       ),
     [mixedEntries],
   );
-  const [, , isAutomationGroupCollapsed, setAutomationGroupCollapsed] =
-    useAutomationGroupsCollapsed(
-      visibleAutomationGroupKeys,
-      filter.groupBy,
-      legacyAutomationGroupKeys,
-    );
-  // 组层是否收齐必须看**当前范围**有没有项目行。allKnownProjects 是全机器宇宙,
-  // 单机范围下本机只有对话组、远端仍有项目时 length>0;isAllCollapsed 却来自
-  // 当前范围的 activeWorkingDirs,此时为空并恒为 false,foldState 会卡在
-  // collapse-groups。有可见项目行才并上 isAllCollapsed。
-  const hasVisibleProjectGroups = mixedEntries.some((entry) => entry.kind === 'project');
-  const allGroupsCollapsed = !hasVisibleProjectGroups || isAllCollapsed;
+  const [
+    allAutomationGroupsCollapsed,
+    setAllAutomationGroupsCollapsed,
+    isAutomationGroupCollapsed,
+    setAutomationGroupCollapsed,
+  ] = useAutomationGroupsCollapsed(
+    visibleAutomationGroupKeys,
+    filter.groupBy,
+    legacyAutomationGroupKeys,
+  );
+  // 只检查实际项目行。已经收进 Cindy Make 的工作目录不再各占一行，
+  // 不能用它们旧的目录折叠状态阻止分组整体进入“全部展开”状态。
+  const allVisibleProjectGroupsCollapsed = mixedEntries.every(
+    (entry) => entry.kind !== 'project' || collapsed.has(entry.project.projectKey),
+  );
+  const allGroupsCollapsed =
+    allVisibleProjectGroupsCollapsed && allSessionGroupsCollapsed && allAutomationGroupsCollapsed;
   const hasDeviceLayer = deviceGroupingActive && deviceSections.length > 0;
   const allDevicesCollapsed =
     hasDeviceLayer &&
@@ -846,6 +810,8 @@ export function ProjectsSection({
   const handleFoldAll = useCallback(() => {
     if (foldState === 'collapse-groups') {
       onCollapseAll();
+      setDialogueCollapsed(visibleSessionGroupKeys, true);
+      setAllAutomationGroupsCollapsed(true);
       return;
     }
     if (foldState === 'collapse-devices') {
@@ -854,10 +820,20 @@ export function ProjectsSection({
       );
       return;
     }
-    // expand-all:展开设备段与当前可见的项目文件夹。
+    // expand-all:全部层级展开(设备段 + 项目行 + 自动任务组 + 对话组)。
     setCollapsedDevices(new Set());
     onExpandAll();
-  }, [foldState, deviceSections, onCollapseAll, onExpandAll]);
+    setDialogueCollapsed(visibleSessionGroupKeys, false);
+    setAllAutomationGroupsCollapsed(false);
+  }, [
+    foldState,
+    deviceSections,
+    visibleSessionGroupKeys,
+    onCollapseAll,
+    onExpandAll,
+    setDialogueCollapsed,
+    setAllAutomationGroupsCollapsed,
+  ]);
   const foldLabel =
     foldState === 'collapse-groups'
       ? hasDeviceLayer
@@ -878,6 +854,7 @@ export function ProjectsSection({
         flattenedSessionsForSourceLabels,
         allKnownProjects,
         t('ccAgent.sidebar.dialogues'),
+        t('settings.cindyMake.title'),
       ),
     [flattenedSessionsForSourceLabels, allKnownProjects, t],
   );
@@ -888,6 +865,7 @@ export function ProjectsSection({
   // 时仍画范围标题行(2026-08-13 第 4 轮 review P1:段头恒在),不画列表树。
   // 早退必须在全部 hooks 之后——rules of hooks。
   const hasMainListContent =
+    (deviceGroupingActive && deviceSections.length > 0) ||
     allProjectKeysForOrder.length > 0 ||
     unclassified.length > 0 ||
     dialogues.length > 0 ||
@@ -903,10 +881,15 @@ export function ProjectsSection({
         collapsed.has(project.projectKey) ? collapsedAttentionToneFor(project.sessions) : null
       }
       parentSectionCollapsed={false}
-      // 受控保存项目内「显示全部」，批量折叠 / 设备段折叠后展开仍能恢复。
-      showAll={sessionShowAllKeys.has(`project:${project.projectKey}`)}
-      onShowAllChange={(next) => setSessionShowAll(`project:${project.projectKey}`, next)}
-      activeSessionId={activeSessionId}
+      lamp={lampAgg(project.sessions)}
+      foldExemptSessionIds={lampFoldExemptIds}
+      // Unrelated projects keep an undefined selection prop across navigation,
+      // so ProjectNode's memo need not rebuild every session list on a click.
+      activeSessionId={
+        project.sessions.some((session) => session.id === activeSessionId)
+          ? activeSessionId
+          : undefined
+      }
       runningSessionIds={runningSessionIds}
       attachedSessionIds={attachedSessionIds}
       notifications={notifications}
@@ -920,7 +903,6 @@ export function ProjectsSection({
       onToggleProjectPin={onToggleProjectPin}
       onRenameProject={onRenameProject}
       onRemoveFromSidebar={onRemoveFromSidebar}
-      onDeleteProject={onDeleteProject}
       onSessionClick={onSessionClick}
       onAction={onAction}
       onRename={onRename}
@@ -968,6 +950,9 @@ export function ProjectsSection({
           onScheduleAction={onScheduleAction}
           automationGroupCollapsed={isAutomationGroupCollapsed}
           onAutomationGroupCollapsedChange={setAutomationGroupCollapsed}
+          // 顶层自动化组的展开态子运行折叠也要认远程灯豁免(review P2):与项目内 /
+          // 对话组内的 SessionEntryList 同一份 lampFoldExemptIds。
+          foldExemptSessionIds={lampFoldExemptIds}
           sourceLabelMap={dialogueSourceLabelMap}
           sessionVariant={mainSessionVariant}
           // 混排下每条散排对话各是一个单条列表,若都补顶线,会与上一行的底线叠成
@@ -977,12 +962,14 @@ export function ProjectsSection({
       );
     }
     if (entry.kind === 'bot-group') {
-      const groupKey = `bot:${entry.bot.botId}`;
+      const groupKey = botGroupKey(entry.bot.botId, dialogueGroupKey);
       const isCollapsed = collapsedDialogueGroups.has(groupKey);
       return (
         <SessionGroupNode
-          key={`bot-group:${entry.bot.botId}`}
+          key={groupKey}
           sessions={entry.bot.sessions}
+          lamp={lampAgg(entry.bot.sessions)}
+          foldExemptSessionIds={lampFoldExemptIds}
           groupIcon={
             <BotAvatar
               bot={{
@@ -996,6 +983,7 @@ export function ProjectsSection({
             />
           }
           groupTitle={entry.bot.displayName}
+          groupRunningMarker="ring"
           createLabel={t('bots.sidebar.newTaskWith', { name: entry.bot.displayName })}
           collapsed={isCollapsed}
           onToggle={() => setDialogueCollapsed([groupKey], !isCollapsed)}
@@ -1020,7 +1008,10 @@ export function ProjectsSection({
         />
       );
     }
-    if (entry.kind === 'dialogue-group') {
+    if (entry.kind === 'dialogue-group' || entry.kind === 'cindy-make-group') {
+      const isMake = entry.kind === 'cindy-make-group';
+      const groupKey = isMake ? `${CINDY_MAKE_GROUP_KEY}:${dialogueGroupKey}` : dialogueGroupKey;
+      const isCollapsed = collapsedDialogueGroups.has(groupKey);
       // 目标设备离线时不能在它上面新建(被控端才是真正的创建方)——与远程项目行的
       // 新建同款保护(isDeviceLinkWriteBlocked / actionsUnavailable 文案)。
       const targetDeviceOffline = Boolean(
@@ -1030,45 +1021,42 @@ export function ProjectsSection({
       const createDisabled =
         (dialogueDeviceTarget === undefined ? isCreateDialogueDisabled : false) ||
         targetDeviceOffline;
-      const dialogueProject: ProjectNodeData = {
-        projectKey: `dialogue:${dialogueGroupKey}`,
-        scope: 'local',
-        workingDir: '',
-        remoteHostId: null,
-        deviceLinkDeviceId: dialogueDeviceTarget?.deviceId ?? null,
-        deviceLinkDeviceName: dialogueDeviceTarget?.deviceName ?? null,
-          deviceLinkConnectionStatus: targetDeviceOffline ? 'disconnected' : 'connected',
-        displayName: t('ccAgent.sidebar.dialogues'),
-        segments: 1,
-        sessions: entry.sessions,
-        latestActivityAt: entry.sessions[0]?.updatedAt ?? '',
-      };
+      // The settings dialog creates on this computer; never expose it on a remote-only group.
+      const canCreateMake = entry.sessions.some((session) => !session.deviceLinkDeviceId);
       return (
-        <ProjectNode
-          key={`dialogue-project:${dialogueGroupKey}`}
-          project={dialogueProject}
-          actionSessions={entry.sessions}
-          sessionVariant={mainSessionVariant}
-          statusFilter={filter.status}
-          isCollapsed={collapsedDialogueGroups.has(dialogueGroupKey)}
-          parentSectionCollapsed={false}
-          showAll={sessionShowAllKeys.has(`dialogue-group:${dialogueGroupKey}`)}
-          onShowAllChange={(next) =>
-            setSessionShowAll(`dialogue-group:${dialogueGroupKey}`, next)
+        <SessionGroupNode
+          key={`${entry.kind}:${dialogueGroupKey}`}
+          sessions={entry.sessions}
+          lamp={lampAgg(entry.sessions)}
+          foldExemptSessionIds={lampFoldExemptIds}
+          groupTitle={isMake ? t('settings.cindyMake.title') : undefined}
+          groupIcon={
+            isMake ? (
+              <Hammer size={15} strokeWidth={1.8} className="shrink-0" aria-hidden />
+            ) : undefined
           }
+          collapsed={isCollapsed}
+          onToggle={() => setDialogueCollapsed([groupKey], !isCollapsed)}
+          onCreateDialogue={
+            isMake
+              ? canCreateMake
+                ? () => setMakeCreateOpen(true)
+                : undefined
+              : () => onCreateDialogue(dialogueDeviceTarget)
+          }
+          createLabel={isMake ? t('settings.cindyMake.create.title') : undefined}
+          isCreateDisabled={isMake ? false : createDisabled}
+          createDisabledReason={
+            targetDeviceOffline ? t('ccAgent.remoteSession.actionsUnavailable') : undefined
+          }
+          parentSectionCollapsed={false}
+          disableSessionCollapse={disableSessionCollapse}
           activeSessionId={activeSessionId}
           runningSessionIds={runningSessionIds}
           attachedSessionIds={attachedSessionIds}
           notifications={notifications}
           scheduleSessionIndex={scheduleSessionIndex}
           selectedSessionIds={selectedSessionIds}
-          disableSessionCollapse={disableSessionCollapse}
-          onToggle={() => setDialogueCollapsed([dialogueGroupKey], !collapsedDialogueGroups.has(dialogueGroupKey))}
-          isProjectPinned={false}
-          onToggleProjectPin={() => undefined}
-          onRenameProject={async () => undefined}
-          onRemoveFromSidebar={() => undefined}
-          onDeleteProject={onDeleteProject}
           onSessionClick={onSessionClick}
           onAction={onAction}
           onRename={onRename}
@@ -1076,13 +1064,7 @@ export function ProjectsSection({
           onMoveSession={onMoveSession}
           projectOptions={projectOptions}
           onScheduleAction={onScheduleAction}
-          onCreateInProject={() => onCreateDialogue(dialogueDeviceTarget)}
-          onOpenConversationSearch={onOpenConversationSearch}
-          onOpenInExplorer={onOpenInExplorer}
-          onLinkCodexProject={onLinkCodexProject}
-          linkingCodexProject={false}
-          onBrowseFiles={onBrowseFiles}
-          onArchiveAll={onArchiveAll}
+          sessionVariant={mainSessionVariant}
         />
       );
     }
@@ -1091,6 +1073,11 @@ export function ProjectsSection({
 
   return (
     <div className="flex flex-col gap-0.5 w-full">
+      {makeCreateOpen && (
+        <Suspense fallback={null}>
+          <CindyMakeCreateDialog onOpenChange={setMakeCreateOpen} />
+        </Suspense>
+      )}
       {/* 范围标题恒在:无列表内容时仍画这一行,不把设置入口一起摘掉。 */}
       <MainListScopeHeader
         filter={filter}
@@ -1110,9 +1097,13 @@ export function ProjectsSection({
       />
       {hasMainListContent ? (
         <div className="relative flex flex-col gap-1 pt-1 pr-0 pl-3">
+          {!deviceGroupingActive &&
+            visibleMixedEntries
+              .filter((entry) => entry.kind === 'cindy-make-group')
+              .map((entry) => renderNonProjectEntry(entry, DIALOGUE_GROUP_ALL_KEY))}
           {!deviceGroupingActive ? (
             <UnclassifiedSection
-              sessions={unclassified}
+              sessions={unclassified.filter((session) => !isCindyMakeFamilySource(session.source))}
               hidden={unclassifiedHidden}
               activeSessionId={activeSessionId}
               runningSessionIds={runningSessionIds}
@@ -1125,13 +1116,13 @@ export function ProjectsSection({
               onRename={onRename}
               onTogglePin={onTogglePin}
               onMoveSession={onMoveSession}
-          projectOptions={projectOptions}
-          onScheduleAction={onScheduleAction}
-          sessionVariant={mainSessionVariant}
-        />
+              projectOptions={projectOptions}
+              onScheduleAction={onScheduleAction}
+              sessionVariant={mainSessionVariant}
+            />
           ) : null}
           {/* 混排渲染(D / E 期):
-              - 自定义项目顺序:模型保证项目行连续在前 → 项目段走 SortableList,
+              - 自定义项目顺序:Cindy Make 固定在前,项目段走 SortableList,
                 其后是散排对话 / 对话组。折叠+溢出时禁用拖拽,点「显示全部」后再拖。
                 可与设备分组叠加:每段各自拖本段项目。
               - 按最近活动:按 deviceSections 切段(设备分组开启时),段内项目行与
@@ -1150,10 +1141,10 @@ export function ProjectsSection({
                 renderItem={(project) => renderProjectNode(project)}
               />
               {visibleMixedEntries
-                .filter((entry) => entry.kind !== 'project')
+                .filter((entry) => entry.kind !== 'project' && entry.kind !== 'cindy-make-group')
                 .map((entry) => renderNonProjectEntry(entry, DIALOGUE_GROUP_ALL_KEY))}
             </>
-              ) : deviceGroupingActive ? (
+          ) : deviceGroupingActive ? (
             <div className="flex flex-col gap-1">
               {deviceSections.map((section) => {
                 const key = deviceSectionKey(section.deviceId);
@@ -1161,49 +1152,70 @@ export function ProjectsSection({
                   ? remoteDeviceIndex?.get(section.deviceId)
                   : undefined;
                 const name = section.deviceId
-                  ? (device?.name ?? section.deviceId)
+                  ? (device?.name ?? cachedDeviceNames.get(section.deviceId) ?? section.deviceId)
                   : t('ccAgent.sidebar.deviceGroup.local');
                 const online = section.deviceId ? (device?.online ?? false) : true;
                 const sectionCollapsed = collapsedDevices.has(key);
+                // 设备层聚合灯:聚合本段全部条目的会话(与段内渲染一致)。
+                // 仅收起时显示运行态与未读点,展开后由下层内容提示。
+                const sectionLamp = lampAgg(section.entries.flatMap(entrySessions));
                 return (
                   <div key={key} className="flex flex-col gap-1">
                     {/* 设备分组头:可折叠。在线设备不画状态点;离线设备保留灰点与文字提示。 */}
-                    <button
-                      type="button"
-                      onClick={() => toggleDeviceSection(key)}
-                      aria-expanded={!sectionCollapsed}
-                      aria-label={
-                        sectionCollapsed
-                          ? t('ccAgent.sidebar.deviceGroup.expand')
-                          : t('ccAgent.sidebar.deviceGroup.collapse')
-                      }
-                      className={cn(
-                        'flex h-6 w-full items-center gap-1.5 rounded-md px-1.5',
-                        'text-[var(--sidebar-list-muted)] transition-colors hover:text-[var(--sidebar-nav-text)]',
-                      )}
-                    >
-                      {sectionCollapsed ? (
-                        <ChevronRight size={12} strokeWidth={2} className="shrink-0" />
-                      ) : (
-                        <ChevronDown size={12} strokeWidth={2} className="shrink-0" />
-                      )}
-                      <MonitorSmartphone size={13} strokeWidth={2} className="shrink-0" />
-                      <span className="min-w-0 truncate text-xs font-medium">{name}</span>
-                      {!online && (
+                    <DeviceSectionHeader deviceId={section.deviceId} name={name}>
+                      <button
+                        type="button"
+                        onClick={() => toggleDeviceSection(key)}
+                        aria-expanded={!sectionCollapsed}
+                        aria-label={
+                          sectionCollapsed
+                            ? t('ccAgent.sidebar.deviceGroup.expand')
+                            : t('ccAgent.sidebar.deviceGroup.collapse')
+                        }
+                        className={cn(
+                          'flex h-6 min-w-0 flex-1 items-center gap-1.5 rounded-full px-1.5',
+                          'text-[var(--sidebar-list-muted)] transition-colors hover:text-[var(--sidebar-nav-text)]',
+                        )}
+                      >
+                        {sectionCollapsed ? (
+                          <ChevronRight size={12} strokeWidth={2} className="shrink-0" />
+                        ) : (
+                          <ChevronDown size={12} strokeWidth={2} className="shrink-0" />
+                        )}
+                        {/* 设备段收起时才用图标呼吸提示内部运行态,展开后由下层内容提示。 */}
                         <span
-                          aria-hidden
-                          className="size-1.5 shrink-0 rounded-full bg-[var(--text-tertiary)]"
-                        />
-                      )}
-                      {/* 条数已去掉(2026-08-12 用户裁决):它数的是顶层条目
-                          (项目行 + 散排对话 + 对话组),不是任务数,读起来只会误导;
-                          段展开后内容本身就是答案。「离线」接手 ml-auto 保持靠右。 */}
-                      {!online && (
-                        <span className="ml-auto shrink-0 text-xs text-[var(--cmd-palette-item-meta)]">
-                          {t('ccAgent.sidebar.deviceGroup.offline')}
+                          className={cn(
+                            'inline-flex shrink-0',
+                            sectionCollapsed &&
+                              sectionLamp.running &&
+                              'text-[var(--status-bar-accent)] session-status-breathing',
+                          )}
+                        >
+                          <MonitorSmartphone size={13} strokeWidth={2} aria-hidden />
                         </span>
-                      )}
-                    </button>
+                        <span className="min-w-0 truncate text-xs font-medium">{name}</span>
+                        {!online && (
+                          <span
+                            aria-hidden
+                            className="size-1.5 shrink-0 rounded-full bg-[var(--text-tertiary)]"
+                          />
+                        )}
+                        {/* 条数已去掉(2026-08-12 用户裁决):它数的是顶层条目
+                            (项目行 + 散排对话 + 对话组),不是任务数,读起来只会误导;
+                            段展开后内容本身就是答案。右侧改为灯组:仅收起时显示聚合未读点
+                            (段级 size 6,rail 段钮同款);离线标注始终保留。 */}
+                        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                          {sectionCollapsed && sectionLamp.dotTone && (
+                            <AttentionDot size={6} tone={sectionLamp.dotTone} />
+                          )}
+                          {!online && (
+                            <span className="shrink-0 text-xs text-[var(--cmd-palette-item-meta)]">
+                              {t('ccAgent.sidebar.deviceGroup.offline')}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    </DeviceSectionHeader>
                     <SectionCollapse collapsed={sectionCollapsed}>
                       <div className="flex flex-col gap-1 pl-2">
                         {/* 折叠上限每段独立应用(切段在前,见 deviceSections 注释);
@@ -1226,6 +1238,11 @@ export function ProjectsSection({
                             <>
                               {customProjectOrder ? (
                                 <>
+                                  {sectionView.visibleEntries
+                                    .filter((entry) => entry.kind === 'cindy-make-group')
+                                    .map((entry) =>
+                                      renderNonProjectEntry(entry, key, sectionDialogueTarget),
+                                    )}
                                   <SortableList
                                     items={sectionProjects}
                                     getId={getProjectId}
@@ -1242,22 +1259,21 @@ export function ProjectsSection({
                                     renderItem={(project) => renderProjectNode(project)}
                                   />
                                   {sectionView.visibleEntries
-                                    .filter((entry) => entry.kind !== 'project')
+                                    .filter(
+                                      (entry) =>
+                                        entry.kind !== 'project' &&
+                                        entry.kind !== 'cindy-make-group',
+                                    )
                                     .map((entry) =>
                                       renderNonProjectEntry(entry, key, sectionDialogueTarget),
                                     )}
                                 </>
                               ) : (
-                                <>
-                                  {sectionView.visibleEntries
-                                    .filter((entry) => entry.kind === 'project')
-                                    .map((entry) => renderProjectNode(entry.project))}
-                                  {sectionView.visibleEntries
-                                    .filter((entry) => entry.kind !== 'project')
-                                    .map((entry) =>
-                                      renderNonProjectEntry(entry, key, sectionDialogueTarget),
-                                    )}
-                                </>
+                                sectionView.visibleEntries.map((entry) =>
+                                  entry.kind === 'project'
+                                    ? renderProjectNode(entry.project)
+                                    : renderNonProjectEntry(entry, key, sectionDialogueTarget),
+                                )
                               )}
                               {sectionView.isOverflowing && (
                                 <ShowAllEntriesButton
@@ -1279,11 +1295,12 @@ export function ProjectsSection({
           ) : (
             <div className="flex flex-col gap-1">
               {visibleMixedEntries
-                .filter((entry) => entry.kind === 'project')
-                .map((entry) => renderProjectNode(entry.project))}
-              {visibleMixedEntries
-                .filter((entry) => entry.kind !== 'project')
-                .map((entry) => renderNonProjectEntry(entry, DIALOGUE_GROUP_ALL_KEY))}
+                .filter((entry) => entry.kind !== 'cindy-make-group')
+                .map((entry) =>
+                  entry.kind === 'project'
+                    ? renderProjectNode(entry.project)
+                    : renderNonProjectEntry(entry, DIALOGUE_GROUP_ALL_KEY),
+                )}
             </div>
           )}
           {/* 全局「显示全部」只属于未按设备分组的单段路径;设备分组下折叠与 footer 都在段内。 */}
@@ -1292,6 +1309,225 @@ export function ProjectsSection({
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * SessionGroupNode — 一个带标题的会话组行。
+ *
+ * 「对话」、伙伴与 Cindy Make 复用同一种会话分组。它们是
+ * 同一种东西,只差图标和标题 —— 所以参数化,不复制。默认值就是对话组的原始形态,
+ * 既有调用点行为逐字不变。
+ * 视觉与交互与 ProjectNode 表头**同款**(2026-08-12 用户裁决:对话组的分组 UI、
+ * 交互与自动收起逻辑都与项目分组一致):h-8 药丸 hover 行、15px 图标、meta 灰文字、
+ * 标题右侧 hover 渐显展开箭头;组内会话折叠上限同项目内会话
+ * (getProjectSessionCollapseLimit)。折叠状态受控(父层持久化),并纳入
+ * 「收起所有分组」的批量收起/展开。
+ * 标题「对话」是归属分类名(task-and-conversation-naming §2.3)。
+ */
+export function SessionGroupNode({
+  sessions,
+  lamp,
+  foldExemptSessionIds,
+  collapsed,
+  onToggle,
+  onCreateDialogue,
+  groupIcon,
+  groupRunningMarker = 'icon',
+  groupTitle,
+  createLabel,
+  isCreateDisabled,
+  createDisabledReason,
+  parentSectionCollapsed,
+  disableSessionCollapse,
+  activeSessionId,
+  runningSessionIds,
+  attachedSessionIds,
+  notifications,
+  scheduleSessionIndex,
+  selectedSessionIds,
+  onSessionClick,
+  onAction,
+  onRename,
+  onTogglePin,
+  onMoveSession,
+  projectOptions,
+  onScheduleAction,
+  sessionVariant,
+}: {
+  sessions: Session[];
+  /** 仅收起时显示组头聚合灯(ProjectNode.lamp 同款语义):running → 图标呼吸橙;
+   *  dotTone → 右侧状态槽。聚合集合 = 组内会话(与渲染一致)。 */
+  lamp?: SessionLampAggregate;
+  /** 透传给组内 SessionEntryList 的折叠豁免追加集合(语义见其 prop 注释)。 */
+  foldExemptSessionIds?: ReadonlySet<string>;
+  collapsed: boolean;
+  onToggle: () => void;
+  /**
+   * 组头图标与标题。省略 = 「对话」组(本组件的原始形态)。
+   *
+   * 伙伴组与对话组是同一种东西 —— 一个带标题的会话组,只差图标和标题;所以参数化
+   * 而不是复制一份 100 行的组件出来。
+   */
+  groupIcon?: ReactNode;
+  /** 仅不继承 currentColor 的头像需要运行色描边;线条图标直接变色。 */
+  groupRunningMarker?: 'icon' | 'ring';
+  groupTitle?: string;
+  /** 新建按钮的 tooltip / aria 文案。省略 = 「新建对话」。 */
+  createLabel?: string;
+  /**
+   * 组头右侧的新建入口(与项目行 SquarePen 等位):新建不绑项目的对话任务。
+   * 目标设备由父层按所在设备段决定(闭包传入),本组件不关心。
+   */
+  onCreateDialogue?: () => void;
+  isCreateDisabled: boolean;
+  /** 禁用原因(目标设备离线),有值时替换按钮 tooltip / aria——与远程项目行同款。 */
+  createDisabledReason?: string;
+  parentSectionCollapsed: boolean;
+  disableSessionCollapse: boolean;
+  activeSessionId?: string;
+  runningSessionIds: ReadonlySet<string>;
+  attachedSessionIds: ReadonlySet<string>;
+  notifications: ReadonlySet<string>;
+  scheduleSessionIndex: ReadonlyMap<string, AutomationScheduleSessionInfo>;
+  selectedSessionIds?: ReadonlySet<string>;
+  onSessionClick: SessionClickHandler;
+  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
+  onRename: (id: string, title: string) => void;
+  onTogglePin: (id: string, currentlyPinned: boolean) => void;
+  onMoveSession?: (id: string, target: SessionMoveTarget) => void;
+  projectOptions?: readonly FolderPickerOption[];
+  onScheduleAction: (group: AutomationSessionGroup, action: AutomationScheduleAction) => void;
+  sessionVariant: 'text' | 'list';
+}) {
+  const { t } = useTranslation();
+  // 与 ProjectNode 同款:标题右侧 hover 渐显的展开/收起指示箭头。
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
+  const showRunning = collapsed && lamp?.running;
+  return (
+    <div className="relative flex w-full select-none flex-col" data-no-drag>
+      {/* 段头:与 ProjectNode Header 同款规格(h-8 药丸 hover / pl-3 pr-2 /
+          gap-2.5 / 15px 图标 / meta 灰 font-normal),仅图标换 MessagesSquare、
+          无重命名与右键菜单(「对话」是固定分类名,没有项目那套操作)。 */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        className={cn(
+          'group flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-full pl-3 pr-2',
+          'text-sm font-normal text-[var(--sidebar-list-muted)]',
+          'transition-colors hover:bg-sidebar-item-hover',
+        )}
+      >
+        {/* 与 ProjectNode 一致,仅收起时汇总运行态(动画挂 wrapper)。
+            伙伴头像不继承 currentColor,显式使用静态运行色描边以兼容减弱动效;
+            Cindy Make 等线条图标直接继承运行色,不加描边。 */}
+        <span
+          className={cn(
+            'inline-flex shrink-0',
+            showRunning
+              ? 'text-[var(--status-bar-accent)] session-status-breathing'
+              : 'text-[var(--sidebar-list-muted)]',
+            showRunning &&
+              groupRunningMarker === 'ring' &&
+              'rounded-full ring-2 ring-[var(--status-bar-accent)]',
+          )}
+          data-running-marker={showRunning ? groupRunningMarker : undefined}
+        >
+          {groupIcon ?? <MessagesSquare size={15} strokeWidth={1.8} aria-hidden />}
+        </span>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="min-w-0 shrink truncate">
+            {groupTitle ?? t('ccAgent.sidebar.dialogues')}
+          </span>
+          <Chevron
+            size={13}
+            strokeWidth={2}
+            aria-hidden
+            className="shrink-0 text-[var(--cmd-palette-item-meta)] opacity-0 transition-opacity duration-[120ms] group-hover:opacity-100"
+          />
+        </div>
+        {/* 聚合状态与普通任务行保持同一右侧槽位；展开后由子任务行分别显示。 */}
+        {collapsed && lamp?.dotTone && (
+          <div className="ml-auto flex h-6 shrink-0 items-center justify-end">
+            <SidebarRightStatusIndicator kind={lamp.dotTone} isActive={false} />
+          </div>
+        )}
+        {/* 悬浮工具组:与 ProjectNode Header 同款——常态隐藏,hover 整行淡入。
+            对话组没有项目那套 More 菜单,只保留新建(SquarePen,与项目行等位)。 */}
+        {onCreateDialogue && (
+          <div
+            className={cn(
+              'flex shrink-0 items-center gap-0.5',
+              'opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100',
+            )}
+          >
+            <Tip text={createDisabledReason ?? createLabel ?? t('ccAgent.sidebar.newDialogue')}>
+              <button
+                type="button"
+                aria-label={createDisabledReason ?? createLabel ?? t('ccAgent.sidebar.newDialogue')}
+                disabled={isCreateDisabled}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isCreateDisabled) onCreateDialogue();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                className={cn(
+                  'flex size-6 shrink-0 items-center justify-center rounded-full',
+                  'text-sidebar-action-icon hover:text-foreground',
+                  'hover:bg-sidebar-item-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+                  'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent',
+                )}
+              >
+                <SquarePen size={14} strokeWidth={2} />
+              </button>
+            </Tip>
+          </div>
+        )}
+      </div>
+      {/* 组内会话:与 ProjectNode 的会话区同款容器(gap / pt / pb 呼吸、list 缩进)
+          与同一份折叠上限(getProjectSessionCollapseLimit)。 */}
+      <SectionCollapse collapsed={collapsed} data-no-drag>
+        <div
+          className={cn(
+            'flex flex-col gap-0.5 pt-0.5 pb-1.5 pr-0',
+            sessionVariant === 'list' ? 'pl-3' : 'pl-0',
+          )}
+        >
+          <SessionEntryList
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            runningSessionIds={runningSessionIds}
+            attachedSessionIds={attachedSessionIds}
+            notifications={notifications}
+            scheduleSessionIndex={scheduleSessionIndex}
+            selectedSessionIds={selectedSessionIds}
+            onSessionClick={onSessionClick}
+            onAction={onAction}
+            onRename={onRename}
+            onTogglePin={onTogglePin}
+            onMoveSession={onMoveSession}
+            projectOptions={projectOptions}
+            onScheduleAction={onScheduleAction}
+            indented
+            collapsible
+            collapseLimit={getProjectSessionCollapseLimit()}
+            disableCollapse={disableSessionCollapse}
+            foldExemptSessionIds={foldExemptSessionIds}
+            sectionCollapsed={parentSectionCollapsed || collapsed}
+            sessionVariant={sessionVariant}
+          />
+        </div>
+      </SectionCollapse>
     </div>
   );
 }

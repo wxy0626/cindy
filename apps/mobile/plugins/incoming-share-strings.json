@@ -1,0 +1,16 @@
+{
+  "en": {
+    "receivedTitle": "Files received",
+    "receivedMessage": "Open Cindy manually to continue.",
+    "failedTitle": "Couldn’t receive files",
+    "failedMessage": "Share the files again.",
+    "done": "Close Share"
+  },
+  "zh-Hans": {
+    "receivedTitle": "文件已接收",
+    "receivedMessage": "请手动打开 Cindy 继续。",
+    "failedTitle": "未能接收文件",
+    "failedMessage": "请重新分享文件。",
+    "done": "关闭分享"
+  }
+}

@@ -41,6 +41,11 @@ const messages = {
     ssoOrgHint: "不知道企业登录标识？请联系企业管理员。",
     ssoOrgDetected: "选择企业「{org}」的单点登录方式",
     realmConsentTitle: "连接企业所在区域",
+    realmConsentPersonalTitle: "发现企业登录",
+    realmConsentPersonalBodyCn: "邮箱对应企业位于中国大陆区。\n可使用企业 SSO，或继续个人登录。",
+    realmConsentPersonalBodyGlobal: "邮箱对应企业位于国际区。\n可使用企业 SSO，或继续个人登录。",
+    realmConsentEnterpriseLogin: "企业 SSO",
+    realmConsentContinuePersonal: "继续个人登录",
     realmConsentBodyCn:
       "你的企业位于中国大陆区。\n继续后，Cindy 会连接该区域。",
     realmConsentBodyGlobal:
@@ -158,6 +163,11 @@ const messages = {
       "Don't know your enterprise sign-in identifier? Ask your admin.",
     ssoOrgDetected: 'Choose a single sign-on connection for "{org}"',
     realmConsentTitle: "Connect to your enterprise region",
+    realmConsentPersonalTitle: "Enterprise sign-in available",
+    realmConsentPersonalBodyCn: "Enterprise found in Mainland China.\nUse SSO or continue with your account.",
+    realmConsentPersonalBodyGlobal: "Enterprise found in the Global region.\nUse SSO or continue with your account.",
+    realmConsentEnterpriseLogin: "Enterprise SSO",
+    realmConsentContinuePersonal: "Continue personal",
     realmConsentBodyCn:
       "Your enterprise is in Mainland China.\nContinue to connect Cindy to this region.",
     realmConsentBodyGlobal:

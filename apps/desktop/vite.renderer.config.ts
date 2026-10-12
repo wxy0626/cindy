@@ -358,12 +358,10 @@ const rendererConfig = {
       ...CODEMIRROR_OPTIMIZE_EXCLUDES,
       ...INTERNAL_PURE_PACKAGE_EXCLUDES,
     ],
-    // 首屏 App.tsx 会间接加载 highlight.js;提前预优化,避免页面启动后才发现新依赖并
-    // 切换 browserHash,旧动态 chunk 被清理后会触发 "Failed to fetch dynamically imported module" 黑屏。
-    // 【2026-09-13 实验结论】曾尝试把源码入口（./index.tsx / ./main-entry.tsx）纳入预打包
-    // 以消灭 per-module HTTP 瀑布——两轮实测 chunks-ready 45.5s/47.4s vs 基线 24-29s，
-    // 巨型预打包产物的加载+求值本身成了新瓶颈，vite 的按需瀑布已接近该架构最优，方向证伪。
-    include: ['@tiptap/react', 'highlight.js', 'highlight.js/lib/core', 'highlight.js/lib/languages/typescript'],
+    // The diff highlighter runs in a lazily-created module Worker. Explicitly
+    // include its dependency so the first Review/Diff render does not trigger
+    // Vite's runtime dependency discovery and a full-page reload.
+    include: ['@tiptap/react', 'highlight.js'],
   },
   server: {
     // 首屏 transform 预热（2026-09-12 A/B 终版结论）：无 warmup 对照轮证明 24-29s

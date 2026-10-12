@@ -17,6 +17,7 @@ import {
   applyDesktopDevStartupConfig,
   stripDesktopDevRegionArgs,
 } from '../../../scripts/shared/desktop-dev-region.mjs';
+import { withDesktopDevNodeOptions } from '../../../scripts/shared/desktop-dev-node-options.mjs';
 
 // 启动链扁平化（2026-09-13）：绕过 pnpm run 直调时，node_modules/.bin 不在 PATH，
 // 这里显式注入（electron-forge 等命令依赖它解析）。cwd 应为 apps/desktop。
@@ -42,19 +43,11 @@ if (!command) {
 
 const startupConfig = applyDesktopDevStartupConfig({ argv: rawArgs, mode: 'remote' });
 const args = stripDesktopDevRegionArgs(rawArgs);
-// Dev 启动提速（2026-09-13）：Electron main 进程的 V8 编译缓存（Node 22.8+ 特性）——
-// 35MB main bundle 的解析/求值二次启动大幅提速。默认注入；已有值不覆盖。
-process.env.NODE_COMPILE_CACHE ??= 'E:\\AI\\cindy-harness\\.workbuddy\\tmp\\node-compile-cache';
-// Dev 启动提速（2026-09-14）：构建目标切换到项目 rolldown-vite 后，rolldown 默认拆
-// chunk + 动态 import 会产出多 chunk 产物，plugin-vite / Electron 期望单文件 CJS
-// 入口（多 chunk 实测挂启动早期）。dev 下默认强制单文件 inlineDynamicImports；
-// 已有值不覆盖；仅影响 dev 启动链，打包路径不受本脚本影响。
-process.env.XDT_MAIN_INLINE_SINGLE ??= '1';
-const env = {
+const env = withDesktopDevNodeOptions({
   ...process.env,
   XDT_DESKTOP_DEV_MODE: 'remote',
   VITE_CINDY_AUTH_REGION: startupConfig.region,
-};
+});
 const isWindows = process.platform === 'win32';
 
 // Dev 启动分段探针（2026-09-12）：forge spawn 时刻，与 vite [boot-timing] 打点、

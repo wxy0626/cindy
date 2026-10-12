@@ -1,3 +1,7 @@
+import { runTaskTagsTransaction } from '../worker/opHandlers/taskTagsTx.js';
+import { createAutoReviewIntentProjection } from '@cindy/maker-shared/auto-review-intent';
+import { batchAutoReviewProjection, readAutoReviewProjection } from '../autoReviewProjection.js';
+import { CLOSE_SHARED_TASKS_FOR_SESSION_SQL } from '../sharedTaskClosureSql.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
@@ -13,8 +17,14 @@ import {
   type VecStatusEvent,
   type WorkerMessage,
 } from './DbTransport.js';
+import { isBackgroundDbRpc } from './rpcAdmission.js';
 
 const WORKER_CODE = `
+const createAutoReviewIntentProjection = ${createAutoReviewIntentProjection.toString()};
+const readAutoReviewProjection = ${readAutoReviewProjection.toString()};
+const batchAutoReviewProjection = ${batchAutoReviewProjection.toString()};
+const CLOSE_SHARED_TASKS_FOR_SESSION_SQL = ${JSON.stringify(CLOSE_SHARED_TASKS_FOR_SESSION_SQL)};
+const runTaskTagsTransaction = ${runTaskTagsTransaction.toString()};
 // 旧版 inline worker fallback。默认运行时走 .vite/build/dbWorker.js；
 // 这段只作为打包路径回滚口保留，后续验证 macOS / Windows packaged 后删除。
 const { parentPort, workerData } = require('node:worker_threads');
@@ -405,9 +415,15 @@ const MAX_ATTEMPTS = 5;
 const RETRY_BACKOFF_MS = [1000, 5000, 30000, 5 * 60000, 30 * 60000];
 
 function dispatchTx(readyDb, payload) {
+  return batchAutoReviewProjection(readyDb, expectString(asRecord(payload, 'tx args').name, 'name'), () => dispatchTransaction(readyDb, payload));
+}
+
+function dispatchTransaction(readyDb, payload) {
   const request = asRecord(payload, 'tx args');
   const name = expectString(request.name, 'name');
   switch (name) {
+    case 'authorization.readProjection':
+      return readAutoReviewProjection(readyDb, request.args, createAutoReviewIntentProjection);
     case 'codex.importMessages':
       return codexImportMessages(readyDb, request.args);
     case 'claude.importMessages':
@@ -448,6 +464,15 @@ function dispatchTx(readyDb, payload) {
       return sessionsRenameTitles(readyDb, request.args);
     case 'sessions.setStatus':
       return sessionsSetStatus(readyDb, request.args);
+    case 'sessions.setTerminalStatus':
+      return sessionsSetTerminalStatus(readyDb, request.args);
+    case 'recentWorkdirs.mergeWindowsIdentity':
+      return recentWorkdirsMergeWindowsIdentity(readyDb, request.args);
+    case 'recentWorkdirs.removeWindowsIdentity':
+      return recentWorkdirsRemoveWindowsIdentity(readyDb, request.args);
+    case 'taskTags.execute': return runTaskTagsTransaction(readyDb, request.args);
+    case 'projectAliases.replaceIdentity':
+      return projectAliasesReplaceIdentity(readyDb, request.args);
     case 'toolResults.compactSession':
       return compactSessionToolResults(readyDb, request.args);
     case 'session.agentSwitchFallback':
@@ -477,6 +502,71 @@ function dispatchTx(readyDb, payload) {
     default:
       throw Object.assign(new Error('unknown tx: ' + name), { code: 'UNKNOWN_TX' });
   }
+}
+
+function recentWorkdirsMergeWindowsIdentity(readyDb, args) {
+  const payload = asRecord(args, 'recentWorkdirs.mergeWindowsIdentity args');
+  const path = expectString(payload.path, 'path');
+  const lastUsedAt = expectNumber(payload.lastUsedAt, 'lastUsedAt');
+  return readyDb.transaction(() => {
+    const matches = recentWorkdirWindowsIdentityRows(readyDb, path);
+    const representative = matches
+      .slice()
+      .sort((a, b) => b.lastUsedAt - a.lastUsedAt || a.rowid - b.rowid)[0];
+    const representativePath = representative?.path ?? path;
+    const newestTimestamp = Math.max(lastUsedAt, ...matches.map((row) => row.lastUsedAt));
+    readyDb
+      .prepare(
+        'INSERT INTO recent_workdirs (path, last_used_at) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET last_used_at = MAX(recent_workdirs.last_used_at, excluded.last_used_at)',
+      )
+      .run(representativePath, newestTimestamp);
+    const removeVariant = readyDb.prepare('DELETE FROM recent_workdirs WHERE path = ?');
+    for (const row of matches) {
+      if (row.path !== representativePath) removeVariant.run(row.path);
+    }
+  })();
+}
+
+function recentWorkdirsRemoveWindowsIdentity(readyDb, args) {
+  const payload = asRecord(args, 'recentWorkdirs.removeWindowsIdentity args');
+  const path = expectString(payload.path, 'path');
+  return readyDb.transaction(() => {
+    const matches = recentWorkdirWindowsIdentityRows(readyDb, path);
+    const removeVariant = readyDb.prepare('DELETE FROM recent_workdirs WHERE path = ?');
+    let changes = 0;
+    for (const row of matches) changes += removeVariant.run(row.path).changes;
+    return { changes };
+  })();
+}
+
+function recentWorkdirWindowsIdentityRows(readyDb, path) {
+  const identity = path.toLowerCase();
+  return readyDb
+    .prepare('SELECT rowid, path, last_used_at AS lastUsedAt FROM recent_workdirs')
+    .all()
+    .filter((row) => row.path.toLowerCase() === identity);
+}
+
+function projectAliasesReplaceIdentity(readyDb, args) {
+  const payload = asRecord(args, 'projectAliases.replaceIdentity args');
+  const projectKey = expectString(payload.projectKey, 'projectKey');
+  const comparisonKey = expectString(payload.comparisonKey, 'comparisonKey');
+  if (typeof payload.foldCase !== 'boolean') throw invalidArgs('foldCase must be a boolean');
+  const alias = nullableString(payload.alias);
+  const updatedAt = expectNumber(payload.updatedAt, 'updatedAt');
+  return readyDb.transaction(() => {
+    const rows = readyDb.prepare('SELECT project_key AS projectKey FROM project_aliases').all();
+    const removeAlias = readyDb.prepare('DELETE FROM project_aliases WHERE project_key = ?');
+    for (const row of rows) {
+      const identity = payload.foldCase ? row.projectKey.toLowerCase() : row.projectKey;
+      if (identity === comparisonKey) removeAlias.run(row.projectKey);
+    }
+    if (alias == null) return null;
+    readyDb
+      .prepare('INSERT INTO project_aliases (project_key, alias, updated_at) VALUES (?, ?, ?)')
+      .run(projectKey, alias, updatedAt);
+    return { projectKey, alias, updatedAt };
+  })();
 }
 
 // Keep in sync with worker/opHandlers/tx.ts:skillUsageApplyMutation.
@@ -690,7 +780,28 @@ function messageInsert(readyDb, args) {
       : expectNumber(payload.expectedClearBoundaryMs, 'expectedClearBoundaryMs');
   return readyDb.transaction(() => {
     let changes = 0;
-    if (guarded) {
+    // Connection-local stages never enter history, counts or persistent FTS.
+    // SQLite discards them automatically when this worker exits.
+    if (payload.publication) {
+      readyDb.exec('CREATE TEMP TABLE IF NOT EXISTS cindy_pending_message_publications (id TEXT PRIMARY KEY, client_id TEXT NOT NULL, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, tool_use_id TEXT, agent_meta TEXT, agent_kind TEXT, created_at INTEGER NOT NULL)');
+    }
+    if (payload.publication === 'publish') {
+      changes = readyDb.prepare(
+        'INSERT INTO messages (id, client_id, session_id, role, content, tool_use_id, agent_meta, agent_kind, created_at) SELECT id, client_id, session_id, role, content, tool_use_id, agent_meta, agent_kind, created_at FROM temp.cindy_pending_message_publications WHERE id = ? AND session_id = ? AND client_id = ?',
+      ).run(id, sessionId, clientId).changes;
+      if (changes > 0) readyDb.prepare('DELETE FROM temp.cindy_pending_message_publications WHERE id = ? AND session_id = ?').run(id, sessionId);
+    } else if (payload.publication === 'rollback') {
+      // CAS the complete published row; never remove a replacement or edited row.
+      changes = readyDb.prepare(
+        'DELETE FROM messages WHERE id = ? AND session_id = ? AND client_id = ? AND role = ? AND content = ? AND tool_use_id IS ? AND agent_meta IS ? AND agent_kind IS ? AND created_at = ? AND rewind_at IS NULL',
+      ).run(id, sessionId, clientId, role, content, toolUseId, agentMeta, agentKind, createdAt).changes;
+    } else if (payload.publication === 'discard') {
+      changes = readyDb.prepare('DELETE FROM temp.cindy_pending_message_publications WHERE id = ? AND session_id = ? AND client_id = ?').run(id, sessionId, clientId).changes;
+    } else if (payload.publication === 'stage') {
+      changes = readyDb.prepare(
+        'INSERT INTO temp.cindy_pending_message_publications (id, client_id, session_id, role, content, tool_use_id, agent_meta, agent_kind, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ).run(id, clientId, sessionId, role, content, toolUseId, agentMeta, agentKind, createdAt).changes;
+    } else if (guarded) {
       changes = readyDb.prepare(
         'INSERT INTO messages (id, client_id, session_id, role, content, tool_use_id, agent_meta, agent_kind, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? FROM sessions AS s WHERE s.id = ? AND COALESCE(s.cleared_at, -1) = COALESCE(?, -1) ON CONFLICT(session_id, client_id) DO NOTHING',
       ).run(id, clientId, sessionId, role, content, toolUseId, agentMeta, agentKind, createdAt, sessionId, expected).changes;
@@ -699,7 +810,7 @@ function messageInsert(readyDb, args) {
         'INSERT INTO messages (id, client_id, session_id, role, content, tool_use_id, agent_meta, agent_kind, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       ).run(id, clientId, sessionId, role, content, toolUseId, agentMeta, agentKind, createdAt).changes;
     }
-    if (changes > 0) {
+    if (changes > 0 && (!payload.publication || payload.publication === 'publish' || payload.publication === 'rollback')) {
       if (role === 'user' || role === 'assistant') {
         readyDb.prepare(
           'UPDATE sessions SET list_preview = NULL, list_preview_role = NULL, list_message_count = NULL WHERE id = ?',
@@ -1001,6 +1112,7 @@ function sessionsSetStatus(readyDb, args) {
     expectString(id, 'sessionId'),
   );
   const status = expectString(payload.status, 'status');
+  const closeSharedTasks = payload.closeSharedTasks === true;
   if (status !== 'active' && status !== 'archived') {
     throw Object.assign(new Error('invalid status: ' + status), { code: 'INVALID_ARGS' });
   }
@@ -1008,7 +1120,7 @@ function sessionsSetStatus(readyDb, args) {
     'SELECT id, title, working_dir AS workingDir, workspace_kind AS workspaceKind, status, source FROM sessions WHERE id = ? LIMIT 1',
   );
   const updateSession = readyDb.prepare(
-    'UPDATE sessions SET status = ?, updated_at = ? WHERE id = ? RETURNING id, title, working_dir AS workingDir, workspace_kind AS workspaceKind',
+    'UPDATE sessions SET status = ?, updated_at = ? WHERE id = ? RETURNING id, title, working_dir AS workingDir, workspace_kind AS workspaceKind, remote_host_id AS remoteHostId, source',
   );
   return readyDb.transaction(() => {
     const applied = [];
@@ -1027,16 +1139,44 @@ function sessionsSetStatus(readyDb, args) {
         });
       }
       const updated = updateSession.get(status, now, sessionId);
+      if (closeSharedTasks && status === 'archived') {
+        readyDb.prepare(CLOSE_SHARED_TASKS_FOR_SESSION_SQL).run(now, sessionId);
+      }
       if (!updated) throw Object.assign(new Error('Session 不存在: ' + sessionId), { code: 'NOT_FOUND' });
       applied.push({
         sessionId: updated.id,
         title: updated.title,
         workingDir: updated.workingDir,
         workspaceKind: updated.workspaceKind,
+        remoteHostId: updated.remoteHostId,
+        source: updated.source,
         status,
       });
     }
     return applied;
+  })();
+}
+
+// Keep this in sync with worker/opHandlers/tx.ts.
+function sessionsSetTerminalStatus(readyDb, args) {
+  const payload = asRecord(args, 'sessions.setTerminalStatus args');
+  const sessionId = expectString(payload.sessionId, 'sessionId');
+  const status = expectString(payload.status, 'status');
+  if (status !== 'archived' && status !== 'deleted') {
+    throw Object.assign(new Error('invalid terminal status: ' + status), { code: 'INVALID_ARGS' });
+  }
+  return readyDb.transaction(() => {
+    const existing = readyDb.prepare('SELECT id, status, source FROM sessions WHERE id = ? LIMIT 1').get(sessionId);
+    if (!existing) throw Object.assign(new Error('Session not found: ' + sessionId), { code: 'NOT_FOUND' });
+    if (existing.status === 'deleted') throw Object.assign(new Error('Deleted session cannot change status: ' + sessionId), { code: 'PRECONDITION_FAILED' });
+    if (existing.source === 'bot') throw Object.assign(new Error('Bot sessions must use Bot lifecycle: ' + sessionId), { code: 'PRECONDITION_FAILED' });
+    const now = Date.now();
+    readyDb.prepare(CLOSE_SHARED_TASKS_FOR_SESSION_SQL).run(now, sessionId);
+    const updated = readyDb.prepare(
+      'UPDATE sessions SET status = ?, updated_at = ? WHERE id = ? RETURNING id, title, working_dir AS workingDir, workspace_kind AS workspaceKind, remote_host_id AS remoteHostId, source',
+    ).get(status, now, sessionId);
+    if (!updated) throw Object.assign(new Error('Session not found: ' + sessionId), { code: 'NOT_FOUND' });
+    return { ...updated, sessionId: updated.id, status };
   })();
 }
 
@@ -1172,6 +1312,7 @@ function sessionImportShare(readyDb, args) {
     const replacementUpdatedAt = expectNumber(session.updatedAt, 'session.updatedAt');
     for (const replacedSession of replaceSessions) {
       deleteReplacedSession.run(replacementUpdatedAt, replacedSession.id);
+      readyDb.prepare(CLOSE_SHARED_TASKS_FOR_SESSION_SQL).run(replacementUpdatedAt, replacedSession.id);
     }
     let count = insertSessionWithMessages(session, messages);
     if (orca) {
@@ -1459,13 +1600,18 @@ function orcaRemoveWorker(readyDb, args) {
   const payload = asRecord(args, 'orca.removeWorker args');
   const workerId = expectString(payload.workerId, 'workerId');
   const now = expectNumber(payload.now, 'now');
-  const selectWorker = readyDb.prepare('SELECT session_id AS sessionId FROM orca_workers WHERE id = ? LIMIT 1');
+  const selectWorker = readyDb.prepare('SELECT session_id AS sessionId, execution_device_id AS deviceId, remote_released_at AS releasedAt FROM orca_workers WHERE id = ? LIMIT 1');
   const deleteWorker = readyDb.prepare('DELETE FROM orca_workers WHERE id = ?');
   const archiveSession = readyDb.prepare("UPDATE sessions SET status = 'archived', orca_role = NULL, updated_at = ? WHERE id = ? AND status != 'deleted'");
   return readyDb.transaction(() => {
     const row = selectWorker.get(workerId);
     if (!row) return null;
-    deleteWorker.run(workerId);
+    // 回滚先隐藏代理并释放 label；远端 stop/release 未确认前必须保留持久重试路由。
+    if (row.deviceId && row.releasedAt == null) {
+      readyDb.prepare('UPDATE orca_workers SET label = NULL, updated_at = ? WHERE id = ?').run(now, workerId);
+    } else {
+      deleteWorker.run(workerId);
+    }
     const archived = archiveSession.run(now, row.sessionId);
     return archived.changes > 0 ? row.sessionId : null;
   })();
@@ -1537,9 +1683,31 @@ function orcaUpsertWorker(readyDb, args) {
     if (!activeTeam) {
       throw new Error('Orca team ' + teamId + ' is no longer active');
     }
+    if (payload.remoteExecution !== undefined) {
+      const remote = asRecord(payload.remoteExecution, 'remoteExecution');
+      if (remote.proxySession !== undefined) {
+        const proxy = asRecord(remote.proxySession, 'remoteExecution.proxySession');
+        readyDb.prepare("INSERT INTO sessions (id, title, working_dir, workspace_kind, model, effort, permission_mode, fast_mode, status, agent_kind, orca_role, source, created_at, updated_at) VALUES (?, ?, NULL, 'project', ?, ?, ?, ?, 'active', ?, 'worker', 'desktop', ?, ?)").run(
+          sessionId, expectString(proxy.title, 'proxySession.title'),
+          expectString(proxy.model, 'proxySession.model'),
+          proxy.effort == null ? 'high' : expectString(proxy.effort, 'proxySession.effort'),
+          expectString(proxy.permissionMode, 'proxySession.permissionMode'), proxy.fastMode === true ? 1 : 0,
+          expectString(proxy.agentKind, 'proxySession.agentKind'), now, now,
+        );
+      }
+    }
     if (payload.focused === true) {
       readyDb.prepare('UPDATE orca_workers SET focused = 0, updated_at = ? WHERE team_id = ? AND focused = 1').run(now, teamId);
     }
+    const persistRemoteExecution = () => {
+      if (payload.remoteExecution === undefined) return;
+      const remote = asRecord(payload.remoteExecution, 'remoteExecution');
+      const deviceId = expectString(remote.deviceId, 'remoteExecution.deviceId');
+      const remoteSessionId = expectString(remote.remoteSessionId, 'remoteExecution.remoteSessionId');
+      readyDb.prepare('UPDATE orca_workers SET execution_device_id = ?, remote_session_id = ? WHERE session_id = ?').run(deviceId, remoteSessionId, sessionId);
+      readyDb.prepare("UPDATE sessions SET orca_role = 'worker' WHERE id = ?").run(sessionId);
+      readyDb.prepare('DELETE FROM orca_remote_opens WHERE device_id = ? AND remote_session_id = ?').run(deviceId, remoteSessionId);
+    };
     const existing = readyDb.prepare('SELECT * FROM orca_workers WHERE id = ? LIMIT 1').get(id);
     if (existing) {
       readyDb.prepare('UPDATE orca_workers SET team_id = ?, session_id = ?, status = ?, label = ?, worktree_branch = ?, role = ?, focused = ?, idle_since = ?, updated_at = ? WHERE id = ?').run(
@@ -1554,6 +1722,7 @@ function orcaUpsertWorker(readyDb, args) {
         now,
         id,
       );
+      persistRemoteExecution();
       return;
     }
     const bySession = readyDb.prepare('SELECT * FROM orca_workers WHERE session_id = ? LIMIT 1').get(sessionId);
@@ -1569,6 +1738,7 @@ function orcaUpsertWorker(readyDb, args) {
         now,
         sessionId,
       );
+      persistRemoteExecution();
       return;
     }
     readyDb.prepare('INSERT INTO orca_workers (id, team_id, session_id, status, label, worktree_branch, role, focused, idle_since, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(
@@ -1584,6 +1754,7 @@ function orcaUpsertWorker(readyDb, args) {
       now,
       now,
     );
+    persistRemoteExecution();
   })();
 }
 
@@ -1777,7 +1948,12 @@ function rewindCommit(readyDb, args) {
   const preserveMessageUuid = typeof payload.preserveMessageUuid === 'string' ? payload.preserveMessageUuid : null;
   const sdkSessionId = typeof payload.sdkSessionId === 'string' && payload.sdkSessionId ? payload.sdkSessionId : null;
   const requireLatestUser = payload.requireLatestUser === true;
+  const nativeForkAnchorSessionMap = normalizeNativeForkAnchorSessionMap(payload.nativeForkAnchorSessionMap);
   const now = expectNumber(payload.now, 'now');
+  const expectedClearedAt =
+    payload.expectedClearedAt === undefined || payload.expectedClearedAt === null
+      ? null
+      : expectNumber(payload.expectedClearedAt, 'expectedClearedAt');
   const rows = readyDb.prepare(
     'SELECT id, client_id, role, created_at, agent_meta, tool_use_id FROM messages WHERE session_id = ? AND rewind_at IS NULL',
   ).all(sessionId);
@@ -1812,8 +1988,36 @@ function rewindCommit(readyDb, args) {
   const rewindParentlessSubagentTail = hasSubagentRuns
     ? readyDb.prepare('UPDATE subagent_runs SET rewind_at = ? WHERE session_id = ? AND rewind_at IS NULL AND parent_tool_use_id IS NULL AND started_at >= ?')
     : null;
+  const updateAgentMeta = readyDb.prepare('UPDATE messages SET agent_meta = ? WHERE id = ?');
   readyDb.transaction(() => {
+    const session = readyDb.prepare('SELECT cleared_at FROM sessions WHERE id = ?').get(sessionId);
+    if (!session) {
+      throw Object.assign(new Error('Session missing: ' + sessionId), { code: 'NOT_FOUND' });
+    }
+    const currentClearedAt = session.cleared_at ?? null;
+    if ((currentClearedAt ?? -1) !== (expectedClearedAt ?? -1)) {
+      throw Object.assign(
+        new Error('CLEAR_GENERATION_CHANGED: clear-boundary changed for ' + sessionId),
+        { code: 'PRECONDITION_FAILED' },
+      );
+    }
+    if (currentClearedAt !== null && targetCreatedAt <= currentClearedAt) {
+      throw Object.assign(
+        new Error('CLEAR_GENERATION_CHANGED: target is at or before /clear for ' + sessionId),
+        { code: 'PRECONDITION_FAILED' },
+      );
+    }
     for (const id of idsToRewind) updateMessage.run(now, id);
+    // Mirror worker/opHandlers/tx.ts: surviving rows that still anchor the old
+    // Codex thread are remapped to the replacement thread in the same transaction.
+    if (nativeForkAnchorSessionMap.size > 0) {
+      const rewoundIds = new Set(idsToRewind);
+      for (const row of rows) {
+        if (rewoundIds.has(row.id) || !row.agent_meta) continue;
+        const remapped = remapNativeForkAnchorSession(row.agent_meta, nativeForkAnchorSessionMap);
+        if (remapped !== row.agent_meta) updateAgentMeta.run(remapped, row.id);
+      }
+    }
     if (rewindSubagentByParent && rewindParentlessSubagentTail) {
       const rewoundIds = new Set(idsToRewind);
       const parentToolUseIds = new Set(
@@ -2368,6 +2572,30 @@ function extractContentText(content) {
   return parts.join('\\n\\n');
 }
 
+// Mirror of worker/opHandlers/tx.ts remapNativeForkAnchorSession: only the
+// nativeForkAnchor.sdkSessionId moves; uuid / parent chains are untouched.
+function remapNativeForkAnchorSession(raw, map) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+  if (!isRecord(parsed)) return raw;
+  const nativeForkAnchor = parsed.nativeForkAnchor;
+  if (
+    !isRecord(nativeForkAnchor) ||
+    nativeForkAnchor.agentKind !== 'codex' ||
+    nativeForkAnchor.kind !== 'turn' ||
+    typeof nativeForkAnchor.sdkSessionId !== 'string'
+  ) {
+    return raw;
+  }
+  const mapped = map.get(nativeForkAnchor.sdkSessionId);
+  if (!mapped || mapped === nativeForkAnchor.sdkSessionId) return raw;
+  return JSON.stringify({ ...parsed, nativeForkAnchor: { ...nativeForkAnchor, sdkSessionId: mapped } });
+}
+
 function remapForkedAgentMeta(raw, map, legacyTranscriptParentUuids = new Set(), toolParentUuids = new Set(), nativeForkAnchorSessionMap = new Map()) {
   if (!raw || raw === 'null') return raw;
   let parsed;
@@ -2615,24 +2843,31 @@ async function dispatch(op, args) {
 setDatabase(workerData || {});
 
 parentPort.on('message', async (req) => {
+  const startedAt = performance.timeOrigin + performance.now();
+  const timing = () => ({ startedAt, finishedAt: performance.timeOrigin + performance.now() });
   try {
     const result = await dispatch(req.op, req.args);
-    parentPort.postMessage({ id: req.id, ok: true, result });
+    parentPort.postMessage({ id: req.id, ok: true, result, timing: timing() });
   } catch (err) {
-    parentPort.postMessage({ id: req.id, ok: false, error: rpcError(err) });
+    parentPort.postMessage({ id: req.id, ok: false, error: rpcError(err), timing: timing() });
   }
 });
 `;
 
 interface PendingRpc {
+  op: string;
+  enqueuedAt: number;
+  dispatchedAt: number;
   resolve: (value: unknown) => void;
   reject: (err: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
   /** 当前预算窗口的起点(挂钟)。跨睡眠重武装时会重置,见 evaluateRpcTimeout。 */
   sentAtMs: number;
+  background: boolean;
 }
 
 interface QueuedRpc {
+  enqueuedAt: number;
   req: RpcRequest;
   transferList: unknown[];
   resolve: (value: unknown) => void;
@@ -2640,6 +2875,7 @@ interface QueuedRpc {
   /** RPC 总预算从进入 transport 开始计,而不是等 dispatch 后才开始。 */
   budgetStartedAtMs: number;
   queueTimeout?: ReturnType<typeof setTimeout>;
+  background: boolean;
 }
 
 /**
@@ -2650,8 +2886,7 @@ const SLEEP_DETECTION_SLACK_MS = 5_000;
 
 /** RPC 超时评估结果:reject = 真超时;rearm = 定时器横跨系统睡眠,应重置预算续等。 */
 export type RpcTimeoutVerdict =
-  | { kind: 'reject'; wallElapsedMs: number }
-  | { kind: 'rearm'; wallElapsedMs: number };
+  { kind: 'reject'; wallElapsedMs: number } | { kind: 'rearm'; wallElapsedMs: number };
 
 /**
  * 判定一次 RPC 超时是真超时还是「跨睡眠假超时」。
@@ -2694,12 +2929,19 @@ export interface WorkerThreadTransportOptions {
   maxQueuedRpcs?: number;
   /** 单个 RPC 从入队到完成的总预算；生产默认 30s，测试可缩短。 */
   rpcTimeoutMs?: number;
+  /** 后台读（侧栏/对账）在途上限；写入和发消息走主配额。 */
+  maxBackgroundInFlightRpcs?: number;
+  /** 后台读排队上限；超出只拒后台读，不挡写入。 */
+  maxBackgroundQueuedRpcs?: number;
 }
 
 export class WorkerThreadTransport implements DbTransport {
   private static readonly RPC_TIMEOUT_MS = 30_000;
   private static readonly DEFAULT_MAX_IN_FLIGHT_RPCS = 128;
   private static readonly DEFAULT_MAX_QUEUED_RPCS = 512;
+  /** 一次侧栏索引大约 4 路 rawAll；16 够几路对账并行，占不满 128。 */
+  private static readonly DEFAULT_MAX_BACKGROUND_IN_FLIGHT_RPCS = 16;
+  private static readonly DEFAULT_MAX_BACKGROUND_QUEUED_RPCS = 32;
 
   private worker: Worker;
   private nextId = 1;
@@ -2720,32 +2962,34 @@ export class WorkerThreadTransport implements DbTransport {
   send<R = unknown>(op: string, args?: unknown, transferList?: unknown[]): Promise<R> {
     if (this.closed || this.closing) {
       return Promise.reject(
-        createDbTransportError(
-          DB_TRANSPORT_NOT_SENT,
-          'db worker transport is closed',
-        ),
+        createDbTransportError(DB_TRANSPORT_NOT_SENT, 'db worker transport is closed'),
       );
     }
     const id = this.nextId++;
     const req: RpcRequest = { id, op, args };
+    const background = isBackgroundDbRpc();
     return new Promise<R>((resolve, reject) => {
       const queued: QueuedRpc = {
+        enqueuedAt: performance.timeOrigin + performance.now(),
         req,
         transferList: transferList ?? [],
         resolve: resolve as (value: unknown) => void,
         reject,
         budgetStartedAtMs: Date.now(),
+        background,
       };
-      if (this.pending.size < this.maxInFlightRpcs) {
+      if (this.canDispatchImmediately(queued)) {
         this.dispatch(queued);
         return;
       }
-      if (this.queued.length >= this.maxQueuedRpcs) {
+      if (!this.canEnqueue(queued)) {
         reject(
           createDbTransportError(
             DB_TRANSPORT_NOT_SENT,
             `db worker RPC queue overloaded: op="${op}" inFlight=${this.pending.size}` +
-              ` queued=${this.queued.length}`,
+              ` queued=${this.queued.length}` +
+              ` backgroundInFlight=${this.backgroundPendingCount()}` +
+              ` backgroundQueued=${this.backgroundQueuedCount()}`,
           ),
         );
         return;
@@ -2759,9 +3003,7 @@ export class WorkerThreadTransport implements DbTransport {
   on(event: 'vec-status', cb: (payload: VecStatusEvent) => void): void;
   on(
     event: EventName,
-    cb:
-      | ((payload: LogEvent) => void)
-      | ((payload: VecStatusEvent) => void),
+    cb: ((payload: LogEvent) => void) | ((payload: VecStatusEvent) => void),
   ): void {
     const listeners = this.eventListeners.get(event) ?? new Set<(payload: unknown) => void>();
     listeners.add(cb as (payload: unknown) => void);
@@ -2786,10 +3028,7 @@ export class WorkerThreadTransport implements DbTransport {
     } finally {
       this.closed = true;
       this.rejectAllPending(
-        createDbTransportError(
-          DB_TRANSPORT_OUTCOME_UNKNOWN,
-          'db worker transport closed',
-        ),
+        createDbTransportError(DB_TRANSPORT_OUTCOME_UNKNOWN, 'db worker transport closed'),
         createDbTransportError(DB_TRANSPORT_NOT_SENT, 'db worker transport closed'),
       );
       await this.worker.terminate();
@@ -2816,15 +3055,57 @@ export class WorkerThreadTransport implements DbTransport {
     return this.opts.rpcTimeoutMs ?? WorkerThreadTransport.RPC_TIMEOUT_MS;
   }
 
+  private get maxBackgroundInFlightRpcs(): number {
+    return Math.min(
+      this.maxInFlightRpcs,
+      this.opts.maxBackgroundInFlightRpcs ?? WorkerThreadTransport.DEFAULT_MAX_BACKGROUND_IN_FLIGHT_RPCS,
+    );
+  }
+
+  private get maxBackgroundQueuedRpcs(): number {
+    return Math.min(
+      this.maxQueuedRpcs,
+      this.opts.maxBackgroundQueuedRpcs ?? WorkerThreadTransport.DEFAULT_MAX_BACKGROUND_QUEUED_RPCS,
+    );
+  }
+
+  private backgroundPendingCount(): number {
+    let count = 0;
+    for (const pending of this.pending.values()) {
+      if (pending.background) count += 1;
+    }
+    return count;
+  }
+
+  private backgroundQueuedCount(): number {
+    let count = 0;
+    for (const item of this.queued) {
+      if (item.background) count += 1;
+    }
+    return count;
+  }
+
+  private canDispatchImmediately(item: QueuedRpc): boolean {
+    if (this.pending.size >= this.maxInFlightRpcs) return false;
+    if (item.background && this.backgroundPendingCount() >= this.maxBackgroundInFlightRpcs) {
+      return false;
+    }
+    return true;
+  }
+
+  private canEnqueue(item: QueuedRpc): boolean {
+    if (this.queued.length >= this.maxQueuedRpcs) return false;
+    if (item.background && this.backgroundQueuedCount() >= this.maxBackgroundQueuedRpcs) {
+      return false;
+    }
+    return true;
+  }
+
   private armQueuedTimeout(item: QueuedRpc): void {
     const onTimeout = (): void => {
       const index = this.queued.indexOf(item);
       if (index < 0) return;
-      const verdict = evaluateRpcTimeout(
-        item.budgetStartedAtMs,
-        Date.now(),
-        this.rpcTimeoutMs,
-      );
+      const verdict = evaluateRpcTimeout(item.budgetStartedAtMs, Date.now(), this.rpcTimeoutMs);
       if (verdict.kind === 'rearm') {
         item.budgetStartedAtMs = Date.now();
         item.queueTimeout = setTimeout(onTimeout, this.rpcTimeoutMs);
@@ -2848,11 +3129,7 @@ export class WorkerThreadTransport implements DbTransport {
     const onTimeout = (): void => {
       const pending = this.pending.get(id);
       if (!pending) return;
-      const verdict = evaluateRpcTimeout(
-        pending.sentAtMs,
-        Date.now(),
-        this.rpcTimeoutMs,
-      );
+      const verdict = evaluateRpcTimeout(pending.sentAtMs, Date.now(), this.rpcTimeoutMs);
       if (verdict.kind === 'rearm') {
         // 跨睡眠假超时:重置预算续等,请求在唤醒后照常完成或在真超时时拒绝。
         this.emitClientLog('warn', {
@@ -2876,36 +3153,47 @@ export class WorkerThreadTransport implements DbTransport {
       this.drainQueue();
     };
     const budgetElapsedMs = Date.now() - item.budgetStartedAtMs;
-    const remainingBudgetMs = Math.max(
-      1,
-      this.rpcTimeoutMs - budgetElapsedMs,
-    );
+    const remainingBudgetMs = Math.max(1, this.rpcTimeoutMs - budgetElapsedMs);
     const timeout = setTimeout(onTimeout, remainingBudgetMs);
     this.pending.set(id, {
+      op,
+      enqueuedAt: item.enqueuedAt,
+      dispatchedAt: performance.timeOrigin + performance.now(),
       resolve: item.resolve,
       reject: item.reject,
       timeout,
       sentAtMs: item.budgetStartedAtMs,
+      background: item.background,
     });
     try {
       this.worker.postMessage(item.req, item.transferList as never);
     } catch (err) {
       clearTimeout(timeout);
       this.pending.delete(id);
-      item.reject(
-        createDbTransportError(
-          DB_TRANSPORT_NOT_SENT,
-          toError(err).message,
-          err,
-        ),
-      );
+      item.reject(createDbTransportError(DB_TRANSPORT_NOT_SENT, toError(err).message, err));
       this.drainQueue();
     }
   }
 
+  private takeNextQueued(): QueuedRpc | undefined {
+    const interactiveIndex = this.queued.findIndex((item) => !item.background);
+    if (interactiveIndex >= 0) {
+      const next = this.queued[interactiveIndex];
+      if (!this.canDispatchImmediately(next)) return undefined;
+      this.queued.splice(interactiveIndex, 1);
+      return next;
+    }
+    const backgroundIndex = this.queued.findIndex((item) => item.background);
+    if (backgroundIndex < 0) return undefined;
+    const next = this.queued[backgroundIndex];
+    if (!this.canDispatchImmediately(next)) return undefined;
+    this.queued.splice(backgroundIndex, 1);
+    return next;
+  }
+
   private drainQueue(): void {
     while (!this.closed && this.pending.size < this.maxInFlightRpcs) {
-      const next = this.queued.shift();
+      const next = this.takeNextQueued();
       if (!next) return;
       this.dispatch(next);
     }
@@ -2971,6 +3259,29 @@ export class WorkerThreadTransport implements DbTransport {
       if (!pending) return;
       this.pending.delete(msg.id);
       clearTimeout(pending.timeout);
+      const receivedAt = performance.timeOrigin + performance.now();
+      const totalMs = receivedAt - pending.enqueuedAt;
+      if (totalMs >= 250) {
+        // Local debug only: operation class and durations, never query/args/results.
+        // Delivery includes result transfer and main event-loop scheduling; execution
+        // includes a whole worker operation (possibly a transaction), not only SQL.
+        const ms = (value: number) => Math.round(Math.max(0, value));
+        try {
+          this.emitClientLog('debug', {
+            event: 'rpc.slow', id: msg.id, totalMs: ms(totalMs),
+            op: ['rawAll', 'rawGet', 'query', 'queryOne', 'run', 'exec', 'tx', 'closeDb', 'worktreeReferences'].includes(pending.op) ? pending.op : 'other',
+            queueMs: ms(pending.dispatchedAt - pending.enqueuedAt),
+            ...(msg.timing ? {
+              workerWaitMs: ms(msg.timing.startedAt - pending.dispatchedAt),
+              workerExecutionMs: ms(msg.timing.finishedAt - msg.timing.startedAt),
+              deliveryMs: ms(receivedAt - msg.timing.finishedAt),
+            } : {}),
+            inFlight: this.pending.size, queued: this.queued.length, ok: msg.ok,
+          });
+        } catch {
+          // Debug sinks must not prevent settling the RPC or draining the queue.
+        }
+      }
       if (msg.ok) {
         pending.resolve(msg.result);
       } else {

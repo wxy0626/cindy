@@ -59,8 +59,9 @@ export function LocalDbGate() {
 
   useEffect(() => {
     let alive = true;
-    // 汇合组：gate ready 后必须立即可渲染的三个模块。
+    // 汇合组：gate ready 后必须立即可渲染的模块（首页 redirect + 主壳 + cc-agent 落地链）。
     void Promise.all([
+      import('@/components/layout/MainEntryRedirect'),
       import('@/components/layout/MainLayout'),
       import('@/features/cc-agent/CCAgentFeatureLayout'),
       import('@/features/cc-agent/CCAgentIndexRedirect'),

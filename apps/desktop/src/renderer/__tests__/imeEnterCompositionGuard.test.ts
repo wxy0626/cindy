@@ -15,7 +15,7 @@ import { createElement } from 'react';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import '@/i18n';
+import { i18n } from '@/i18n';
 import type { PendingAskUser } from '@/lib/makerChatStore';
 import { AskUserQuestionPrompt } from '../components/new-chat/AskUserQuestionPrompt';
 import { PermissionPrompt } from '../components/new-chat/PermissionPrompt';
@@ -28,6 +28,8 @@ vi.mock('@/lib/makerTransport', () => ({
 afterEach(() => {
   cleanup();
 });
+
+const t = (key: string): string => String(i18n.t(key));
 
 function renderAskUser(pending: PendingAskUser, onAnswer: (requestId: string, answers: Record<string, string>) => void) {
   return render(createElement(AskUserQuestionPrompt, {
@@ -52,8 +54,8 @@ describe('AskUserQuestionPrompt IME Enter guard', () => {
       onAnswer,
     );
 
-    fireEvent.click(getByText('Type something else…'));
-    const input = getByPlaceholderText('Type your answer…');
+    fireEvent.click(getByText(t('chat.askUserQuestion.customAnswer')));
+    const input = getByPlaceholderText(t('chat.askUserQuestion.answerPlaceholder'));
     fireEvent.change(input, { target: { value: 'hello' } });
 
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
@@ -71,7 +73,7 @@ describe('AskUserQuestionPrompt IME Enter guard', () => {
       onAnswer,
     );
 
-    const input = getByPlaceholderText('Type your answer…');
+    const input = getByPlaceholderText(t('chat.askUserQuestion.answerPlaceholder'));
     fireEvent.change(input, { target: { value: '你好' } });
 
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true });

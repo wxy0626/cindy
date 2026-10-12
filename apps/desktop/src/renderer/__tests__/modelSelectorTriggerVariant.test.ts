@@ -40,6 +40,8 @@ vi.mock('react-i18next', async (importOriginal) => ({
         'settings.providers.anthropic.title': 'Anthropic',
         'settings.providers.xd.title': 'Cindy AI',
         'newChat.modelSelector.trigger.placeholder': '选择模型',
+        'newChat.modelSelector.trigger.loading': '正在读取模型…',
+        'newChat.modelSelector.trigger.unresolved': '模型信息暂不可用',
         'newChat.modelSelector.trigger.agent.claudeCode': 'Claude Code',
         'newChat.modelSelector.trigger.agent.codex': 'Codex',
         'newChat.modelSelector.modelListAria': '模型列表',
@@ -436,6 +438,8 @@ vi.mock('@/state/deviceLinkModelMirror', () => ({
 import {
   ModelSelector as SharedModelSelector,
   ModelSelectorContent as SharedModelSelectorContent,
+  UNIFIED_COMPACT_PANEL_MAX_WIDTH_PX,
+  UNIFIED_COMPACT_PANEL_WIDTH_CLASS,
   modelCompactEffortLabel,
   modelEffortLabel,
   modelListMaxHeightForRows,
@@ -558,8 +562,8 @@ describe('ModelSelector trigger variants', () => {
     // 会把模型名压成 GPT-...，所以此时只保留当前模型的已隐藏标识。
     expect(modelTagDensityForWidth(320)).toBe('hidden');
     expect(modelTagDensityForWidth(370)).toBe('subscription');
-    expect(modelTagDensityForWidth(449)).toBe('subscription');
-    expect(modelTagDensityForWidth(450)).toBe('full');
+    expect(modelTagDensityForWidth(UNIFIED_COMPACT_PANEL_MAX_WIDTH_PX)).toBe('subscription');
+    expect(modelTagDensityForWidth(UNIFIED_COMPACT_PANEL_MAX_WIDTH_PX + 1)).toBe('full');
   });
 
   // 打开选择器既发起刷新、又把「发现在途」状态推给内容区(见 useModelDiscoveryPending),
@@ -857,7 +861,7 @@ describe('ModelSelector trigger variants', () => {
     expect(modelListMaxHeightForRows(100)).toBe(300);
   });
 
-  it('bounds the default-session trigger in narrow and ultra-narrow composers', () => {
+  it('bounds the default-session trigger in wide, narrow and ultra-narrow composers', () => {
     const props = {
       modelId: 'claude-opus-4-8',
       effort: 'xhigh' as Effort,
@@ -866,7 +870,16 @@ describe('ModelSelector trigger variants', () => {
       vendorKey: 'cc' as const,
       compactToolbar: true,
     };
-    const view = render(React.createElement(ModelSelector, props));
+    const view = render(React.createElement(ModelSelector, { ...props, compactToolbar: false }));
+
+    const wideTrigger = screen.getByRole('button', {
+      name: /Current: Opus 4\.8, effort: 超高/,
+    });
+    expect(wideTrigger.className).toContain('max-w-[min(320px,100%)]');
+    expect(within(wideTrigger).getByText('Opus 4.8').className).toContain('truncate');
+    expect(wideTrigger.getAttribute('title')).toContain('Opus 4.8');
+
+    view.rerender(React.createElement(ModelSelector, props));
 
     let trigger = screen.getByRole('button', {
       name: /Current: Opus 4\.8, effort: 超高/,
@@ -891,6 +904,29 @@ describe('ModelSelector trigger variants', () => {
     // 可及名仍保留完整模型 + effort，视觉仅收起文字，不丢选择能力。
     expect(trigger.getAttribute('aria-label')).toContain('Opus 4.8');
     expect(trigger.getAttribute('aria-label')).toContain('超高');
+  });
+
+  it('caps the toolbar panel while field panels still follow their field width', () => {
+    const props = {
+      modelId: 'claude-opus-4-8',
+      effort: 'high' as Effort,
+      onModelChange: vi.fn(),
+      onEffortChange: vi.fn(),
+      vendorKey: 'cc' as const,
+      unifiedPanel: true,
+    };
+    const view = render(React.createElement(ModelSelectorContent, props));
+    let pane = view.container.querySelector('[data-unified-model-panel]') as HTMLElement;
+    expect(UNIFIED_COMPACT_PANEL_WIDTH_CLASS).toContain(
+      `max-w-[min(${UNIFIED_COMPACT_PANEL_MAX_WIDTH_PX}px,calc(100vw-48px))]`,
+    );
+    expect(pane.className).toContain(UNIFIED_COMPACT_PANEL_WIDTH_CLASS);
+
+    view.rerender(React.createElement(ModelSelectorContent, { ...props, fluidWidth: true }));
+    pane = view.container.querySelector('[data-unified-model-panel]') as HTMLElement;
+    expect(pane.className).toContain('w-full min-w-0');
+    expect(pane.className).not.toContain(UNIFIED_COMPACT_PANEL_WIDTH_CLASS);
+    expect(pane.className).not.toContain(`${UNIFIED_COMPACT_PANEL_MAX_WIDTH_PX}px`);
   });
 
   it('keeps the session Agent explicit when Claude Code uses an OpenAI-branded model', () => {
@@ -940,9 +976,7 @@ describe('ModelSelector trigger variants', () => {
       let trigger = screen.getByRole('button', {
         name: /Current: Claude Code · GPT-5\.6-Terra, effort: medium/,
       });
-      // 2026-09-06 起 mark 打头:pill 视觉文本不含引擎名,身份走图标(title/aria 仍保留)。
-      expect(trigger.querySelector('[data-composer-engine-lead="cc"]')).toBeTruthy();
-      expect(trigger.textContent).not.toContain('Claude Code');
+      expect(trigger.textContent).toContain('Claude Code');
       expect(trigger.textContent).toContain('GPT-5.6-Terra');
       expect(trigger.getAttribute('title')).toBe('Claude Code · GPT-5.6-Terra');
 
@@ -986,6 +1020,9 @@ describe('ModelSelector trigger variants', () => {
     providersRef.providers = [{
       id: 'openai', name: 'OpenAI', connected: true, agents: ['codex'], routing: { codex: {} },
       models: { codex: [{ id: 'gpt-6-astra', name: 'GPT-6 Astra', contextWindow: 1000000, efforts: ['high'], defaultEffort: 'high', supportsFastMode: true }] },
+    }, {
+      id: 'xd', name: 'Gateway', connected: true, agents: [currentAgent], routing: { [currentAgent]: {} },
+      models: { [currentAgent]: [{ id: 'previous-model', name: 'Previous model', efforts: ['high'], supportsFastMode: true }] },
     }];
     try {
       const props = {
@@ -997,7 +1034,8 @@ describe('ModelSelector trigger variants', () => {
         currentSelection: { agentKind: currentAgent, model: 'previous-model', providerId: 'xd', effort: 'high' as const, fastMode: true },
       };
       const view = render(React.createElement(ModelSelector, props));
-      const trigger = screen.getByRole('button', { name: /Current:.*previous-model/ });
+      const trigger = screen.getByRole('button', { name: /Current:.*Previous model/ });
+      expect(trigger.title).not.toContain('previous-model');
       expect(trigger.title).toContain('Next message: Codex · GPT-6 Astra');
       expect(trigger.title.split('Next message:')[1]).not.toContain('快速');
       expect(trigger.querySelector('[data-model-selection-pending]')).not.toBeNull();
@@ -1039,7 +1077,8 @@ describe('ModelSelector trigger variants', () => {
         onProviderChange: vi.fn(), onNavigateToProviders: vi.fn(), onReconnectSource: navigate, unifiedPanel: true,
       }));
       const trigger = screen.getByRole('button', { name: connected ? /模型不可用/ : /已断开/ });
-      expect(trigger.textContent).toContain(connected ? 'gpt-6-astra' : 'GPT-6 Astra');
+      expect(trigger.textContent).toContain(connected ? '模型信息暂不可用' : 'GPT-6 Astra');
+      expect(trigger.textContent).not.toContain('gpt-6-astra');
       fireEvent.click(trigger);
       const recovery = await screen.findByRole('button', { name: connected ? '管理来源' : '重新连接' });
       fireEvent.click(recovery);
@@ -1139,7 +1178,7 @@ describe('ModelSelector trigger variants', () => {
       let trigger = screen.getByRole('button', {
         name: /Current: Claude Code · Opus 4\.8/,
       });
-      expect(trigger.querySelector('[data-composer-engine-lead="cc"]')).toBeTruthy();
+      expect(trigger.textContent).toContain('Claude Code');
 
       act(() => {
         makerChatStore.noteAgentSwitchIntent(sessionId, 'codex', {
@@ -1154,10 +1193,7 @@ describe('ModelSelector trigger variants', () => {
         name: /Next message: Codex · GPT-5\.5, effort: medium/,
       });
       expect(trigger.textContent).toContain('GPT-5.5');
-      expect(trigger.querySelector('[data-composer-engine-lead="codex"]')).toBeTruthy();
-      // 切换中(pending)也不写引擎名字文本(2026-09-11):身份由 lead mark 表达,
-      // 「Next message: Codex」只留在 aria-label / title。
-      expect(trigger.textContent).not.toContain('Codex');
+      expect(trigger.textContent).toContain('Next: Codex');
       expect(trigger.getAttribute('aria-label')).not.toContain('Current');
       // 切换失败时 intent 会保留供重试；重复渲染仍明确标成“下条消息”，不会隐藏身份。
       view.rerender(React.createElement(IntentTrigger, { refresh: 2 }));
@@ -1166,9 +1202,8 @@ describe('ModelSelector trigger variants', () => {
           name: /Next message: Codex · GPT-5\.5, effort: medium/,
         }),
       ).toBeTruthy();
-      // providerId=null 时 pill 不再画来源图标(2026-09-06 起引擎 mark 打头、渠道图标
-      // 退位);引擎身份由 engine-lead 表达,来源归属由面板行回答。
-      expect(trigger.querySelector('[data-composer-engine-lead="codex"]')).toBeTruthy();
+      // providerId=null 仍应按目标模型的默认可连来源解析 icon。
+      expect(trigger.textContent).toContain('Z');
       expect(trigger.textContent).not.toContain('newChat.modelSelector.source.connect');
     } finally {
       view.unmount();
@@ -1753,7 +1788,7 @@ describe('ModelSelector trigger variants', () => {
     expect(trigger.textContent).not.toContain('high');
   });
 
-  it('localizes the placeholder when the current model is unavailable', () => {
+  it('localizes missing model metadata without presenting an empty selection', () => {
     render(
       React.createElement(ModelSelector, {
         modelId: 'missing-model',
@@ -1765,7 +1800,7 @@ describe('ModelSelector trigger variants', () => {
       }),
     );
 
-    expect(screen.getByRole('button', { name: /选择模型/ }).textContent).toContain('选择模型');
+    expect(screen.getByRole('button', { name: /模型信息暂不可用/ }).textContent).toContain('模型信息暂不可用');
   });
 
   it('can hide model effort and Fast editing controls for model-id-only settings', () => {

@@ -17,6 +17,17 @@ import {
   RED_EXCEPTION_ALLOWED_IDS,
 } from './cindyDecisionData';
 
+// 2026-09 本地卡片阶梯把 hover 与 chip 合并；冻结表仍保留远端的旧 hover 值。
+const LOCAL_CINDY_EXPECTED_VALUES = {
+  ...CINDY_EXPECTED_VALUES,
+  'model-item-hover': { light: '#EFEFEA', dark: '#2B2B2B' },
+  'perm-item-selected-bg': { light: '#F6F6F1', dark: '#1D1D1D' },
+  'settings-menu-bg-selected': { light: '#F6F6F1', dark: '#282828' },
+  'sidebar-item-active': { light: '214.3 5.5% 24.9%', dark: '0.0 0.0% 93.3%' },
+  'sidebar-item-active-border': { light: 'transparent', dark: 'transparent' },
+  'surface-hover': { light: '#EEEEE9', dark: '#1D1D1D' },
+};
+
 /**
  * D2T:CINDY 皮肤家族完备性单测(八组断言,计划 §2 D2T 节)。
  * 值的唯一权威:2026-07-17-cindy-token-decision-table.md(U8 批准)。
@@ -224,13 +235,15 @@ describe('CINDY · ③ 值格式按消费契约', () => {
   });
 
   it('逐 token override 值 == 决策表冻结期望值(防手改漂移)', () => {
+    const mismatches: string[] = [];
     for (const [name, theme] of THEMES) {
-      for (const [id, expected] of Object.entries(CINDY_EXPECTED_VALUES)) {
+      for (const [id, expected] of Object.entries(LOCAL_CINDY_EXPECTED_VALUES)) {
         const actual = theme.colors[id];
         const exp = name === 'cindy-light' ? expected.light : expected.dark;
-        expect(actual, `${name}.${id} 期望 ${exp}`).toBe(exp);
+        if (actual !== exp) mismatches.push(`${name}.${id}: expected ${exp}, got ${actual}`);
       }
     }
+    expect(mismatches).toEqual([]);
   });
 });
 

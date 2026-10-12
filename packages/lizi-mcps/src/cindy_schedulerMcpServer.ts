@@ -40,6 +40,8 @@ import {
   registerScheduleUpdateTool,
 } from './scheduler/index.js';
 import { resolveLiziMcpSessionContext } from './session-context.js';
+import { withAccountDataAccess, type AccountDataAccess } from './account-data-access.js';
+import { withToolCallAuthority, type ToolCallAuthorizer } from './tool-call-authority.js';
 import type { LiziMcpSessionContext, SchedulerMcpDeps } from './types.js';
 
 /**
@@ -66,7 +68,8 @@ export interface SchedulerMcpSessionCtx {
 // 不需要。
 
 const D_LIST_TOOLS =
-  '探索 cindy_scheduler 可用工具（渐进式发现入口）。不传 category → 返回所有类目+每个类目工具数量。' +
+  '只读查询 cindy_scheduler 的工具元数据，不创建或运行调度、不发送通知。工具发现本身不需要创建调度的授权。' +
+  '不传 category → 返回所有类目+每个类目工具数量。' +
   '传 category=scheduler → 返回该类目下所有工具的名称和简介。' +
   '获取工具名后用 call_tool({name, args}) 执行；参数错误会返回完整 JSON Schema。';
 
@@ -84,6 +87,8 @@ const CATEGORY_ENUM = ['scheduler'] as const;
 function registerListToolsEntry(
   server: McpServer,
   registry: SchedulerToolRegistry,
+  access: AccountDataAccess | undefined,
+  getSessionContext: () => LiziMcpSessionContext,
 ): void {
   server.tool(
     'list_tools',
@@ -94,7 +99,8 @@ function registerListToolsEntry(
         .optional()
         .describe('工具类目。不传时返回所有类目概览。'),
     },
-    async ({ category }) => {
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    async ({ category }) => withAccountDataAccess(access, getSessionContext().sessionId, async () => {
       if (category) {
         const tools = registry.list(category);
         return {
@@ -133,13 +139,16 @@ function registerListToolsEntry(
           },
         ],
       };
-    },
+    }),
   );
 }
 
 function registerCallToolEntry(
   server: McpServer,
   registry: SchedulerToolRegistry,
+  access: AccountDataAccess | undefined,
+  getSessionContext: () => LiziMcpSessionContext,
+  authorizeCall: ToolCallAuthorizer | undefined,
 ): void {
   server.tool(
     'call_tool',
@@ -150,7 +159,14 @@ function registerCallToolEntry(
         .describe('工具名，从 list_tools 获取（如 schedule_create / schedule_list）'),
       args: jsonObjectArg('工具参数（JSON 对象）。不确定 schema 时可先传 {} 触发错误反馈。'),
     },
-    async ({ name, args }) => registry.call(name, args),
+    async ({ name, args }) => {
+      const sessionId = getSessionContext().sessionId;
+      return withToolCallAuthority(
+        authorizeCall,
+        { sessionId, server: 'cindy_scheduler', tool: name, args },
+        () => withAccountDataAccess(access, sessionId, () => registry.call(name, args)),
+      );
+    },
   );
 }
 
@@ -196,8 +212,8 @@ export function createSchedulerMcpServer(
   registerScheduleNotifyCurrentRunTool(registry, deps, getSessionContext);
   registerScheduleDeleteTool(registry, deps, getSessionContext);
 
-  registerListToolsEntry(server, registry);
-  registerCallToolEntry(server, registry);
+  registerListToolsEntry(server, registry, deps.withAccountDataAccess, getSessionContext);
+  registerCallToolEntry(server, registry, deps.withAccountDataAccess, getSessionContext, deps.authorizeCall);
 
   return server;
 }

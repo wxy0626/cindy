@@ -114,12 +114,19 @@ describe('DS-4 · Button 状态梯在每个内置主题都可区分', () => {
     }
   }
 
-  it('自证伪：把 hover 换回撞色的 --surface-hover，暗色主题必然红', () => {
+  it('自证伪：把 primary hover 覆盖成 rest 同色后，状态梯必然红', () => {
     const darkTheme = builtinThemes['default-dark'];
     expect(darkTheme).toBeTruthy();
-    // 复刻修复前的绑定：primary hover alias 到 --surface-hover。
-    const rest = tokenRgb(darkTheme!, 'surface-chip');
-    const brokenHover = tokenRgb(darkTheme!, 'surface-hover');
+    // 构造与 rest 同色的 hover，确认状态梯断言仍能识破不可区分状态。
+    const brokenTheme: Theme = {
+      ...darkTheme!,
+      colors: {
+        ...darkTheme!.colors,
+        'button-primary-hover': 'var(--surface-chip)',
+      },
+    };
+    const rest = tokenRgb(brokenTheme, 'surface-chip');
+    const brokenHover = tokenRgb(brokenTheme, 'button-primary-hover');
     expect(delta(rest, brokenHover)).toBeLessThan(MIN_DELTA);
   });
 

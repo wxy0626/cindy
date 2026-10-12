@@ -616,8 +616,12 @@ type SendTarget =
  * 不到, 以「流式建卡」为回合锚点领取点在本编排下成立: agent turn 恒以流式卡
  * 开场, 一次性回复(slash 提示等)则一条消息领取一次。
  */
-function resolveSendTarget(userId: string, opts?: { advanceRound?: boolean }): SendTarget | null {
+function resolveSendTarget(userId: string, opts?: { advanceRound?: boolean; threadTs?: string }): SendTarget | null {
   const lane = decodeLaneUserId(userId);
+  if (!lane && opts?.threadTs) {
+    if (!opts.threadTs.startsWith('om_')) throw new Error('Invalid Feishu reply message id');
+    return { kind: 'reply', messageId: opts.threadTs, replyInThread: true };
+  }
   if (!lane) return { kind: 'open_id', id: userId };
 
   const state = laneAnchors.get(userId) ?? {
@@ -658,7 +662,7 @@ async function createMessage(
   msgType: string,
   content: string,
   uuid?: string,
-): Promise<{ messageId: string }> {
+): Promise<{ messageId: string; chatId?: string }> {
   const c = ensureClient();
   if (target.kind === 'reply') {
     const res = await c.im.v1.message.reply({
@@ -680,17 +684,57 @@ async function createMessage(
   });
   const id = res.data?.message_id ?? '';
   if (!id) throw new Error('[feishu/outbound] create: no message_id in response');
-  return { messageId: id };
+  return { messageId: id, chatId: res.data?.chat_id };
 }
 
-function requireSendTarget(userId: string, opts?: { advanceRound?: boolean }): SendTarget {
-  const target = resolveSendTarget(userId, opts);
+/** Notification receipt used by the host to link replies to the originating session. */
+export async function sendNotification(userId: string, markdown: string): Promise<{ messageId: string; chatId?: string }> {
+  return createMessage({ kind: 'open_id', id: userId }, 'interactive', JSON.stringify(buildInteractiveCardV1({ body: markdown, buttons: [] })));
+}
+
+async function requireSendTarget(userId: string, opts?: { advanceRound?: boolean; threadTs?: string }): Promise<SendTarget> {
+  let target = resolveSendTarget(userId, opts);
+  const lane = decodeLaneUserId(userId);
+  if (!target && lane?.threadId) {
+    // A persisted topic lane survives restart, unlike its in-memory reply anchor.
+    // Recover from that exact thread; never fall back to the group main timeline.
+    const epoch = accountEpoch;
+    const res = await ensureClient().im.v1.message.list({
+      params: { container_id_type: 'thread', container_id: lane.threadId,
+        sort_type: 'ByCreateTimeDesc', page_size: 50 },
+    });
+    if (epoch !== accountEpoch) throw new Error('Feishu account replaced during anchor recovery');
+    ensureClient();
+    if (res.code !== 0) throw new Error(`Feishu topic anchor lookup failed: ${res.code}`);
+    const anchor = res.data?.items?.find((item) =>
+      !item.deleted && item.message_id?.startsWith('om_') &&
+      item.thread_id === lane.threadId && item.chat_id === lane.chatId);
+    // Inbound may have supplied an anchor while the lookup was in flight.
+    target = resolveSendTarget(userId, opts);
+    if (!target && anchor?.message_id) {
+      pushReplyAnchor(userId, anchor.message_id);
+      target = resolveSendTarget(userId, opts);
+    }
+  }
   if (!target) {
     throw new Error(
       `[feishu/outbound] no reply anchor for topic lane ...${userId.slice(-8)} — message dropped`,
     );
   }
   return target;
+}
+
+/** Keep lookup and delivery on the same account across their async boundary. */
+async function withSendTarget<T>(
+  userId: string,
+  opts: { advanceRound?: boolean; threadTs?: string } | undefined,
+  send: (target: SendTarget) => Promise<T>,
+): Promise<T> {
+  return runWithPinnedAccount({ client: ensureClient(), epoch: accountEpoch }, async () => {
+    const target = await requireSendTarget(userId, opts);
+    ensureClient();
+    return send(target);
+  });
 }
 
 export function getBoundClient(): Lark.Client | null {
@@ -740,8 +784,8 @@ function ensureClient(): Lark.Client {
 
 // ── basic text ────────────────────────────────────────────────────────────────
 
-export async function sendText(userId: string, text: string): Promise<{ messageId: string }> {
-  return createMessage(requireSendTarget(userId), 'text', JSON.stringify({ text }));
+export async function sendText(userId: string, text: string, opts?: { threadTs?: string }): Promise<{ messageId: string }> {
+  return withSendTarget(userId, opts, (target) => createMessage(target, 'text', JSON.stringify({ text })));
 }
 
 /** 直接回复某条消息(非 owner 群 @ 的礼貌回应等 — 不走 lane 锚点)。 */
@@ -1040,17 +1084,19 @@ export async function addReaction(messageId: string, emojiType: string): Promise
 
 /**
  * 撤销之前 addReaction 返回的 reaction_id 对应的表情。
- * 失败 swallow,因为这是 ack 的清理动作,不应影响 turn 结束流程。
+ * 失败向调用方抛出，让状态切换保留原 token；终态由编排层尽力清理。
  */
 export async function removeReaction(messageId: string, reactionId: string): Promise<void> {
-  const log = getLog();
   try {
-    await ensureClient().im.v1.messageReaction.delete({
+    const response = await ensureClient().im.v1.messageReaction.delete({
       path: { message_id: messageId, reaction_id: reactionId },
     });
+    const rejected = feishuBusinessRejectReason(response);
+    if (rejected) throw new Error(`removeReaction failed: ${rejected}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    log.warn(`[feishu/outbound] removeReaction failed (non-fatal): ${msg}`);
+    getLog().warn(`[feishu/outbound] removeReaction failed (non-fatal): ${msg}`);
+    throw err;
   }
 }
 
@@ -1113,7 +1159,7 @@ export function resolveCardLane(messageId: string, chatId: string): string | nul
 export async function sendInteractive(
   userId: string,
   spec: InteractiveCardSpec,
-  opts?: { deliverToOwnerDm?: boolean; ownerDmNote?: string },
+  opts?: { deliverToOwnerDm?: boolean; ownerDmNote?: string; threadTs?: string },
 ): Promise<{ messageId: string }> {
   // 授权卡改投宿主私聊(群 lane 专用语义): 群里的授权卡只有 owner 能答且
   // 消不掉。owner 未知时保持原 lane 投递, 不吞掉这次交互(telegram 同口径)。
@@ -1126,11 +1172,11 @@ export async function sendInteractive(
     return createMessage({ kind: 'open_id', id: owner }, 'interactive', JSON.stringify(card));
   }
   const card = buildInteractiveCardV1(spec);
-  const result = await createMessage(
-    requireSendTarget(userId),
+  const result = await withSendTarget(userId, opts, (target) => createMessage(
+    target,
     'interactive',
     JSON.stringify(card),
-  );
+  ));
   registerCardLane(userId, result.messageId);
   return result;
 }
@@ -1170,12 +1216,13 @@ export async function patchCardRaw(messageId: string, cardJson: unknown): Promis
 export async function sendCardRaw(
   userId: string,
   cardJson: unknown,
+  opts?: { threadTs?: string },
 ): Promise<{ messageId: string }> {
-  return createMessage(
-    requireSendTarget(userId, { advanceRound: true }),
+  return withSendTarget(userId, { advanceRound: true, ...opts }, (target) => createMessage(
+    target,
     'interactive',
     JSON.stringify(cardJson),
-  );
+  ));
 }
 
 /** Send a terminal-output mirror directly to a parent group main timeline. */
@@ -1241,13 +1288,14 @@ export async function sendFile(
   userId: string,
   absPath: string,
   displayName?: string,
+  opts?: { threadTs?: string },
 ): Promise<FeishuSendFileResult> {
-  const target = resolveSendTarget(userId);
-  if (!target) {
-    getLog().error(`[feishu/outbound] sendFile: no reply anchor for topic lane ...${userId.slice(-8)}`);
+  try {
+    return await withSendTarget(userId, opts, (target) => sendFileToTarget(target, absPath, displayName));
+  } catch {
+    getLog().error('[feishu/outbound] sendFile: target or delivery unavailable');
     return { ok: false, reason: 'SEND_FAIL' };
   }
-  return sendFileToTarget(target, absPath, displayName);
 }
 
 /** Re-send an already uploaded terminal-output file to a parent group main timeline. */
@@ -1787,6 +1835,10 @@ export async function resolveReplyMessage(
       replyContext: {
         author,
         text,
+        ...(parsed.attachments.length ? {
+          unavailableAttachments: parsed.attachments.map((attachment) =>
+            `引用${attachment.kind === 'image' ? '图片' : attachment.fileName}：仅提供原消息记录，未下载文件内容`),
+        } : {}),
         ...(isBot ? { isBot: true } : {}),
       },
     };

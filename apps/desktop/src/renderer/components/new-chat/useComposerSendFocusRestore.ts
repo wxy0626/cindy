@@ -63,10 +63,11 @@ export function useComposerSendFocusRestore(
   const pendingRestoreRef = useRef<PendingComposerFocusRestore | null>(null);
 
   useEffect(() => {
-    if (!editor) return;
-    // 不能在 setup 阶段读 editor.view.dom（背景见 tryGetEditorDom 注释）：Activity 重连时
-    // 本 effect 可能先于 tiptap 的 remount 执行。composer 与本监听必然同文档，因此直接挂在
-    // document 上，不依赖未挂载阶段拿不到的 ownerDocument。
+    // Retained sidebar panels can reconnect effects after their editor view
+    // has been unmounted. Tiptap's view.dom getter throws in that state.
+    if (!editor || editor.isDestroyed) return;
+    const editorDom = editor.view.dom;
+    const ownerDocument = editorDom.ownerDocument;
     const cancelRestoreForOutsidePointer = (event: PointerEvent) => {
       const pendingRestore = pendingRestoreRef.current;
       if (!pendingRestore || pendingRestore.editor !== editor) return;

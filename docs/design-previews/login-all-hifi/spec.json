@@ -27,13 +27,7 @@
       "light",
       "dark"
     ],
-    "langs": [
-      "zh-CN",
-      "zh-TW",
-      "en",
-      "ja",
-      "ko"
-    ]
+    "langs": ["zh-CN", "en"]
   },
   "states": [
     {
@@ -2066,33 +2060,33 @@
         }
       },
       {
-        "id": "phone-cn-android-light-ja",
+        "id": "phone-cn-android-light-en",
         "prefs": {
           "plat": "phone",
           "region": "cn",
           "os": "android",
           "mode": "light",
-          "lang": "ja"
+          "lang": "en"
         }
       },
       {
-        "id": "phone-global-ios-dark-ko",
+        "id": "phone-global-ios-dark-en",
         "prefs": {
           "plat": "phone",
           "region": "global",
           "os": "ios",
           "mode": "dark",
-          "lang": "ko"
+          "lang": "en"
         }
       },
       {
-        "id": "pad-global-android-light-zh-TW",
+        "id": "pad-global-android-light-zh-CN",
         "prefs": {
           "plat": "pad",
           "region": "global",
           "os": "android",
           "mode": "light",
-          "lang": "zh-TW"
+          "lang": "zh-CN"
         }
       },
       {
@@ -2178,7 +2172,7 @@
           "click": "[data-qa-pref=\"mode:dark\"]"
         },
         {
-          "click": "[data-qa-pref=\"lang:ko\"]"
+          "click": "[data-qa-pref=\"lang:en\"]"
         }
       ],
       "expected": {
@@ -2186,7 +2180,7 @@
         "region": "cn",
         "os": "mac",
         "mode": "dark",
-        "lang": "ko"
+        "lang": "en"
       },
       "storageKey": "qa-hifi:cindy-login-all-hifi:prefs",
       "reloads": 2,
@@ -3880,28 +3874,28 @@
     {
       "sel": ".lp-skip-entry",
       "prop": "content",
-      "truth": "desk.copy.ja.localModeEntry",
+      "truth": "desk.copy.en.localModeEntry",
       "kind": "text",
       "via": [
         {
           "click": "[data-qa-pref=\"plat:desk\"]"
         },
         {
-          "click": "[data-qa-pref=\"lang:ja\"]"
+          "click": "[data-qa-pref=\"lang:en\"]"
         }
       ]
     },
     {
       "sel": ".lp-skip-entry",
       "prop": "content",
-      "truth": "desk.copy.ko.localModeEntry",
+      "truth": "desk.copy.en.localModeEntry",
       "kind": "text",
       "via": [
         {
           "click": "[data-qa-pref=\"plat:desk\"]"
         },
         {
-          "click": "[data-qa-pref=\"lang:ko\"]"
+          "click": "[data-qa-pref=\"lang:en\"]"
         }
       ]
     },

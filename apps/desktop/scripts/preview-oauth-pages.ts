@@ -52,7 +52,7 @@ function isPageKind(value: string | null): value is PageKind {
 }
 
 function isLang(value: string | null): value is OAuthResultPageLang {
-  return value === 'zh' || value === 'en' || value === 'ja' || value === 'ko';
+  return value === 'zh' || value === 'en';
 }
 
 function isTheme(value: string | null): value is OAuthResultPageTheme {

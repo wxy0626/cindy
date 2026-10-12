@@ -26,13 +26,7 @@
    "light",
    "dark"
   ],
-  "langs": [
-   "zh-CN",
-   "zh-TW",
-   "en",
-   "ja",
-   "ko"
-  ]
+  "langs": ["zh-CN", "en"]
  },
  "states": [
   {
@@ -103,13 +97,13 @@
     }
    },
    {
-    "id": "desk-light-ja",
+    "id": "desk-light-en",
     "prefs": {
      "plat": "desk",
      "region": "cn",
      "os": "mac",
      "mode": "light",
-     "lang": "ja"
+     "lang": "en"
     }
    },
    {
@@ -119,7 +113,7 @@
      "region": "cn",
      "os": "ios",
      "mode": "light",
-     "lang": "zh-TW"
+     "lang": "zh-CN"
     }
    },
    {
@@ -133,13 +127,13 @@
     }
    },
    {
-    "id": "phone-dark-ko",
+    "id": "phone-dark-en",
     "prefs": {
      "plat": "phone",
      "region": "cn",
      "os": "ios",
      "mode": "dark",
-     "lang": "ko"
+     "lang": "en"
     }
    },
    {
@@ -153,13 +147,13 @@
     }
    },
    {
-    "id": "pad-land-dark-ja",
+    "id": "pad-land-dark-en",
     "prefs": {
      "plat": "pad-landscape",
      "region": "cn",
      "os": "ios",
      "mode": "dark",
-     "lang": "ja"
+     "lang": "en"
     }
    },
    {
@@ -179,17 +173,17 @@
      "region": "cn",
      "os": "ios",
      "mode": "dark",
-     "lang": "zh-TW"
+     "lang": "zh-CN"
     }
    },
    {
-    "id": "pad-port-light-ko",
+    "id": "pad-port-light-en",
     "prefs": {
      "plat": "pad-portrait",
      "region": "cn",
      "os": "ios",
      "mode": "light",
-     "lang": "ko"
+     "lang": "en"
     }
    }
   ],
@@ -206,7 +200,7 @@
      "click": "[data-qa-pref=\"mode:dark\"]"
     },
     {
-     "click": "[data-qa-pref=\"lang:ja\"]"
+     "click": "[data-qa-pref=\"lang:en\"]"
     }
    ],
    "expected": {
@@ -214,7 +208,7 @@
     "region": "cn",
     "os": "ios",
     "mode": "dark",
-    "lang": "ja"
+    "lang": "en"
    },
    "storageKey": "qa-hifi:login-deletion-bubble:prefs",
    "reloads": 2,
@@ -455,14 +449,14 @@
   {
    "sel": ".db-title",
    "prop": "__text__",
-   "truth": "desktop.copy.ja.completedTitle",
+   "truth": "desktop.copy.en.completedTitle",
    "kind": "text",
    "via": [
     {
      "click": "[data-qa-pref=\"plat:desk\"]"
     },
     {
-     "click": "[data-qa-pref=\"lang:ja\"]"
+     "click": "[data-qa-pref=\"lang:en\"]"
     },
     {
      "click": "[data-qa-state-btn=\"deletion-completed\"]"
@@ -472,14 +466,14 @@
   {
    "sel": ".db-title",
    "prop": "__text__",
-   "truth": "desktop.copy.ko.pendingTitle",
+   "truth": "desktop.copy.en.pendingTitle",
    "kind": "text",
    "via": [
     {
      "click": "[data-qa-pref=\"plat:desk\"]"
     },
     {
-     "click": "[data-qa-pref=\"lang:ko\"]"
+     "click": "[data-qa-pref=\"lang:en\"]"
     },
     {
      "click": "[data-qa-state-btn=\"deletion-pending\"]"
@@ -523,14 +517,14 @@
   {
    "sel": ".db-dismiss",
    "prop": "__text__",
-   "truth": "desktop.copy.ja.dismissButton",
+   "truth": "desktop.copy.en.dismissButton",
    "kind": "text",
    "via": [
     {
      "click": "[data-qa-pref=\"plat:desk\"]"
     },
     {
-     "click": "[data-qa-pref=\"lang:ja\"]"
+     "click": "[data-qa-pref=\"lang:en\"]"
     },
     {
      "click": "[data-qa-state-btn=\"deletion-completed\"]"
@@ -540,14 +534,14 @@
   {
    "sel": ".db-dismiss",
    "prop": "__text__",
-   "truth": "desktop.copy.ko.dismissButton",
+   "truth": "desktop.copy.en.dismissButton",
    "kind": "text",
    "via": [
     {
      "click": "[data-qa-pref=\"plat:desk\"]"
     },
     {
-     "click": "[data-qa-pref=\"lang:ko\"]"
+     "click": "[data-qa-pref=\"lang:en\"]"
     },
     {
      "click": "[data-qa-state-btn=\"deletion-completed\"]"
@@ -786,14 +780,14 @@
   {
    "sel": ".db-title",
    "prop": "__text__",
-   "truth": "mobile.copy.ja.completedTitle",
+   "truth": "mobile.copy.en.completedTitle",
    "kind": "text",
    "via": [
     {
      "click": "[data-qa-pref=\"plat:phone\"]"
     },
     {
-     "click": "[data-qa-pref=\"lang:ja\"]"
+     "click": "[data-qa-pref=\"lang:en\"]"
     },
     {
      "click": "[data-qa-state-btn=\"deletion-completed\"]"
@@ -803,14 +797,14 @@
   {
    "sel": ".db-title",
    "prop": "__text__",
-   "truth": "mobile.copy.ko.pendingTitle",
+   "truth": "mobile.copy.en.pendingTitle",
    "kind": "text",
    "via": [
     {
      "click": "[data-qa-pref=\"plat:phone\"]"
     },
     {
-     "click": "[data-qa-pref=\"lang:ko\"]"
+     "click": "[data-qa-pref=\"lang:en\"]"
     },
     {
      "click": "[data-qa-state-btn=\"deletion-pending\"]"
@@ -854,14 +848,14 @@
   {
    "sel": ".db-dismiss",
    "prop": "__text__",
-   "truth": "mobile.copy.ja.dismissButton",
+   "truth": "mobile.copy.en.dismissButton",
    "kind": "text",
    "via": [
     {
      "click": "[data-qa-pref=\"plat:phone\"]"
     },
     {
-     "click": "[data-qa-pref=\"lang:ja\"]"
+     "click": "[data-qa-pref=\"lang:en\"]"
     },
     {
      "click": "[data-qa-state-btn=\"deletion-completed\"]"
@@ -871,14 +865,14 @@
   {
    "sel": ".db-dismiss",
    "prop": "__text__",
-   "truth": "mobile.copy.ko.dismissButton",
+   "truth": "mobile.copy.en.dismissButton",
    "kind": "text",
    "via": [
     {
      "click": "[data-qa-pref=\"plat:phone\"]"
     },
     {
-     "click": "[data-qa-pref=\"lang:ko\"]"
+     "click": "[data-qa-pref=\"lang:en\"]"
     },
     {
      "click": "[data-qa-state-btn=\"deletion-completed\"]"

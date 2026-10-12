@@ -13,6 +13,16 @@ vi.mock('../logger-adapter.js', () => ({
 vi.mock('../../appSessionState.js', () => ({
   ownerScopedUserDataPath: (name: string) => path.join(tmpDir, name),
 }));
+// 供应商顺序偏好已迁到机器级共享命名空间（machineSharedStorage）。单测把该命名空间
+// 重定向到本文件自己的临时目录，保持用例之间互不污染。
+vi.mock('../../machineSharedStorage.js', async () => {
+  const nodePath = await import('node:path');
+  return {
+    machineSharedUserDataPath: (...parts: string[]) => nodePath.join(tmpDir, ...parts),
+    machineSharedLegacyFileCandidates: () => [],
+    machineSharedOwnerDirectories: () => [],
+  };
+});
 
 const { __testing, readProviderOrder, setProviderOrder } =
   await import('../provider-order-store.js');

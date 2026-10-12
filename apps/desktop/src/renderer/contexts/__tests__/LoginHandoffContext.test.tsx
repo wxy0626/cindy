@@ -2,6 +2,7 @@
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 
 /**
  * LoginHandoff 衔接动画测试(implementation-plan Step 3b WHAT2/WHAT3)。
@@ -422,14 +423,16 @@ function GuestGate() {
 
 function renderColdStart() {
   return render(
-    <AuthProvider>
-      <HandoffHost>
-        <LoginBrandStage />
-        <SplashScreen />
-        <GuestGate />
-        <Probe />
-      </HandoffHost>
-    </AuthProvider>,
+    <MemoryRouter>
+      <AuthProvider>
+        <HandoffHost>
+          <LoginBrandStage />
+          <SplashScreen />
+          <GuestGate />
+          <Probe />
+        </HandoffHost>
+      </AuthProvider>
+    </MemoryRouter>,
   );
 }
 

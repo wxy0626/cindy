@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import path from 'node:path';
-import type { ProviderView } from '@cindy/model-providers';
+import { isModelVisible, type ProviderView } from '@cindy/model-providers';
 import { defaultBotModelChain } from '../../shared/botDefaultModelChain.js';
 
 import {
@@ -16,6 +16,9 @@ import {
   createOverrideSettingsFile,
   type OverrideSettingsState,
 } from './override-settings-file.js';
+
+import { getModelVisibilityOverride, waitForModelVisibilityMirror } from './model-visibility-mirror.js';
+import { getSelectedNewMakerRoute } from './newMakerDefaultsCache.js';
 
 const log = desktopMakerLogger.child('bot-model-chain-settings-store');
 
@@ -89,6 +92,7 @@ export async function readBotModelChainSettingsState(
   if (state.isCustomized) return state;
   // Capture the owner before reading live connections; never persist derived defaults.
   const owner = activeOwnerScopeKey();
+  await waitForModelVisibilityMirror();
   const providers = options?.providers ?? await readConnectedProviders(owner);
   if (activeOwnerScopeKey() !== owner) throw new Error('Bot model defaults owner changed');
   store.invalidateIfChanged();
@@ -98,7 +102,11 @@ export async function readBotModelChainSettingsState(
     (getMakerIfReady()?.listAvailableAgents() ?? []).map((agent) => agent === 'claude-code' ? 'cc' : agent),
   );
   const value = { modelChain: defaultBotModelChain({ providers, providersLoading: false,
-    availableAgents, availableAgentsLoaded: true }) };
+    availableAgents, availableAgentsLoaded: true,
+    preferredRoute: getSelectedNewMakerRoute(owner),
+    isModelEnabled: (agent, providerId, model) => isModelVisible(
+      getModelVisibilityOverride(agent, providerId, model.id), model.defaultEnabled),
+  }) };
   return { ...latest, value, defaults: value };
 }
 
@@ -126,23 +134,34 @@ export async function resetBotModelChainSettings(
   return readBotModelChainSettingsState(options);
 }
 
-/**
- * A null override means the permanent Bot Profile follows the owner-scoped
- * global route chain. Explicit per-Bot chains remain frozen in its profile.
- */
-export async function readEffectiveBotModelChain(
-  config: Record<string, unknown>,
-  options?: { rootPath?: string; providers?: readonly ProviderView[]; availableAgents?: ReadonlySet<'cc' | 'codex' | 'pi'> },
-): Promise<BotModelRoute[]> {
+/** Read only Profile-owned routes; null means resolving this profile needs owner settings. */
+export function readExplicitBotModelChain(config: Record<string, unknown>): BotModelRoute[] | null {
   if (Array.isArray(config.modelChainOverride)) {
     const explicit = normalizeBotModelChain(config.modelChainOverride);
     if (explicit.length > 0) return explicit;
   }
-  // Before modelChainOverride existed, modelOverride:null was the durable
-  // marker for “follow the Bot default”. Preserve that meaning on upgrade.
-  if (config.modelChainOverride === null || config.modelOverride === null) {
-    return (await readBotModelChainSettings(options)).modelChain;
+  // Preserve old explicit routes; null is the durable follow-default marker.
+  if (config.modelChainOverride !== null && config.modelOverride !== null) {
+    const legacy = normalizeBotModelChain(config.modelChain, config);
+    if (legacy.length || typeof config.model === 'string') return legacy;
   }
-  const legacy = normalizeBotModelChain(config.modelChain, config);
-  return legacy.length || typeof config.model === 'string' ? legacy : (await readBotModelChainSettings(options)).modelChain;
+  return null;
+}
+
+/** A null override follows owner settings; explicit per-Bot routes stay in its Profile. */
+export async function readEffectiveBotModelSelection(
+  config: Record<string, unknown>,
+  options?: Parameters<typeof readBotModelChainSettingsState>[0],
+): Promise<{ chain: BotModelRoute[]; followsCindyDefault: boolean }> {
+  const explicit = readExplicitBotModelChain(config);
+  if (explicit !== null) return { chain: explicit, followsCindyDefault: false };
+  const state = await readBotModelChainSettingsState(options);
+  return { chain: state.value.modelChain, followsCindyDefault: !state.isCustomized };
+}
+
+export async function readEffectiveBotModelChain(
+  config: Record<string, unknown>,
+  options?: Parameters<typeof readBotModelChainSettingsState>[0],
+): Promise<BotModelRoute[]> {
+  return (await readEffectiveBotModelSelection(config, options)).chain;
 }

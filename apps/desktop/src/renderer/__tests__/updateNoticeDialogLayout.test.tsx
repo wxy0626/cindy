@@ -224,3 +224,31 @@ describe('UpdateNoticeDialog 单栏版式', () => {
     await act(async () => { await i18n.changeLanguage('en'); });
   });
 });
+
+describe('UpdateNoticeDialog 关闭方式', () => {
+  it('点遮罩不关闭,只能用「知道了」或 Esc 关闭', () => {
+    const onDismiss = vi.fn();
+    render(
+      <UpdateNoticeDialog
+        open
+        mode="auto"
+        releaseNotes={[topicNotes('0.1.21', ['Dash'])]}
+        allVersions={null}
+        loadVersion={vi.fn().mockResolvedValue(null)}
+        onDismiss={onDismiss}
+      />,
+    );
+    const dialog = screen.getByRole('alertdialog');
+    const overlay = dialog.previousElementSibling;
+    expect(overlay).not.toBeNull();
+    fireEvent.pointerDown(overlay!, { button: 0, pointerType: 'mouse' });
+    fireEvent.pointerUp(overlay!, { button: 0, pointerType: 'mouse' });
+    fireEvent.click(overlay!);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(dialog).getByRole('button', { name: i18n.t('update.notice.gotIt') }));
+    expect(onDismiss).toHaveBeenCalledTimes(2);
+  });
+});

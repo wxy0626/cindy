@@ -145,6 +145,7 @@ function buildCodexForkRecoveryMarker(opts: {
         content: parseJsonContent(row.content),
         createdAt: row.createdAt,
         toolUseId: row.toolUseId,
+        agentMeta: row.agentMeta,
       })), {
         fromLabel: 'Codex',
         toLabel: 'Codex',
@@ -173,6 +174,7 @@ async function seedForkHandoffAfterSameEngineRebuild(opts: {
       content: parseJsonContent(row.content),
       createdAt: row.createdAt,
       toolUseId: row.toolUseId,
+      agentMeta: row.agentMeta,
     }));
   const lastUser = [...opts.rows].reverse().find((row) => row.role === 'user');
   const label =
@@ -527,16 +529,19 @@ function resolveClaudeAssistantAnchor(
   return undefined;
 }
 
-function resolveCodexTurnAnchor(
-  rows: ForkTimelineMessage[],
+/** resolveCodexTurnAnchor / resolveCodexForkEventTimestamp 只读这几列;rewind 复用同一套边界判定(#4421)。 */
+export type CodexNativeBoundaryRow = Pick<ForkTimelineMessage, 'role' | 'content' | 'agentMeta' | 'createdAt'>;
+
+export function resolveCodexTurnAnchor(
+  rows: CodexNativeBoundaryRow[],
   sourceSdkSessionId: string,
 ): string | undefined {
   let timelineSdkSessionId: string | null = sourceSdkSessionId;
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     const row = rows[i];
     if (row.role === 'context_rebuild') {
-      timelineSdkSessionId = null;
-      continue;
+      // 重建之后是新的原生线程;不能从更早片段借 turn 锚点。
+      return undefined;
     }
     if (row.role === 'agent_switch') {
       timelineSdkSessionId = parseAgentSwitchBoundary(row.content)?.fromSdkSessionId ?? null;
@@ -555,7 +560,7 @@ function resolveCodexTurnAnchor(
   return undefined;
 }
 
-function resolveCodexForkEventTimestamp(rows: ForkTimelineMessage[]): number | undefined {
+export function resolveCodexForkEventTimestamp(rows: CodexNativeBoundaryRow[]): number | undefined {
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     const row = rows[i]!;
     // A new native segment has no event to anchor yet. Never borrow time from
@@ -568,6 +573,38 @@ function resolveCodexForkEventTimestamp(rows: ForkTimelineMessage[]): number | u
     }
   }
   return undefined;
+}
+
+/**
+ * rows 之内是否没有属于 sourceSdkSessionId 原生线程的 user 行,即目标是该线程的第一轮。
+ * 归属判定与 resolveCodexTurnAnchor 一致:agent_switch 之前的片段属于其 fromSdkSessionId
+ * (切回停泊线程时仍是同一条线程);最近的 context_rebuild 截断更早历史,重建前的
+ * agent_switch 不能把归属设回当前线程。
+ * 不可解析或没有 fromSdkSessionId 的 switch 视为归属不定,返回 false,调用方不得标记
+ * rewindsToNativeThreadStart(与「判定不出就明确失败」的 fail-closed 契约一致)。
+ * rows 必须完整覆盖当前时间线(/clear 之后的可见行 + context_rebuild 标记);窗口被截断时
+ * 调用方不得据此判定。
+ */
+export function isCodexNativeThreadStart(
+  rows: CodexNativeBoundaryRow[],
+  sourceSdkSessionId: string,
+): boolean {
+  let timelineSdkSessionId: string | null = sourceSdkSessionId;
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const row = rows[i]!;
+    if (row.role === 'context_rebuild') {
+      // 重建之后是新的原生线程;更早的 agent_switch 不能把归属设回当前线程。
+      break;
+    }
+    if (row.role === 'agent_switch') {
+      const owner = parseAgentSwitchBoundary(row.content)?.fromSdkSessionId;
+      if (!owner) return false;
+      timelineSdkSessionId = owner;
+      continue;
+    }
+    if (row.role === 'user' && timelineSdkSessionId === sourceSdkSessionId) return false;
+  }
+  return true;
 }
 
 async function countCodexTailTurns(
@@ -753,6 +790,10 @@ export async function forkSessionAtMessage(
   // 「remoteHostId 丢失的本地化僵尸会话」(轮 26 HIGH-1 同源)。
   if (source.remoteHostId) {
     throw forkError('REMOTE_NOT_SUPPORTED', '远端会话暂不支持在本地 fork');
+  }
+  // Agent 在另一台电脑运行的任务：Agent 会话记录在那台，本机无法从中分叉。
+  if (source.agentDeviceId) {
+    throw forkError('REMOTE_NOT_SUPPORTED', '这个任务的 Agent 在另一台电脑运行，暂不支持分叉');
   }
 
   // 2. 读 target message + rowid —— 同毫秒边界必须按真实插入顺序判断。
@@ -1063,6 +1104,9 @@ export async function forkSessionStripEncrypted(sourceSessionId: string): Promis
       'REMOTE_NOT_SUPPORTED',
       '远端 Codex 会话暂不支持剥离 fork(rollout 在远端,本地无法剥离)',
     );
+  }
+  if (source.agentDeviceId) {
+    throw forkError('REMOTE_NOT_SUPPORTED', '这个任务的 Agent 在另一台电脑运行，暂不支持分叉');
   }
   if (!source.sdkSessionId) {
     throw forkError('SOURCE_NEVER_RAN', '原会话尚未运行，无法 fork');

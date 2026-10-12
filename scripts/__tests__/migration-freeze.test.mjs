@@ -14,7 +14,11 @@ import {
 } from '../../apps/desktop/scripts/lib/migration-freeze.mjs';
 
 function git(repo, ...args) {
-  return execFileSync('git', args, { cwd: repo, encoding: 'utf-8' }).trim();
+  // 测试使用临时仓库，显式禁用宿主机全局 hooks，避免本地 Git 配置污染断言。
+  return execFileSync('git', ['-c', 'core.hooksPath=', ...args], {
+    cwd: repo,
+    encoding: 'utf-8',
+  }).trim();
 }
 
 function createFixture() {

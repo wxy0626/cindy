@@ -1,3 +1,6 @@
+import { createRoot } from 'react-dom/client';
+import { MediaScrubber } from '@/components/ui/media-scrubber';
+import sliderCss from '@/components/ui/slider.css?inline';
 /**
  * GhostToolCard — 消息流「意识卡片」(卡槽③海报模式)。
  *
@@ -35,9 +38,9 @@ import { Check, ChevronDown, Copy, FolderOpen, Ghost, Loader2 } from 'lucide-rea
 
 import { ImageLightbox } from './ImageLightbox';
 import { ModelLightbox } from './ModelLightbox';
+import { GhostCardLinkConfirm, GhostCardPromptPanel } from './GhostCardHostPrompts';
 import { toast } from '@/lib/toast';
 import { registerMedia } from '@/lib/mediaPlaybackBus';
-import { ListComposerTextarea } from '@/components/new-chat/ListComposerTextarea';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,7 +62,6 @@ import {
 } from '@/cindy-brain/ghostCardGallery';
 import {
   GHOST_CARD_ACTION_INFLIGHT_MS,
-  GHOST_CARD_ACTION_PROMPT_MAX_LEN,
   GHOST_CARD_HEIGHT_MAX,
   GHOST_CARD_HEIGHT_MIN,
   isGhostCardLinkAllowed,
@@ -102,10 +104,7 @@ function buildAudioRowHtml(durationLabel: string): string {
     AUDIO_PLAY_SVG +
     '</button>' +
     `<span data-x-cur style="${timeStyle}">0:00</span>` +
-    '<div data-x-track style="position:relative;height:4px;flex:1;cursor:pointer;border-radius:9999px;background:var(--msg-tool-card-border,#d7d7d4);touch-action:none">' +
-    '<div data-x-fill style="position:absolute;left:0;top:0;height:100%;width:0%;border-radius:9999px;background:var(--msg-tool-card-text,#262626)"></div>' +
-    '<div data-x-dot style="position:absolute;top:50%;left:-5px;width:10px;height:10px;transform:translateY(-50%);border-radius:9999px;background:var(--msg-tool-card-text,#262626)"></div>' +
-    '</div>' +
+    '<div data-x-track style="flex:1;min-width:0"></div>' +
     `<span data-x-dur style="${timeStyle}">${durationLabel}</span>` +
     '</div>'
   );
@@ -139,6 +138,7 @@ function buildCardSrcDoc(sanitizedHtml: string, themeVars: string): string {
     // 时突兀。改由宿主用 Web Animations API 逐个判 iterations,见 hiddenAnimationGate 的
     // syncFrameAnimations 与下面 onLoad 的对齐。
     '<style>html,body{margin:0;padding:0;overflow:hidden;font-family:system-ui,-apple-system,sans-serif}img{max-width:100%;-webkit-user-drag:none;-webkit-user-select:none;user-select:none}@media (prefers-reduced-motion:reduce){*{animation:none!important}}</style>',
+    `<style>${sliderCss}</style>`,
     '</head><body>',
     sanitizedHtml,
     '</body></html>',
@@ -281,9 +281,9 @@ function GhostCardCanvas({
       const curEl = slot.querySelector<HTMLElement>('[data-x-cur]');
       const durEl = slot.querySelector<HTMLElement>('[data-x-dur]');
       const trackEl = slot.querySelector<HTMLElement>('[data-x-track]');
-      const fillEl = slot.querySelector<HTMLElement>('[data-x-fill]');
-      const dotEl = slot.querySelector<HTMLElement>('[data-x-dot]');
-      if (!btn || !curEl || !durEl || !trackEl || !fillEl || !dotEl) return;
+      if (!btn || !curEl || !durEl || !trackEl) return;
+      // Mount the same production component inside the host-owned audio slot.
+      const scrubberRoot = createRoot(trackEl);
 
       const getDur = (): number =>
         Number.isFinite(a.duration) && a.duration > 0
@@ -291,9 +291,10 @@ function GhostCardCanvas({
           : Number.isFinite(declared) && declared > 0 ? declared : 0;
       const render = (): void => {
         const d = getDur();
-        const pct = d > 0 ? Math.min(100, Math.max(0, (a.currentTime / d) * 100)) : 0;
-        fillEl.style.width = `${pct}%`;
-        dotEl.style.left = `calc(${pct}% - 5px)`;
+        scrubberRoot.render(<MediaScrubber currentTime={a.currentTime}
+          duration={d}
+          label={t('chat.media.audioProgress')}
+          onSeek={(seconds) => { a.currentTime = seconds; render(); }} />);
         curEl.textContent = formatAudioClock(a.currentTime);
         durEl.textContent = formatAudioClock(d);
         btn.innerHTML = a.paused ? AUDIO_PLAY_SVG : AUDIO_PAUSE_SVG;
@@ -313,6 +314,8 @@ function GhostCardCanvas({
       audioBindsRef.current.set(url, () => {
         for (const ev of evs) a.removeEventListener(ev, render);
         a.removeEventListener('ended', onEnded);
+        // Parent React cleanup may be committing; dispose the nested root afterward.
+        queueMicrotask(() => scrubberRoot.unmount());
       });
 
       btn.addEventListener('click', () => {
@@ -320,32 +323,6 @@ function GhostCardCanvas({
         if (a.paused) void a.play().catch(() => undefined);
         else a.pause();
       });
-      // scrub:click + pointer drag 复用;capture 让拖出插槽仍收 move/up。
-      let dragging = false;
-      const seekTo = (clientX: number): void => {
-        const d = getDur();
-        if (!d) return;
-        const rect = trackEl.getBoundingClientRect();
-        const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-        a.currentTime = ratio * d;
-        render();
-      };
-      trackEl.addEventListener('pointerdown', (e) => {
-        if (!getDur()) return;
-        trackEl.setPointerCapture(e.pointerId);
-        dragging = true;
-        seekTo(e.clientX);
-      });
-      trackEl.addEventListener('pointermove', (e) => {
-        if (dragging) seekTo(e.clientX);
-      });
-      const endDrag = (e: PointerEvent): void => {
-        if (!dragging) return;
-        dragging = false;
-        if (trackEl.hasPointerCapture(e.pointerId)) trackEl.releasePointerCapture(e.pointerId);
-      };
-      trackEl.addEventListener('pointerup', endDrag);
-      trackEl.addEventListener('pointercancel', endDrag);
       // 右键 → 宿主菜单(打开音频所在目录);坐标换算同图片菜单。
       slot.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -668,140 +645,26 @@ function GhostCardCanvas({
         />
       ))}
 
-      {/* ── data-ghost-prompt 输入面板(宿主交互面,与 lightbox 同层;体验与
-          老基座 ChatImageActions 的 imgPrompt popover 一致:textarea + 回车
-          发送/Esc 取消/点外关闭)。锚在被点按钮下方。 */}
+      {/* ── data-ghost-prompt 输入面板 / data-ghost-link 外链确认框(宿主交互面,
+          点外部不关闭,见 GhostCardHostPrompts)。 */}
       {promptAsk ? (
-        <>
-          <div className="fixed inset-0 z-40" onMouseDown={() => setPromptAsk(null)} />
-          <div
-            className="absolute z-50 w-72 rounded-md border p-2"
-            style={{
-              top: promptAsk.top,
-              left: promptAsk.left,
-              backgroundColor: 'var(--surface-elevated)',
-              borderColor: 'var(--border-default)',
-              boxShadow: 'var(--shadow-menu)',
-            }}
-          >
-            <ListComposerTextarea
-              autoFocus
-              rows={3}
-              value={promptText}
-              maxLength={GHOST_CARD_ACTION_PROMPT_MAX_LEN}
-              onChange={(e) => setPromptText(e.target.value)}
-              onKeyDown={(e) => {
-                // 中文输入法组词中的 Enter 不能触发发送(同老基座)。
-                if (e.nativeEvent.isComposing) return;
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  submitPrompt();
-                } else if (e.key === 'Escape') {
-                  setPromptAsk(null);
-                }
-              }}
-              placeholder={promptAsk.placeholder || t('chat.mivoAction.promptPlaceholder')}
-              className="w-full resize-none rounded-md border px-2 py-1.5 text-xs outline-none placeholder:text-[var(--text-tertiary)]"
-              style={{
-                backgroundColor: 'var(--msg-tool-card-bg)',
-                borderColor: 'var(--msg-tool-card-border)',
-                color: 'var(--msg-tool-card-text)',
-              }}
-            />
-            <div className="mt-1.5 flex items-center justify-end gap-1.5">
-              <button
-                type="button"
-                onClick={() => setPromptAsk(null)}
-                className="h-6 cursor-pointer rounded-md px-2 text-xs transition-colors"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                {t('chat.mivoAction.promptCancel')}
-              </button>
-              <button
-                type="button"
-                onClick={submitPrompt}
-                disabled={!promptText.trim()}
-                className={
-                  'h-6 rounded-md border px-2.5 text-xs font-medium transition-colors ' +
-                  (promptText.trim() ? 'cursor-pointer hover:bg-[var(--msg-table-header-bg)]' : 'cursor-not-allowed opacity-40')
-                }
-                style={{
-                  backgroundColor: 'var(--msg-tool-card-bg)',
-                  borderColor: 'var(--msg-tool-card-border)',
-                  color: 'var(--msg-tool-card-text)',
-                }}
-              >
-                {t('chat.mivoAction.promptSend')}
-              </button>
-            </div>
-          </div>
-        </>
+        <GhostCardPromptPanel
+          top={promptAsk.top}
+          left={promptAsk.left}
+          placeholder={promptAsk.placeholder}
+          text={promptText}
+          onTextChange={setPromptText}
+          onSubmit={submitPrompt}
+          onCancel={() => setPromptAsk(null)}
+        />
       ) : null}
-
-      {/* ── data-ghost-link 外链确认框(宿主交互面,与输入面板同层级模式:
-          遮罩点击/Esc 取消)。域名醒目 + 完整链接全量展示——卡内文案归意识,
-          真实去向由宿主如实亮给用户,确认才 openExternal。 */}
       {linkAsk ? (
-        <>
-          <div className="fixed inset-0 z-40" onMouseDown={() => setLinkAsk(null)} />
-          <div
-            className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border p-3.5"
-            role="alertdialog"
-            aria-label={t('chat.ghostCall.linkConfirmTitle')}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') setLinkAsk(null);
-            }}
-            style={{
-              backgroundColor: 'var(--surface-elevated)',
-              borderColor: 'var(--border-default)',
-              boxShadow: 'var(--shadow-menu)',
-            }}
-          >
-            <div className="text-13 font-semibold" style={{ color: 'var(--text-primary)' }}>
-              {t('chat.ghostCall.linkConfirmTitle')}
-            </div>
-            <div className="mt-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
-              {t('chat.ghostCall.linkConfirmHint')}
-            </div>
-            {linkAskHost ? (
-              <div
-                className="mt-1.5 break-all text-13 font-semibold"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                {linkAskHost}
-              </div>
-            ) : null}
-            <div
-              className="mt-1 max-h-24 overflow-y-auto break-all font-mono text-11 leading-relaxed"
-              style={{ color: 'var(--text-tertiary)' }}
-            >
-              {linkAsk}
-            </div>
-            <div className="mt-2.5 flex items-center justify-end gap-1.5">
-              <button
-                type="button"
-                autoFocus
-                onClick={() => setLinkAsk(null)}
-                className="h-6 cursor-pointer rounded-md px-2 text-xs transition-colors"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                {t('chat.ghostCall.linkConfirmCancel')}
-              </button>
-              <button
-                type="button"
-                onClick={confirmOpenLink}
-                className="h-6 cursor-pointer rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-[var(--msg-table-header-bg)]"
-                style={{
-                  backgroundColor: 'var(--msg-tool-card-bg)',
-                  borderColor: 'var(--msg-tool-card-border)',
-                  color: 'var(--msg-tool-card-text)',
-                }}
-              >
-                {t('chat.ghostCall.linkConfirmOpen')}
-              </button>
-            </div>
-          </div>
-        </>
+        <GhostCardLinkConfirm
+          url={linkAsk}
+          host={linkAskHost}
+          onConfirm={confirmOpenLink}
+          onCancel={() => setLinkAsk(null)}
+        />
       ) : null}
 
       {/* ── 卡内图片右键菜单(宿主交互面;fixed 定位到换算后的视口坐标)── */}

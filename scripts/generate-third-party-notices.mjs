@@ -6,7 +6,7 @@
  *
  * 范围:根目录及所有 pnpm workspace 包的生产依赖闭包(dependencies +
  * optionalDependencies,递归;workspace 内部包只穿透不收录),外加产品分发的
- * 非 npm 资产(安装包内的 ripgrep / Electron，以及运行时下载的 Codex CLI /
+ * 非 npm 资产(安装包内的 ripgrep / Electron / Skill 资源，以及运行时下载的 Codex CLI /
  * pi coding agent，另含
  * Android Platform-Tools / vendored 代码)的手工条目。
  *
@@ -33,6 +33,9 @@ const MOBILE_DIR = path.join(REPO_ROOT, "apps", "mobile");
 const NOTICES_DIR = path.join(REPO_ROOT, "docs", "legal", "notices");
 const SBOM_DIR = path.join(NOTICES_DIR, "sbom");
 const CARGO_MANIFESTS = [
+  path.join(DESKTOP_DIR, "native", "windows-taskbar", "Cargo.toml"),
+  path.join(DESKTOP_DIR, "native", "xbox-gamepad", "windows-gamepad-helper", "Cargo.toml"),
+  path.join(DESKTOP_DIR, "native", "worklouder", "windows-micro-helper", "Cargo.toml"),
   path.join(DESKTOP_DIR, "native", "remote-desktop", "windows-input", "Cargo.toml"),
   path.join(DESKTOP_DIR, "native", "remote-desktop", "windows-host", "Cargo.toml"),
   path.join(DESKTOP_DIR, "cindy-updater", "src-tauri", "Cargo.toml"),
@@ -94,6 +97,26 @@ const PACKAGE_POLICIES = {
     category: "proprietary",
     license: "LicenseRef-Anthropic-Commercial-Terms",
   },
+  // SDK >= 0.2.113 distributes native CLI packages under the same Anthropic
+  // commercial terms (their LICENSE.md is identical to the parent SDK's).
+  ...Object.fromEntries(
+    [
+      "darwin-arm64",
+      "darwin-x64",
+      "linux-arm64",
+      "linux-arm64-musl",
+      "linux-x64",
+      "linux-x64-musl",
+      "win32-arm64",
+      "win32-x64",
+    ].map((platform) => [
+      `@anthropic-ai/claude-agent-sdk-${platform}`,
+      {
+        category: "proprietary",
+        license: "LicenseRef-Anthropic-Commercial-Terms",
+      },
+    ]),
+  ),
 };
 
 /** 商业发行明确禁止进入生产依赖闭包的包。 */
@@ -702,6 +725,32 @@ function buildDesktopCommonEntries(apacheText, sharpPackageNames) {
     }),
   );
 
+  // Cindy adapts Codex's skill-creator source and ships it as cindy-skill-creator.
+  entries.push(
+    bundledComponent({
+      name: "OpenAI Codex skill-creator (adapted)",
+      version: "977193486dfe7a88c4dab24abeafe9b754f5b13f",
+      license: "Apache-2.0",
+      url: "https://github.com/openai/codex/tree/977193486dfe7a88c4dab24abeafe9b754f5b13f/codex-rs/skills/src/assets/samples/skill-creator",
+      licenseText: readBundledLicense(
+        "apps/desktop/resources/system-skills/cindy-skill-creator/license.txt",
+      ),
+    }),
+  );
+
+  // PyYAML — vendored pure-Python parser used by the bundled Skill tools.
+  entries.push(
+    bundledComponent({
+      name: "PyYAML (vendored pure-Python runtime)",
+      version: "6.0.3",
+      license: "MIT",
+      url: "https://github.com/yaml/pyyaml/tree/6.0.3",
+      licenseText: readBundledLicense(
+        "apps/desktop/resources/system-skills/cindy-skill-creator/scripts/_vendor/PyYAML-LICENSE.txt",
+      ),
+    }),
+  );
+
   // pi coding agent — 运行时从 CDN 下载到 userData，不进入安装包
   entries.push(
     bundledComponent({
@@ -866,6 +915,19 @@ function buildDesktopCommonEntries(apacheText, sharpPackageNames) {
       licenseText: readBundledLicense(
         "packages/browser-control-runtime/src/_generated/vendor/fs-safe/LICENSE",
       ),
+    }),
+  );
+
+  // Workspace packages are skipped by npm closure discovery. The vendored
+  // OpenCodex helpers are also bundled into Desktop main, not only the SSH proxy.
+  const opencodex = readJson(path.join(REPO_ROOT, "packages/model-compat/UPSTREAM.json"));
+  entries.push(
+    bundledComponent({
+      name: "OpenCodex compatibility sources (vendored)",
+      version: opencodex.commit,
+      license: "MIT",
+      url: `${opencodex.repository}/tree/${opencodex.commit}`,
+      licenseText: readBundledLicense("packages/model-compat/LICENSE.opencodex"),
     }),
   );
 

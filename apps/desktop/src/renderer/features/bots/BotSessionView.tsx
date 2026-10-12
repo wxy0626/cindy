@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { getDataOwnerGeneration, isDataOwnerGenerationCurrent } from '@/contexts/dataOwnerGeneration';
+import { Button } from '@/components/ui/button';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CircleAlert, RefreshCcw } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -7,7 +9,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { CCAgentSessionView } from '@/features/cc-agent/CCAgentSessionView';
 import type { ComposerBotMention } from '@/lib/fileTypes';
 import { getBotLastReadAt, markBotRead } from './botReadState';
-import { getBotProfiles, getBotUnreadCounts } from './botStore';
+import { getBotProfiles, getBotUnreadCounts, useBotProfiles } from './botStore';
+import { ensureBotWorkbenchTab } from '@/features/right-sidebar/lib/openBotWorkbenchTab';
 import type { BotChatIdentity } from './BotSessionContentHeader';
 import type { BotChatBinding } from './botChatPresentation';
 import { useBotIslandVisibleSession } from './useBotIslandVisibleSession';
@@ -39,9 +42,10 @@ function botRouteKey(botId: string | undefined, sessionId: string | undefined): 
 }
 
 function readBotChatIdentity(bot: unknown, botId: string): BotChatIdentity {
-  const candidate = (bot ?? {}) as { name?: unknown; avatar?: unknown; avatarColor?: unknown };
+  const candidate = (bot ?? {}) as { name?: unknown; avatar?: unknown; avatarColor?: unknown; templateId?: unknown };
   return {
     id: botId,
+    templateId: typeof candidate.templateId === 'string' ? candidate.templateId : undefined,
     name: typeof candidate.name === 'string' ? candidate.name : '',
     avatar: typeof candidate.avatar === 'string' ? candidate.avatar : null,
     avatarColor: typeof candidate.avatarColor === 'string' ? candidate.avatarColor : null,
@@ -135,6 +139,7 @@ export function BotSessionView() {
 }
 
 function BotSessionGateView() {
+  const readOwner = useRef(getDataOwnerGeneration());
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { botId, sessionId } = useParams();
@@ -163,12 +168,33 @@ function BotSessionGateView() {
   const visibleGate = visiblePresentation.gate;
   const isVisibleRouteCurrent = visiblePresentation.routeKey === routeKey;
 
+  // The gate proves ownership once; name and avatar edited in settings must
+  // still reach the open chat's header and composer.
+  const liveProfile = useBotProfiles().find((profile) => profile.id === visibleBotId);
+  const liveName = liveProfile?.name;
+  const liveAvatar = liveProfile?.avatar;
+  const liveAvatarColor = liveProfile?.avatarColor;
+  const visibleGateIdentity = visibleGate.kind === 'ready' ? visibleGate.identity : null;
+  const identity = useMemo(
+    () =>
+      visibleGateIdentity && liveName !== undefined
+        ? {
+            ...visibleGateIdentity,
+            name: liveName,
+            avatar: liveAvatar ?? visibleGateIdentity.avatar,
+            avatarColor: liveAvatarColor ?? visibleGateIdentity.avatarColor,
+          }
+        : visibleGateIdentity,
+    [visibleGateIdentity, liveName, liveAvatar, liveAvatarColor],
+  );
+
   useBotIslandVisibleSession(
     visibleGate.kind === 'ready' ? visibleSessionId ?? null : null,
   );
 
   useEffect(() => {
     let cancelled = false;
+    const owner = getDataOwnerGeneration();
     if (!botId || !sessionId) {
       setPresentation({
         routeKey,
@@ -190,7 +216,7 @@ function BotSessionGateView() {
       ),
     ])
       .then(([bot, bots]) => {
-        if (cancelled) return;
+        if (cancelled || !isDataOwnerGenerationCurrent(owner)) return;
         if (!bot || typeof bot !== 'object') {
           setPresentation({
             routeKey,
@@ -236,6 +262,7 @@ function BotSessionGateView() {
           typeof (listedBot as { unreadCount?: unknown }).unreadCount === 'number'
             ? (listedBot as { unreadCount: number }).unreadCount
             : 0;
+        readOwner.current = owner;
         setPresentation((prev) => {
           const nextGate: Extract<BotSessionGate, { kind: 'ready' }> = {
             kind: 'ready',
@@ -262,7 +289,7 @@ function BotSessionGateView() {
         });
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (cancelled || !isDataOwnerGenerationCurrent(owner)) return;
         setPresentation({
           routeKey,
           botId,
@@ -278,10 +305,15 @@ function BotSessionGateView() {
     };
   }, [botId, reloadVersion, routeKey, sessionId]);
 
-  // Opening the conversation is what marks it read, and staying in it keeps it
-  // read: while this view is mounted every row that lands in the task advances
-  // the read position, so a reply the user is watching arrive never turns into
-  // an unread badge behind their back.
+  // 本机伙伴主任务:右侧栏默认带上「工作台」标签(首次进入时创建并展开)。
+  // 远程伙伴走 RemoteBotSessionView,不经过这里;渠道任务、历史任务不提供工作台。
+  const workbenchSessionId =
+    visibleGate.kind === 'ready' && visibleGate.isCanonical ? visibleSessionId : undefined;
+  useEffect(() => {
+    if (!visibleBotId || !workbenchSessionId) return;
+    void ensureBotWorkbenchTab(workbenchSessionId, visibleBotId).catch(() => undefined);
+  }, [visibleBotId, workbenchSessionId]);
+
   useEffect(() => {
     if (visibleGate.kind !== 'ready' || !visibleBotId || !visibleSessionId) return;
     markBotRead(visibleBotId);
@@ -296,6 +328,21 @@ function BotSessionGateView() {
       unsubscribe?.();
     };
   }, [visibleBotId, visibleGate.kind, visibleSessionId]);
+
+  const onReadThrough = useCallback(
+    (at: number) => {
+      if (
+        isDataOwnerGenerationCurrent(readOwner.current) &&
+        visibleGate.kind === 'ready' &&
+        visibleGate.isCanonical &&
+        visibleBotId &&
+        visibleGate.identity.sessionId === visibleSessionId
+      ) {
+        markBotRead(visibleBotId, at);
+      }
+    },
+    [visibleBotId, visibleGate, visibleSessionId],
+  );
 
   if (visibleGate.kind === 'loading') {
     return (
@@ -341,7 +388,10 @@ function BotSessionGateView() {
               {t('bots.backToBot')}
             </button>
             {failed ? (
-              <button
+              <Button
+                variant="cta"
+                size="lg"
+                compact
                 type="button"
                 onClick={() => {
                   // 重试当前地址时显示 loading；正常切伙伴不会走这里。
@@ -357,7 +407,7 @@ function BotSessionGateView() {
               >
                 <RefreshCcw size={14} />
                 {t('bots.retry')}
-              </button>
+              </Button>
             ) : null}
           </div>
         </section>
@@ -377,9 +427,12 @@ function BotSessionGateView() {
           sessionIdProp={visibleSessionId}
           routeOwner
           botMentions={visibleGate.kind === 'ready' ? visibleGate.mentions : undefined}
-          botIdentity={visibleGate.kind === 'ready' ? visibleGate.identity : undefined}
+          botIdentity={visibleGate.kind === 'ready' ? identity ?? visibleGate.identity : undefined}
           botUnreadBoundaryAt={
             visibleGate.kind === 'ready' ? visibleGate.unreadBoundaryAt : null
+          }
+          onBotReadThrough={
+            visibleGate.kind === 'ready' && visibleGate.isCanonical ? onReadThrough : undefined
           }
         />
       </div>

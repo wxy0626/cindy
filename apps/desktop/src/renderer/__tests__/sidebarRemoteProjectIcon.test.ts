@@ -28,7 +28,16 @@ describe('sidebar remote project icon', () => {
   });
 
   it('maps device-link sessions to the device-link project icon and SSH sessions to the SSH project icon', () => {
-    expect(remoteProjectIconSource).toContain("kind === 'device-link' ? MonitorSmartphone : Globe");
+    expect(remoteProjectIconSource).toMatch(
+      /kind === 'device-link'\s+\?\s+MonitorSmartphone\s+:\s+Globe/,
+    );
+    // Agent 在另一台电脑运行的本机任务不冒充远程设备任务:标识画在左侧 Agent 图标上
+    // (信号波纹,见 remoteAgentVendorIcon.test.tsx),标题后不再另放芯片图标(2026-10-07)。
+    expect(remoteProjectIconSource).not.toContain('agent-device');
+    expect(remoteProjectIconSource).not.toContain('Cpu');
+    expect(sessionItemSource).not.toContain('kind="agent-device"');
+    expect(sessionCardSource).not.toContain('kind="agent-device"');
+    expect(sessionHeaderSource).not.toContain('kind="agent-device"');
     expect(sessionItemSource).toMatch(
       /const remoteIconKind = session\.deviceLinkDeviceId\s+\?\s+'device-link'\s+:\s+session\.remoteHostId\s+\?\s+'ssh'\s+:\s+null/,
     );
@@ -87,11 +96,15 @@ describe('sidebar remote project icon', () => {
   });
 
   // 2026-08-12 用户裁决:设备段头的条数去掉——它数的是顶层条目(项目行 + 散排对话
-  // + 对话组)而非任务数,读起来只会误导;「离线」标签接手 ml-auto 保持靠右。
+  // + 对话组)而非任务数,读起来只会误导。右侧后来改为灯组容器(聚合未读点 +
+  // 「离线」标注,2026-08 未读聚合灯),ml-auto 靠右语义由容器承接。
   it('drops the entry count from the device group header', () => {
     expect(projectsSectionSource).not.toContain('{section.entries.length}');
     expect(projectsSectionSource).toContain(
-      '<span className="ml-auto shrink-0 text-xs text-[var(--cmd-palette-item-meta)]">',
+      '<span className="ml-auto flex shrink-0 items-center gap-1.5">',
+    );
+    expect(projectsSectionSource).toContain(
+      '<span className="shrink-0 text-xs text-[var(--cmd-palette-item-meta)]">',
     );
   });
 

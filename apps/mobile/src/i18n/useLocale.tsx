@@ -19,8 +19,11 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { AppState } from 'react-native';
+import { clearSessionListCollator } from '@cindy/maker-shared/session-list';
 
 import { setManualLocaleOverride } from './appLanguage';
+import { clearPresentationDateFormatters } from './dateFormatters';
 import {
   i18n,
   DEFAULT_LOCALE,
@@ -51,6 +54,16 @@ function applyLocale(locale: LocalePreference): SupportedLocale {
 }
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    // System timezone/preferences may have changed while the app was backgrounded.
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        clearPresentationDateFormatters();
+        clearSessionListCollator();
+      }
+    });
+    return () => subscription.remove();
+  }, []);
   const [locale, setLocaleState] = useState<LocalePreference>(DEFAULT_LOCALE);
   const [effectiveLocale, setEffectiveLocale] = useState<SupportedLocale>(DEFAULT_LOCALE);
   // 用户已手动选择过语言时置位:挂载期的异步读回不得覆盖更晚的手动选择。

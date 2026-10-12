@@ -1224,6 +1224,7 @@ export const Method = {
   SkillsList: 'skills/list',
   ThreadStart: 'thread/start',
   ThreadResume: 'thread/resume',
+  ThreadInjectItems: 'thread/inject_items',
   ThreadFork: 'thread/fork',
   ThreadRollback: 'thread/rollback',
   ThreadTurnsList: 'thread/turns/list',
@@ -1237,6 +1238,9 @@ export const Method = {
   // Memory (实验性, experimentalApi 必须 true 才能用):
   // app-server/README.md:202-203 + 155
   ConfigRead: 'config/read',
+  /** EXPERIMENTAL. Register a remote exec-server as a named environment. */
+  EnvironmentAdd: 'environment/add',
+  ExperimentalFeatureList: 'experimentalFeature/list',
   ExperimentalFeatureEnablementSet: 'experimentalFeature/enablement/set',
   MemoryReset: 'memory/reset',
   // ServerRequest (Phase 2 + permissions):

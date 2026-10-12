@@ -11,6 +11,7 @@ import { GhostManager } from '../GhostManager';
 import {
   checkSkillMdConsistency,
   ghostSkillLinkName,
+  ghostSkillPluginRoot,
   removeGhostSkillLinksForRoots,
   reconcileGhostSkillLinks as reconcileGhostSkillLinksRaw,
 } from '../skillSlot';
@@ -45,7 +46,8 @@ afterEach(async () => {
   await fs.promises.rm(workDir, { recursive: true, force: true });
 });
 
-const sharedDir = () => path.join(homeDir, '.agents', 'skills');
+const sharedDir = () => path.join(ghostSkillPluginRoot(approvalStateRoot), 'skills');
+const legacySharedDir = () => path.join(homeDir, '.agents', 'skills');
 const claudeDir = () => path.join(homeDir, '.claude', 'skills');
 
 /**
@@ -90,15 +92,30 @@ function ghost(
   };
 }
 
-/** 在 brainRoot 下造一个真实技能目录(含 SKILL.md)。 */
-async function writeSkillDir(ghostId: string, rel: string, name = 'skill'): Promise<string> {
-  const dir = path.join(brainRoot, ghostId, ...rel.split('/'));
+/**
+ * 在指定根下造一个真实技能目录(含 SKILL.md)。
+ *
+ * 单独暴露 root 参数是因为 Windows 上 `mkdir(recursive)` 无法穿过 junction/
+ * 符号链接(reparse point)建新目录,词法根做别名时夹具只能落到物理根上。
+ */
+async function writeSkillDirUnder(
+  root: string,
+  ghostId: string,
+  rel: string,
+  name = 'skill',
+): Promise<string> {
+  const dir = path.join(root, ghostId, ...rel.split('/'));
   await fs.promises.mkdir(dir, { recursive: true });
   await fs.promises.writeFile(
     path.join(dir, 'SKILL.md'),
     `---\nname: ${name}\ndescription: 说明\n---\n\n正文\n`,
   );
   return dir;
+}
+
+/** 在 brainRoot 下造一个真实技能目录(含 SKILL.md)。 */
+function writeSkillDir(ghostId: string, rel: string, name = 'skill'): Promise<string> {
+  return writeSkillDirUnder(brainRoot, ghostId, rel, name);
 }
 
 function sameRealPath(a: string, b: string): boolean {
@@ -134,7 +151,7 @@ describe('skillSlot · checkSkillMdConsistency', () => {
 });
 
 describe('skillSlot · reconcileGhostSkillLinks', () => {
-  it('启用插件 → 建链进共享根并扇出 .claude;二次对账幂等', async () => {
+  it('启用插件 → 私有目录可见;二次对账幂等', async () => {
     await writeSkillDir('my-ghost', 'skills/foo', 'foo');
     const ghosts = [ghost('my-ghost', [{ dir: 'skills/foo', name: 'foo' }])];
 
@@ -145,15 +162,47 @@ describe('skillSlot · reconcileGhostSkillLinks', () => {
     const sharedLink = path.join(sharedDir(), linkName);
     const target = path.join(brainRoot, 'my-ghost', 'skills', 'foo');
     expect(sameRealPath(sharedLink, target)).toBe(true);
-    // .claude 兼容扇出(经 prepareSharedGlobalSkillLinks)
-    expect(sameRealPath(path.join(claudeDir(), linkName), target)).toBe(true);
+    expect(fs.existsSync(legacySharedDir())).toBe(false);
+    expect(fs.existsSync(claudeDir())).toBe(false);
 
     const second = await reconcileGhostSkillLinks({ ghosts, brainRoot, approvalStateRoot, homeDir });
     expect(second.changed).toBe(false);
     expect(second.actions.filter((a) => a.op !== 'kept')).toEqual([]);
   });
 
-  it('停用/卸载 → 撤链,.claude 悬空兼容链接一并回收', async () => {
+  it('migrates legacy fanout without touching user skills, and separates equal plugin skill names', async () => {
+    const target = await writeSkillDir('my-ghost', 'skills/foo', 'foo');
+    await writeSkillDir('other-ghost', 'skills/foo', 'foo');
+    await fs.promises.mkdir(legacySharedDir(), { recursive: true });
+    await fs.promises.mkdir(claudeDir(), { recursive: true });
+    const legacy = path.join(legacySharedDir(), 'my-ghost--foo');
+    const fanout = path.join(claudeDir(), 'my-ghost--foo');
+    await fs.promises.symlink(target, legacy, process.platform === 'win32' ? 'junction' : 'dir');
+    await fs.promises.symlink(legacy, fanout, process.platform === 'win32' ? 'junction' : 'dir');
+    const user = path.join(legacySharedDir(), 'user-skill');
+    await fs.promises.mkdir(user);
+    await fs.promises.writeFile(path.join(user, 'SKILL.md'), '# User skill');
+    const ghosts = ['my-ghost', 'other-ghost'].map((id) => ghost(id, [{ dir: 'skills/foo', name: 'foo' }]));
+    await reconcileGhostSkillLinks({ ghosts, brainRoot, approvalStateRoot, homeDir });
+    expect(fs.readdirSync(legacySharedDir())).toEqual(['user-skill']);
+    expect(fs.readdirSync(claudeDir())).toEqual([]);
+    expect(fs.readFileSync(path.join(user, 'SKILL.md'), 'utf8')).toBe('# User skill');
+    expect(fs.readdirSync(sharedDir())).toEqual(['my-ghost--foo', 'other-ghost--foo']);
+  });
+
+  it('removes a dangling legacy secondary link while preserving unrelated dangling links', async () => {
+    await fs.promises.mkdir(legacySharedDir(), { recursive: true });
+    await fs.promises.mkdir(claudeDir(), { recursive: true });
+    const legacy = path.join(legacySharedDir(), 'my-ghost--foo');
+    await fs.promises.symlink(path.join(brainRoot, 'my-ghost', 'missing'), legacy, process.platform === 'win32' ? 'junction' : 'dir');
+    await fs.promises.symlink(legacy, path.join(claudeDir(), 'my-ghost--foo'), process.platform === 'win32' ? 'junction' : 'dir');
+    await fs.promises.symlink(path.join(workDir, 'user-missing'), path.join(claudeDir(), 'user-skill'), process.platform === 'win32' ? 'junction' : 'dir');
+    await removeGhostSkillLinksForRoots([brainRoot, approvalStateRoot], homeDir);
+    expect(fs.readdirSync(legacySharedDir())).toEqual([]);
+    expect(fs.readdirSync(claudeDir())).toEqual(['user-skill']);
+  });
+
+  it('停用/卸载 → 撤销私有投影', async () => {
     await writeSkillDir('my-ghost', 'skills/foo', 'foo');
     const enabled = [ghost('my-ghost', [{ dir: 'skills/foo', name: 'foo' }])];
     await reconcileGhostSkillLinks({ ghosts: enabled, brainRoot, approvalStateRoot, homeDir });
@@ -164,7 +213,6 @@ describe('skillSlot · reconcileGhostSkillLinks', () => {
     const result = await reconcileGhostSkillLinks({ ghosts: disabled, brainRoot, approvalStateRoot, homeDir });
     expect(result.changed).toBe(true);
     expect(fs.existsSync(path.join(sharedDir(), linkName))).toBe(false);
-    expect(fs.existsSync(path.join(claudeDir(), linkName))).toBe(false);
 
     // 卸载(清单里没有它)语义相同:再建再收敛一次验证
     await reconcileGhostSkillLinks({ ghosts: enabled, brainRoot, approvalStateRoot, homeDir });
@@ -199,10 +247,14 @@ describe('skillSlot · reconcileGhostSkillLinks', () => {
     } catch {
       return;
     }
+    // brainRoot 走词法别名(本用例的被测点),但目录必须在物理根上造:Windows 上
+    // `mkdir(recursive)` 与 symlink 创建都无法穿过 reparse point(实测 ENOENT/EEXIST),
+    // 词法别名只作为对账入参与链接目标的表示形式。
     brainRoot = path.join(lexicalOwner, 'cindy-brain');
-    approvalStateRoot = path.join(lexicalOwner, 'cindy-brain-install-state');
-    await fs.promises.mkdir(brainRoot, { recursive: true });
-    await writeSkillDir('my-ghost', 'skills/foo', 'foo');
+    const physicalBrainRoot = path.join(physicalOwner, 'cindy-brain');
+    approvalStateRoot = path.join(physicalOwner, 'cindy-brain-install-state');
+    await fs.promises.mkdir(physicalBrainRoot, { recursive: true });
+    await writeSkillDirUnder(physicalBrainRoot, 'my-ghost', 'skills/foo', 'foo');
     const ghosts = [ghost('my-ghost', [{ dir: 'skills/foo', name: 'foo' }])];
     await reconcileGhostSkillLinks({ ghosts, brainRoot, approvalStateRoot, homeDir });
     const linkPath = path.join(sharedDir(), ghostSkillLinkName('my-ghost', 'foo'));
@@ -294,7 +346,6 @@ describe('skillSlot · reconcileGhostSkillLinks', () => {
     expect(result.changed).toBe(true);
     expect(result.warnings.some((warning) => warning.includes('字节不可信'))).toBe(true);
     expect(fs.existsSync(path.join(sharedDir(), linkName))).toBe(false);
-    expect(fs.existsSync(path.join(claudeDir(), linkName))).toBe(false);
   });
 
   it('外来链接(目标不在任何受管根内)→ 活链断链都不碰', async () => {
@@ -476,9 +527,9 @@ describe('skillSlot · reconcileGhostSkillLinks', () => {
     const foreignTarget = path.join(workDir, 'projects', 'other-ghost', 'skills', 'foo');
     await fs.promises.mkdir(managedTarget, { recursive: true });
     await fs.promises.mkdir(foreignTarget, { recursive: true });
-    await fs.promises.mkdir(sharedDir(), { recursive: true });
-    const managedLink = path.join(sharedDir(), 'other-ghost--foo');
-    const foreignLink = path.join(sharedDir(), 'foreign--foo');
+    await fs.promises.mkdir(legacySharedDir(), { recursive: true });
+    const managedLink = path.join(legacySharedDir(), 'other-ghost--foo');
+    const foreignLink = path.join(legacySharedDir(), 'foreign--foo');
     await fs.promises.symlink(managedTarget, managedLink, process.platform === 'win32' ? 'junction' : 'dir');
     await fs.promises.symlink(foreignTarget, foreignLink, process.platform === 'win32' ? 'junction' : 'dir');
 
@@ -493,8 +544,8 @@ describe('skillSlot · reconcileGhostSkillLinks', () => {
     const managedRoot = path.join(ownerRoot, 'cindy-brain');
     const managedTarget = path.join(managedRoot, 'other-ghost', 'skills', 'foo');
     await fs.promises.mkdir(managedTarget, { recursive: true });
-    await fs.promises.mkdir(sharedDir(), { recursive: true });
-    const managedLink = path.join(sharedDir(), 'other-ghost--foo');
+    await fs.promises.mkdir(legacySharedDir(), { recursive: true });
+    const managedLink = path.join(legacySharedDir(), 'other-ghost--foo');
     await fs.promises.symlink(
       managedTarget,
       managedLink,
@@ -527,8 +578,8 @@ describe('skillSlot · reconcileGhostSkillLinks', () => {
     const ownerRoot = path.join(workDir, 'owners', 'bbb', 'cindy-brain');
     const managedTarget = path.join(ownerRoot, 'other-ghost', 'skills', 'foo');
     await fs.promises.mkdir(managedTarget, { recursive: true });
-    await fs.promises.mkdir(sharedDir(), { recursive: true });
-    const managedLink = path.join(sharedDir(), 'other-ghost--foo');
+    await fs.promises.mkdir(legacySharedDir(), { recursive: true });
+    const managedLink = path.join(legacySharedDir(), 'other-ghost--foo');
     await fs.promises.symlink(
       managedTarget,
       managedLink,
@@ -555,8 +606,8 @@ describe('skillSlot · reconcileGhostSkillLinks', () => {
     const ownerRoot = path.join(workDir, 'owners', 'bbb', 'cindy-brain');
     const managedTarget = path.join(ownerRoot, 'other-ghost', 'skills', 'foo');
     await fs.promises.mkdir(managedTarget, { recursive: true });
-    await fs.promises.mkdir(sharedDir(), { recursive: true });
-    const managedLink = path.join(sharedDir(), 'other-ghost--foo');
+    await fs.promises.mkdir(legacySharedDir(), { recursive: true });
+    const managedLink = path.join(legacySharedDir(), 'other-ghost--foo');
     await fs.promises.symlink(
       managedTarget,
       managedLink,
@@ -578,8 +629,8 @@ describe('skillSlot · reconcileGhostSkillLinks', () => {
     const foreignTarget = path.join(workDir, 'projects', 'foreign', 'skills', 'foo');
     await fs.promises.mkdir(ownerRoot, { recursive: true });
     await fs.promises.mkdir(foreignTarget, { recursive: true });
-    await fs.promises.mkdir(sharedDir(), { recursive: true });
-    const foreignLink = path.join(sharedDir(), 'foreign--foo');
+    await fs.promises.mkdir(legacySharedDir(), { recursive: true });
+    const foreignLink = path.join(legacySharedDir(), 'foreign--foo');
     await fs.promises.symlink(
       foreignTarget,
       foreignLink,
@@ -704,7 +755,6 @@ describe('skillSlot · 全链路(打包 → 装入 → 对账 → 双端可见)'
     expect(approvedSkillRoot).toBeTruthy();
     const target = path.join(approvedSkillRoot!, 'skills', 'demo');
     expect(sameRealPath(path.join(sharedDir(), linkName), target)).toBe(true);
-    expect(sameRealPath(path.join(claudeDir(), linkName), target)).toBe(true);
     // 链接指向的 SKILL.md 就是包里那份
     expect(
       await fs.promises.readFile(path.join(sharedDir(), linkName, 'SKILL.md'), 'utf8'),
@@ -733,7 +783,6 @@ describe('skillSlot · 全链路(打包 → 装入 → 对账 → 双端可见)'
     });
     expect(tampered.warnings.some((warning) => warning.includes('字节不可信'))).toBe(true);
     expect(fs.existsSync(path.join(sharedDir(), linkName))).toBe(false);
-    expect(fs.existsSync(path.join(claudeDir(), linkName))).toBe(false);
 
     // 4) 卸载 → 对账 → 双端链接消失
     const removed = await manager.uninstall('e2e-ghost');
@@ -745,6 +794,5 @@ describe('skillSlot · 全链路(打包 → 装入 → 对账 → 双端可见)'
       homeDir,
     });
     expect(fs.existsSync(path.join(sharedDir(), linkName))).toBe(false);
-    expect(fs.existsSync(path.join(claudeDir(), linkName))).toBe(false);
   });
 });

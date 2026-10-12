@@ -14,7 +14,7 @@
     "regions": ["na"],
     "systems": ["desktop"],
     "themes": ["light", "dark"],
-    "langs": ["zh-CN", "zh-TW", "en", "ja", "ko"]
+    "langs": ["zh-CN", "en"]
   },
 
   "states": [
@@ -28,18 +28,18 @@
   "verify": {
     "cases": [
       { "id": "zh-light", "prefs": { "plat": "desk", "region": "na", "os": "desktop", "mode": "light", "lang": "zh-CN" } },
-      { "id": "zh-tw-dark", "prefs": { "plat": "desk", "region": "na", "os": "desktop", "mode": "dark", "lang": "zh-TW" } },
+      { "id": "zh-tw-dark", "prefs": { "plat": "desk", "region": "na", "os": "desktop", "mode": "dark", "lang": "zh-CN" } },
       { "id": "en-dark",  "prefs": { "plat": "desk", "region": "na", "os": "desktop", "mode": "dark",  "lang": "en" } },
-      { "id": "ja-light", "prefs": { "plat": "desk", "region": "na", "os": "desktop", "mode": "light", "lang": "ja" } },
-      { "id": "ko-dark",  "prefs": { "plat": "desk", "region": "na", "os": "desktop", "mode": "dark",  "lang": "ko" } }
+      { "id": "en-light", "prefs": { "plat": "desk", "region": "na", "os": "desktop", "mode": "light", "lang": "en" } },
+      { "id": "en-dark",  "prefs": { "plat": "desk", "region": "na", "os": "desktop", "mode": "dark",  "lang": "en" } }
     ],
     "noClip": [".qa-card-label", ".qa-section-title"],
     "persistence": {
       "via": [
         { "click": "[data-qa-pref='mode:dark']" },
-        { "click": "[data-qa-pref='lang:ja']" }
+        { "click": "[data-qa-pref='lang:en']" }
       ],
-      "expected": { "plat": "desk", "region": "na", "os": "desktop", "mode": "dark", "lang": "ja" },
+      "expected": { "plat": "desk", "region": "na", "os": "desktop", "mode": "dark", "lang": "en" },
       "storageKey": "qa-hifi:cindy-newmaker-cards-hifi:prefs",
       "reloads": 2,
       "initialState": "id"

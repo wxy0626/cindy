@@ -28,12 +28,23 @@ interface ProviderDefaultPolicy {
 /**
  * 新用户的产品默认顺序。
  *
- * Gateway 的可用推荐组合优先于订阅；Gateway 未就绪或推荐组合不可用时回退订阅。
- * 多订阅又没有“最近连接时间”可用时，固定按
- * OpenAI → Anthropic → xAI，避免依赖目录下发顺序造成升级后随机换默认。
- * 每个来源的首个 agent 是推荐 Harness，其余只在本机没有安装首选 Harness 时降级。
+ * Claude / Codex 订阅优先，再采用 Gateway 推荐组合，最后保留 xAI 回退。
+ * 出厂推荐按完整路由选择：Opus 使用 Claude Code，Astra 使用 Codex，Gateway 使用 Pi。
+ * 不为了提供默认值把订阅模型静默放到另一个 Harness。
  */
 const DEFAULT_POLICIES: readonly ProviderDefaultPolicy[] = [
+  {
+    providerId: 'anthropic',
+    accessKind: 'subscription',
+    agents: ['claude-code'],
+    modelIds: ['claude-opus-5-5', 'anthropic/claude-opus-5-5'],
+  },
+  {
+    providerId: 'openai',
+    accessKind: 'subscription',
+    agents: ['codex'],
+    modelIds: ['gpt-6-astra', 'chatgpt/gpt-6-astra'],
+  },
   {
     providerId: 'xd',
     accessKind: 'managed',
@@ -41,18 +52,6 @@ const DEFAULT_POLICIES: readonly ProviderDefaultPolicy[] = [
     modelIds: ['z-ai/glm-5.3-flash', 'glm-5.3-flash'],
     requireNewSessionDefault: true,
     requireImageInput: true,
-  },
-  {
-    providerId: 'openai',
-    accessKind: 'subscription',
-    agents: ['codex', 'claude-code', 'pi'],
-    modelIds: ['chatgpt/gpt-5.6-sol', 'gpt-5.6-sol'],
-  },
-  {
-    providerId: 'anthropic',
-    accessKind: 'subscription',
-    agents: ['claude-code', 'codex', 'pi'],
-    modelIds: ['claude-opus-5', 'anthropic/claude-opus-5'],
   },
   {
     providerId: 'xai',
@@ -75,7 +74,12 @@ export function isKnownProductDefaultTupleIdentity(args: {
   providerId: string;
   model: string;
 }): boolean {
-  return DEFAULT_POLICIES.some(
+  // Old automatic selections remain recognizable after the factory policy changes.
+  const legacyPolicies: readonly ProviderDefaultPolicy[] = [
+    { providerId: 'openai', accessKind: 'subscription', agents: ['codex', 'claude-code', 'pi'], modelIds: ['chatgpt/gpt-5.6-sol', 'gpt-5.6-sol'] },
+    { providerId: 'anthropic', accessKind: 'subscription', agents: ['claude-code', 'codex', 'pi'], modelIds: ['claude-opus-5', 'anthropic/claude-opus-5'] },
+  ];
+  return [...DEFAULT_POLICIES, ...legacyPolicies].some(
     (policy) =>
       policy.providerId === args.providerId &&
       policy.modelIds.includes(args.model) &&
@@ -95,14 +99,17 @@ function matchingModel(
   modelIds: readonly string[],
   requireNewSessionDefault = false,
   requireImageInput = false,
+  enabled?: (agent: AgentKind, providerId: string, model: { id: string; defaultEnabled?: boolean }) => boolean,
 ) {
   const models = provider.models[agent] ?? [];
-  return modelIds
-    .map((id) => models.find((model) => model.id === id))
+  const preferred = modelIds.map((id) => models.find((model) => model.id === id));
+  // Once the owner has an enabled list, a disabled factory recommendation must
+  // yield to another enabled model from this source, never bypass that list.
+  return (enabled ? [...preferred, ...models] : preferred)
     .find(
       (model) =>
         model !== undefined &&
-        model.defaultEnabled !== false &&
+        (enabled ? enabled(agent, provider.id, model) : model.defaultEnabled !== false) &&
         (!requireNewSessionDefault || model.newSessionDefault?.includes(agent) === true) &&
         (!requireImageInput || supportsImageInput(model)) &&
         isModelSelectableForNewRoute(model, { userProvider: provider.source === 'user' }),
@@ -120,6 +127,7 @@ export function resolveNewMakerDefaultTuples(args: {
   providersLoading: boolean;
   availableAgents: ReadonlySet<MakerVendor>;
   availableAgentsLoaded: boolean;
+  isModelEnabled?: (agent: AgentKind, providerId: string, model: { id: string; defaultEnabled?: boolean }) => boolean;
 }): NewMakerDefaultTuple[] {
   const { providers, providersLoading, availableAgents, availableAgentsLoaded } = args;
   if (providersLoading || !availableAgentsLoaded) return [];
@@ -145,6 +153,7 @@ export function resolveNewMakerDefaultTuples(args: {
         policy.modelIds,
         policy.requireNewSessionDefault,
         policy.requireImageInput,
+        args.isModelEnabled,
       );
       if (!model) continue;
       tuples.push({

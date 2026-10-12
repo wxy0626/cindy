@@ -1,3 +1,5 @@
+import { registerCompanionImport } from '../../bot-import/registration.js';
+import { registerTaskTagsIpc } from './taskTags';
 import { registerRoutineRemoteResources } from '../../routines/remote.js';
 import { registerRoutinesIpc } from '../../routines/service.js';
 /**
@@ -17,8 +19,6 @@ import {
   registerSessionIpc,
   resumeDeletedPiSubagentCleanup,
   type RegisterSessionIpcOpts,
-  setSessionRemovalCancelOperations,
-  setSessionRemovalCleanup,
   setSessionWorktreeRecycle,
 } from './sessions';
 import { registerMessageIpc } from './messages';
@@ -33,7 +33,9 @@ import { enqueueDurableWrite } from '../../messagePersistBroadcaster';
 import { registerDevSqliteVecIpc } from './dev/sqliteVec';
 import { registerSearchIpc } from './search';
 import { registerRemoteHistoryIpc } from './history';
-import { recoverActiveBotTemplateSkills, registerBotIpc } from './bots';
+import { registerHistoryQueryIpc } from './historyQuery';
+import { recoverActiveTeammateInvitations, registerBotIpc } from './bots';
+import { botRemoteManagement } from './botRemoteManagement';
 import { recoverMissingBotProfilesFromHomes } from '../botProfileRecovery.js';
 import { registerBotRemoteResourceProvider } from './botRemoteResourceProvider';
 
@@ -98,8 +100,6 @@ export interface RegisterLocalDbIpcOpts {
   requestWorktreeRecycle?: (sessionId: string, resources?: readonly string[]) => Promise<void>;
   /** Close a moved local Pi/Codex runtime after revalidating that its turn is idle. */
   closeIdleSessionForMove?: (sessionId: string) => Promise<boolean>;
-  /** Reconcile persisted Host-owned task runtimes once the owner DB is readable. */
-  reconcilePersistedSessionRuntimes?: () => Promise<void>;
   /** Serialize startup tombstone cleanup with task restore/start/send operations. */
   withSessionLock?: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>;
   /**
@@ -127,8 +127,6 @@ export interface RegisterLocalDbIpcOpts {
 }
 
 export function registerLocalDbIpc(opts: RegisterLocalDbIpcOpts = {}): void {
-  setSessionRemovalCancelOperations(opts.cancelSessionOperations ?? null);
-  setSessionRemovalCleanup(opts.cleanupRemovedSession ?? null);
   setSessionWorktreeRecycle(opts.requestWorktreeRecycle ?? null);
   setSessionRouteLockImplementation(opts.withSessionLock ?? null);
   const runEnsureReady = createOwnerEnsureCoordinator({
@@ -149,31 +147,17 @@ export function registerLocalDbIpc(opts: RegisterLocalDbIpcOpts = {}): void {
         tryGetDbClient() === client &&
         getCurrentDbClientUserId() === userId &&
         (opts.isOwnerCurrent?.(userId) ?? true);
-      // 数据库与账号边界都已就绪后再补装旧版内置伙伴能力；不依赖用户先打开
-      // 伙伴页面。列表/get 仍保留幂等恢复，覆盖同进程账号切换后的读取路径。
+      // Resume saved invitations after the database and account boundary are ready.
       await recoverMissingBotProfilesFromHomes(client);
-      await recoverActiveBotTemplateSkills();
+      await recoverActiveTeammateInvitations();
       if (!isReadyOwnerCurrent()) return;
       startMediaRefCompensationReconcile(userId, client, isReadyOwnerCurrent);
-
-      const cancelSessionOperations = opts.cancelSessionOperations;
-      const cleanupRemovedSession = opts.cleanupRemovedSession;
       const withSessionLock = opts.withSessionLock;
       const db = client.drizzle;
       void (async () => {
         if (!isReadyOwnerCurrent()) return;
-        try {
-          await opts.reconcilePersistedSessionRuntimes?.();
-        } catch (error) {
-          log.warn('persisted task runtime reconcile failed', {
-            userId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
         if (
           !isReadyOwnerCurrent() ||
-          !cancelSessionOperations ||
-          !cleanupRemovedSession ||
           !withSessionLock
         ) {
           return;
@@ -182,10 +166,6 @@ export function registerLocalDbIpc(opts: RegisterLocalDbIpcOpts = {}): void {
           db,
           isOwnerCurrent: isReadyOwnerCurrent,
           withSessionLock,
-          quiesceSession: async (sessionId) => {
-            await cancelSessionOperations(sessionId);
-            await cleanupRemovedSession(sessionId);
-          },
         });
       })().catch((error) => {
         log.warn('deleted task media reconcile failed', {
@@ -306,15 +286,18 @@ export function registerLocalDbIpc(opts: RegisterLocalDbIpcOpts = {}): void {
   });
   registerMessageIpc(opts.isSessionTurnPendingCompletion, opts.readHistoryLiveMessages);
   registerRemoteHistoryIpc();
+  registerHistoryQueryIpc();
   registerBotIpc();
+  registerCompanionImport();
   registerRoutinesIpc();
-  registerRoutineRemoteResources();
-  registerBotRemoteResourceProvider();
+  registerRoutineRemoteResources(botRemoteManagement);
+  registerBotRemoteResourceProvider(botRemoteManagement);
   registerSessionImportIpc();
   registerSessionShareIpc();
   registerOrcaWorkflowIpc();
   registerRecentWorkdirsIpc();
   registerProjectAliasesIpc();
+  registerTaskTagsIpc();
   registerRightSidebarTabsIpc();
   // Durable Subagent projection writes share the agent event path's FIFO, so a
   // reconciliation and an agent_task_update cannot both insert the first

@@ -44,11 +44,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useSidebarCardMode, type SidebarViewMode } from '@/hooks/useSidebarCardMode';
-import { MENU_CONTENT_CLASS, MENU_ITEM_CLASS } from '../menuStyles';
+import { MENU_ITEM_CLASS } from '../menuStyles';
 import { SectionCollapse } from '../SectionCollapse';
 import { CardMasonry } from '../CardMasonry';
 import { SessionItem } from '../SessionItem';
-import type { SessionAction, SessionClickHandler } from '../SessionItem';
+import type { SessionClickHandler } from '../SessionItem';
 import { SessionCard } from '../SessionCard';
 import type { ProjectNode as ProjectNodeData } from '../../lib/projectGrouping';
 import { buildSessionSourceLabelMap } from '../../lib/sessionSourceLabel';
@@ -106,12 +106,7 @@ function ViewStyleMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
-      <DropdownMenuContent
-        side="bottom"
-        align="end"
-        sideOffset={4}
-        className={cn(MENU_CONTENT_CLASS, 'min-w-[128px]')}
-      >
+      <DropdownMenuContent side="bottom" align="end" sideOffset={4} className="min-w-[128px]">
         {OPTIONS.map((opt) => (
           <DropdownMenuItem
             key={opt.value}
@@ -163,7 +158,7 @@ export interface PinnedSectionProps {
   notifications: ReadonlySet<string>;
   selectedSessionIds?: ReadonlySet<string>;
   onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: SessionAction) => void;
+  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   onMoveSession?: (id: string, target: SessionMoveTarget) => void;
@@ -211,7 +206,12 @@ export function PinnedSection({
   // 置顶视图传 visibleSessions;文字 / 列表都画,card 变体不画这个标签。
   const sourceLabelMap = useMemo(
     () =>
-      buildSessionSourceLabelMap(visibleSessions, allKnownProjects, t('ccAgent.sidebar.dialogues')),
+      buildSessionSourceLabelMap(
+        visibleSessions,
+        allKnownProjects,
+        t('ccAgent.sidebar.dialogues'),
+        t('settings.cindyMake.title'),
+      ),
     [visibleSessions, allKnownProjects, t],
   );
 

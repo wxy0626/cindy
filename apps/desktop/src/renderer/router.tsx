@@ -53,6 +53,10 @@ function lazyNamed<M, K extends keyof M & string>(
 
 // —— 主功能区懒加载组件（清单与下方路由一一对应；LocalDbGate 预热 MainLayout
 //    与 cc-agent 落地链，其余按导航时加载）——
+const MainEntryRedirect = lazyNamed(
+  () => import('@/components/layout/MainEntryRedirect'),
+  'MainEntryRedirect',
+);
 const MainLayout = lazyNamed(() => import('@/components/layout/MainLayout'), 'MainLayout');
 const SidebarWindowLayout = lazyNamed(
   () => import('@/components/layout/SidebarWindowLayout'),
@@ -98,11 +102,19 @@ const SkillhubFeatureLayout = lazyNamed(
   () => import('@/features/skillhub/SkillhubFeatureLayout'),
   'SkillhubFeatureLayout',
 );
-const SkillhubHomeView = lazyNamed(() => import('@/features/skillhub/SkillhubHomeView'), 'SkillhubHomeView');
-const SkillhubDetailView = lazyNamed(
-  () => import('@/features/skillhub/SkillhubDetailView'),
-  'SkillhubDetailView',
+const SkillhubLocalLayout = lazyNamed(
+  () => import('@/features/skillhub/SkillhubLocalLayout'),
+  'SkillhubLocalLayout',
 );
+const SkillhubDetailRoute = lazyNamed(
+  () => import('@/features/skillhub/SkillhubDetailRoute'),
+  'SkillhubDetailRoute',
+);
+/** 旧详情链接重定向：需要 `market` prop，props 类型单独标注（lazyNamed 只覆盖无 props 组件）。 */
+const LegacySkillDetailRedirect = lazy(async () => ({
+  default: (await import('@/features/skillhub/SkillhubDetailRoute'))
+    .LegacySkillDetailRedirect as unknown as ComponentType<{ market?: boolean }>,
+}));
 const SkillhubMarketListView = lazyNamed(
   () => import('@/features/skillhub/SkillhubMarketListView'),
   'SkillhubMarketListView',
@@ -114,6 +126,7 @@ const MakerExperimentalView = lazyNamed(
 const SchedulerPage = lazyNamed(() => import('@/features/scheduler'), 'SchedulerPage');
 const GhostPluginPage = lazyNamed(() => import('@/features/plugin/GhostPluginPage'), 'GhostPluginPage');
 const BotsFeatureLayout = lazyNamed(() => import('@/features/bots/BotsFeatureLayout'), 'BotsFeatureLayout');
+const BotsListView = lazyNamed(() => import('@/features/bots/BotsListView'), 'BotsListView');
 const BotsHomeView = lazyNamed(() => import('@/features/bots/BotsHomeView'), 'BotsHomeView');
 const BotHistorySessionView = lazyNamed(
   () => import('@/features/bots/BotHistorySessionView'),
@@ -121,6 +134,7 @@ const BotHistorySessionView = lazyNamed(
 );
 const BotRosterView = lazyNamed(() => import('@/features/bots/BotRosterView'), 'BotRosterView');
 const BotSessionView = lazyNamed(() => import('@/features/bots/BotSessionView'), 'BotSessionView');
+const BotGroupChatView = lazyNamed(() => import('@/features/bots/BotGroupChatView'), 'BotGroupChatView');
 const BotDirectMessageView = lazyNamed(
   () => import('@/features/bots/BotDirectMessageView'),
   'BotDirectMessageView',
@@ -144,7 +158,7 @@ const SettingsView = lazyNamed(() => import('@/components/settings/SettingsView'
  *   ProtectedRoute (已登录) — 校验 canEnterApp（真登出或换号窗口）
  *    └── LocalDbGate               → 等 localDb.ensureReady（按 userId 切库）
  *         └── MainLayout            → 主功能区
- *              ├── /                → Navigate to /cc-agent
+ *              ├── /                → MainEntryRedirect（恢复账号上次的主区入口）
  *              ├── /cc-agent/...    → CCAgentFeatureLayout
  *              ├── /bots/...        → BotsFeatureLayout
  *              └── /settings        → SettingsView
@@ -209,7 +223,15 @@ export const router = createHashRouter([
                 // 切到其它页面;MainLayout 自身崩溃才冒泡到根级全屏兜底。
                 errorElement: <RouteErrorFallback variant="section" />,
                 children: [
-                  { index: true, element: <Navigate to="/cc-agent" replace /> },
+                  // 首页入口按账号记忆恢复（上次停在伙伴还是 cc-agent），显式路由不受影响。
+                  {
+                    index: true,
+                    element: (
+                      <Lazy>
+                        <MainEntryRedirect />
+                      </Lazy>
+                    ),
+                  },
                   {
                     path: 'cc-agent',
                     element: (
@@ -303,6 +325,14 @@ export const router = createHashRouter([
                           </Lazy>
                         ),
                       },
+                      {
+                        path: 'list',
+                        element: (
+                          <Lazy>
+                            <BotsListView />
+                          </Lazy>
+                        ),
+                      },
                       // 阵容是主区的一页,不是浮在对话上的模态。静态段排在 :botId
                       // 之前(React Router 也按静态优先定级),所以 /bots/roster 不会
                       // 被当成一个叫 "roster" 的伙伴。
@@ -311,6 +341,16 @@ export const router = createHashRouter([
                         element: (
                           <Lazy>
                             <BotRosterView />
+                          </Lazy>
+                        ),
+                      },
+                      // 伙伴群聊是独立对象(不是某位伙伴的任务),静态段 'groups' 同样排在
+                      // :botId 之前,/bots/groups/<id> 不会被当成一个叫 "groups" 的伙伴。
+                      {
+                        path: 'groups/:groupId',
+                        element: (
+                          <Lazy>
+                            <BotGroupChatView />
                           </Lazy>
                         ),
                       },
@@ -377,39 +417,53 @@ export const router = createHashRouter([
                     children: [
                       { index: true, element: <Navigate to="/skillhub/local" replace /> },
                       {
-                        path: 'local',
+                        // pathless 壳：本地技能目录常驻（切到详情只隐藏不卸载，见
+                        // SkillhubLocalLayout），所以 /skillhub/local 的 index 由它渲染，
+                        // 自己不再挂组件。
+                        element: (
+                          <Lazy>
+                            <SkillhubLocalLayout />
+                          </Lazy>
+                        ),
                         children: [
                           {
-                            index: true,
+                            path: 'detail',
                             element: (
                               <Lazy>
-                                <SkillhubHomeView />
+                                <SkillhubDetailRoute />
                               </Lazy>
                             ),
                           },
                           {
-                            path: 'by-path',
-                            element: (
-                              <Lazy>
-                                <SkillhubDetailView />
-                              </Lazy>
-                            ),
-                          },
-                          {
-                            path: ':kind/global/:name',
-                            element: (
-                              <Lazy>
-                                <SkillhubDetailView />
-                              </Lazy>
-                            ),
-                          },
-                          {
-                            path: ':kind/project/:projectHash/:name',
-                            element: (
-                              <Lazy>
-                                <SkillhubDetailView />
-                              </Lazy>
-                            ),
+                            path: 'local',
+                            children: [
+                              { index: true, element: null },
+                              // 旧详情链接（by-path / 作用域路径）统一收敛到共享详情路由。
+                              {
+                                path: 'by-path',
+                                element: (
+                                  <Lazy>
+                                    <LegacySkillDetailRedirect />
+                                  </Lazy>
+                                ),
+                              },
+                              {
+                                path: ':kind/global/:name',
+                                element: (
+                                  <Lazy>
+                                    <LegacySkillDetailRedirect />
+                                  </Lazy>
+                                ),
+                              },
+                              {
+                                path: ':kind/project/:projectHash/:name',
+                                element: (
+                                  <Lazy>
+                                    <LegacySkillDetailRedirect />
+                                  </Lazy>
+                                ),
+                              },
+                            ],
                           },
                         ],
                       },
@@ -428,12 +482,27 @@ export const router = createHashRouter([
                           // 旧 URL 一律 fallback 回 market 列表
                           {
                             path: 'manage/:name',
-                            element: <Navigate to="/skillhub/market" replace />,
+                            element: (
+                              <Lazy>
+                                <LegacySkillDetailRedirect market />
+                              </Lazy>
+                            ),
                           },
-                          { path: ':name', element: <Navigate to="/skillhub/market" replace /> },
+                          {
+                            path: ':name',
+                            element: (
+                              <Lazy>
+                                <LegacySkillDetailRedirect market />
+                              </Lazy>
+                            ),
+                          },
                           {
                             path: ':kind/:name',
-                            element: <Navigate to="/skillhub/market" replace />,
+                            element: (
+                              <Lazy>
+                                <LegacySkillDetailRedirect market />
+                              </Lazy>
+                            ),
                           },
                         ],
                       },

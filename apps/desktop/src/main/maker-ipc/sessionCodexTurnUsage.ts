@@ -26,6 +26,7 @@ import {
   sumTurnUsageSegments,
 } from '../usage/turnCostCalculator.js';
 import { isExclusiveXaiModelId } from '../../shared/subscriptionModels.js';
+import { isCodexGatewayWireModel } from '@cindy/model-providers';
 import { type RegionalMoney } from '../../shared/regionalMoney.js';
 import { currentLedgerCurrency } from '../usage/ledgerCurrency.js';
 import { triggerClaudeSubscriptionUsageRefresh, triggerXaiSubscriptionUsageRefresh } from './usage.js';
@@ -70,7 +71,7 @@ export function recordSessionCodexTurnUsage(
     if (usage) recordCodexTurnUsage(usage);
     // 按模型记账: codex done.data.usage 是 **per-turn 增量语义** (maker-core
     // codexDoneUsage 契约: promptTokens=本 turn 未命中输入, completionTokens=完整输出
-    // (reasoningTokens 只是其中的诊断子集), cachedTokens=命中缓存;
+    // (reasoningTokens 只是其中的诊断子集), cachedTokens=命中缓存, cacheCreationTokens=写入缓存;
     // 整 turn 没收到 tokenUsage/updated 时全 0。
     // 直接入库, 不做 delta 化 —— 历史上 promptTokens 曾是 contextTokens 快照、这里
     // 做过 per-session delta 化, 语义改为 per-turn 后那套逻辑会把后小于前的 turn 记 0。
@@ -80,6 +81,7 @@ export function recordSessionCodexTurnUsage(
         completionTokens?: number;
         reasoningTokens?: number;
         cachedTokens?: number;
+        cacheCreationTokens?: number;
         segments?: unknown;
         durationMs?: number;
         turnDurationMs?: number;
@@ -87,14 +89,16 @@ export function recordSessionCodexTurnUsage(
       const promptTokens = Number(u.promptTokens) || 0;
       const completionTokens = Number(u.completionTokens) || 0;
       const cachedTokens = Number(u.cachedTokens) || 0;
+      const cacheCreationTokens = Number(u.cacheCreationTokens) || 0;
       const codexUsageSegments = normalizeTurnUsageSegments(u.segments);
       const codexSegmentTotals = sumTurnUsageSegments(codexUsageSegments);
       const codexSegmentsReliable =
         codexUsageSegments.length > 0 &&
         codexSegmentTotals.inputTokens === promptTokens &&
         codexSegmentTotals.outputTokens === completionTokens &&
-        codexSegmentTotals.cacheReadTokens === cachedTokens;
-      void recordSessionTurnTokens(session.id, promptTokens + completionTokens + cachedTokens);
+        codexSegmentTotals.cacheReadTokens === cachedTokens &&
+        codexSegmentTotals.cacheCreateTokens === cacheCreationTokens;
+      void recordSessionTurnTokens(session.id, promptTokens + completionTokens + cachedTokens + cacheCreationTokens);
       // 先落 daily_model_usage token 行, 再等价格表补 API cost。首页 usage push 会在
       // ~2s 后刷新, 不能让冷价格表 / 离线 fetch 把模型 token 行延后到刷新之后。
       // 后续 cost-only 增量不会重复累计 token。
@@ -111,7 +115,7 @@ export function recordSessionCodexTurnUsage(
         }
         const isCodexBudgetRoute =
           (sessionProvider == null || sessionProvider === 'xd') &&
-          pricingModel.startsWith('codex/');
+          isCodexGatewayWireModel(pricingModel);
         const isCodexXaiProviderRoute =
           (sessionProvider == null || sessionProvider === 'xai') &&
           isExclusiveXaiModelId(pricingModel);
@@ -149,13 +153,14 @@ export function recordSessionCodexTurnUsage(
           ? codexSubscriptionUsageModelKey(pricingModel)
           : codexApiUsageModelKey(pricingModel);
         await recordModelTurnUsage({
+          sessionId: session.id,
           agentKind: 'codex',
           model: modelUsageKey,
           money: isSubscriptionValue ? deps.unpricedSubscriptionValueMarker() : undefined,
           inputTokensDelta: promptTokens,
           outputTokensDelta: completionTokens,
           cacheReadTokensDelta: cachedTokens,
-          cacheCreateTokensDelta: 0,
+          cacheCreateTokensDelta: cacheCreationTokens,
         }).finally(() => rebroadcastCodexTodayUsage());
 
         // Codex SDK 不报 $, 用价格表折算。普通模型 + oauth(订阅)显示为 token 价值;api 模式和 codex/
@@ -171,7 +176,7 @@ export function recordSessionCodexTurnUsage(
           inputTokens: promptTokens,
           outputTokens: completionTokens,
           cacheReadTokens: cachedTokens,
-          cacheCreateTokens: 0,
+          cacheCreateTokens: cacheCreationTokens,
           model: turnModel,
           durationMs: u.durationMs,
           turnDurationMs: u.turnDurationMs,
@@ -220,6 +225,7 @@ export function recordSessionCodexTurnUsage(
           // writing them into #billing=api would later reconstruct an estimate as actual cost.
           if (money && (isSubscriptionValue || price?.source === 'gateway')) {
             await recordModelTurnUsage({
+              sessionId: session.id,
               agentKind: 'codex',
               model: modelUsageKey,
               money,
@@ -273,7 +279,7 @@ export function recordSessionCodexTurnUsage(
           !isCustomProviderRoute &&
           !isExclusiveXaiModelId(model) &&
           (codexAuthInjection === 'env-key' ||
-            model.startsWith('codex/') ||
+            isCodexGatewayWireModel(model) ||
             (sessionProvider === 'xd' && hasGatewayKey))
         ) {
           void triggerClaudeAccountUsageRefresh();

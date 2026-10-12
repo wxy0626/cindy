@@ -50,7 +50,9 @@ export interface GhostPluginListItem {
   /** 本地化后的主视图标题；未声明时为 null。 */
   mainViewTitle: string | null;
   /** 声明了由 Host 承载、但可从插件 UI 主动进入的能力。 */
-  hostCapability: 'ios-simulator' | null;
+  retirement?: InstalledGhost['retirement'];
+  /** 声明了 Host 侧的 iOS Simulator 能力入口。 */
+  hostCapability?: 'ios-simulator' | null;
   oauthAuthorizationExpired?: boolean;
   trust?: GhostTrustInfo;
   iconDataUrl?: string;
@@ -67,7 +69,9 @@ export interface GhostPluginListItem {
 export type GhostPrimaryAction = 'panel' | 'command' | 'capability' | 'manage';
 
 export function ghostPrimaryAction(
-  item: Pick<GhostPluginListItem, 'tabPanel' | 'canUse' | 'hostCapability'>,
+  item: Pick<GhostPluginListItem, 'tabPanel' | 'canUse'> & {
+    hostCapability?: GhostPluginListItem['hostCapability'];
+  },
 ): GhostPrimaryAction {
   if (item.tabPanel) return 'panel';
   if (item.canUse) return 'command';
@@ -82,8 +86,8 @@ export interface GhostPluginDetail extends GhostPluginListItem {
   tools: readonly GhostToolDecl[];
   hasSettingsUi: boolean;
   cindyCapabilities: readonly string[];
-  /** 申请了派活取件(agent.errand)——详情页据此渲染宿主统一的「AI 代办」配置卡。 */
-  hasErrand: boolean;
+  /** 新建普通任务的能力共用宿主「任务设置」，包含旧 errand 适配器。 */
+  hasTaskPreferences: boolean;
   panelMinWidth: number | null;
   installDir: string | null;
 }
@@ -178,7 +182,7 @@ export function filterGhostPluginItems<T extends GhostPluginListItem>(
  * Orders installed shortcuts by host-recorded recency while keeping never-used items stable.
  * Unknown/stale ids are ignored, so uninstall or migration residue cannot hide an item.
  */
-export function sortGhostPluginItemsByRecentUse<T extends Pick<GhostPluginListItem, 'id'>>(
+export function sortGhostPluginItemsByRecentUse<T extends Pick<GhostPluginListItem, 'id' | 'retirement'>>(
   items: readonly T[],
   recentIds: readonly string[],
 ): T[] {
@@ -208,7 +212,7 @@ export function sortGhostPluginItemsByRecentUse<T extends Pick<GhostPluginListIt
  * so letting them jump the row would only bury the unread signal.
  * Pure and reactive — recompute freely from current signals; there is no frozen snapshot to go stale.
  */
-export function sortInstalledForDisplay<T extends Pick<GhostPluginListItem, 'id'>>(
+export function sortInstalledForDisplay<T extends Pick<GhostPluginListItem, 'id' | 'retirement'>>(
   items: readonly T[],
   {
     recentIds,
@@ -220,8 +224,8 @@ export function sortInstalledForDisplay<T extends Pick<GhostPluginListItem, 'id'
     .map((item, stableIndex) => ({ item, stableIndex }))
     .sort((a, b) => {
       // Tier 1 — unread notifications, newest badge first.
-      const aAt = unreadAtById.get(a.item.id);
-      const bAt = unreadAtById.get(b.item.id);
+      const aAt = a.item.retirement?.unread ? Number.MAX_SAFE_INTEGER : unreadAtById.get(a.item.id);
+      const bAt = b.item.retirement?.unread ? Number.MAX_SAFE_INTEGER : unreadAtById.get(b.item.id);
       if ((aAt !== undefined) !== (bAt !== undefined)) return aAt !== undefined ? -1 : 1;
       if (aAt !== undefined && bAt !== undefined && aAt !== bAt) return bAt - aAt;
       // Tier 2 — recently used, newest first.
@@ -245,12 +249,12 @@ export function sortInstalledForDisplay<T extends Pick<GhostPluginListItem, 'id'
  * when the user has many plugins. Updatable-but-read plugins can still fold (the banner surfaces
  * updates).
  */
-export function installedVisibleCount<T extends Pick<GhostPluginListItem, 'id'>>(
+export function installedVisibleCount<T extends Pick<GhostPluginListItem, 'id' | 'retirement'>>(
   items: readonly T[],
   unreadAtById: ReadonlyMap<string, number>,
   cap: number,
 ): number {
-  const unreadCount = items.reduce((count, item) => count + (unreadAtById.has(item.id) ? 1 : 0), 0);
+  const unreadCount = items.reduce((count, item) => count + ((item.retirement?.unread || unreadAtById.has(item.id)) ? 1 : 0), 0);
   return Math.max(cap, unreadCount);
 }
 
@@ -283,6 +287,7 @@ export function toGhostPluginListItem(
     tabPanel: manifest.panel?.position === 'tab',
     hasMainView: manifest.mainView !== undefined,
     mainViewTitle: manifest.mainView ? (manifest.mainView.title ?? manifest.name) : null,
+    retirement: ghost.retirement,
     hostCapability: manifest.iosSimulator === true ? 'ios-simulator' : null,
     oauthAuthorizationExpired: ghost.oauthAuthorizationExpired !== undefined,
     trust: ghost.trust ?? {
@@ -316,7 +321,7 @@ export function toGhostPluginDetail(
     cindyCapabilities: PINNABLE_CINDY_CATEGORIES.flatMap((category) =>
       (manifest.cindy?.[category] ?? []).map((action) => `${category}.${action}`),
     ),
-    hasErrand: manifest.agent?.errand === true,
+    hasTaskPreferences: !!manifest.workspace || manifest.agent?.errand === true || manifest.agent?.tasks === true,
     panelMinWidth: manifest.panel ? (manifest.panel.minWidth ?? 280) : null,
     installDir: ghost.dir,
   };

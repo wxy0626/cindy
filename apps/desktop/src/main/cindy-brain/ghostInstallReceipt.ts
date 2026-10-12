@@ -45,6 +45,29 @@ const MAX_MIGRATION_LEDGER_BYTES = 64 * 1024;
 const ICON_DATA_URL_RE = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
 
 /**
+ * 在状态根里独占创建一个临时文件,返回它的路径供随后的 rename/link 发布。
+ *
+ * 为什么要先解析物理路径:Windows 上 `O_CREAT|O_EXCL`(即 `flag: 'wx'`)穿过
+ * junction/符号链接祖先(AppData 重定向、CindyShared 挂在链接目录等)时会被
+ * libuv 误报 EEXIST —— 目标文件其实并不存在,状态根的写入会整条失败。
+ * 发布目标仍用词法路径,临时文件落在同一物理目录,link/rename 依旧原子。
+ */
+async function writeExclusiveStateTempFile(
+  dir: string,
+  fileName: string,
+  data: string,
+): Promise<string> {
+  const physicalDir = await fs.promises.realpath(dir).catch(() => dir);
+  const temp = path.join(physicalDir, fileName);
+  await fs.promises.writeFile(temp, data, {
+    encoding: 'utf8',
+    flag: 'wx',
+    mode: 0o600,
+  });
+  return temp;
+}
+
+/**
  * 一次明确批准的插件安装事实；只允许 Host 写入安装目录之外的状态根。
  *
  * receipt 钉住的是**授权事实**(批准过的 manifest / trust / 启停 / revision)。
@@ -52,6 +75,8 @@ const ICON_DATA_URL_RE = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/
  * 目录加载，只有技能目录因为越出沙箱而被拷成快照。
  */
 export interface GhostInstallReceipt {
+  /** Explicit Host confirmation; absent on older receipts, never inferred from manifest. */
+  taskCapabilityApproved?: true;
   schemaVersion: typeof RECEIPT_SCHEMA_VERSION;
   id: string;
   revision: string;
@@ -248,7 +273,7 @@ export class GhostInstallReceiptStore {
    */
   async write(
     receipt: GhostInstallReceipt,
-    options: { skillSourceDir?: string; requireSkillSnapshot?: boolean } = {},
+    options: { skillSourceDir?: string; requireSkillSnapshot?: boolean; assertCurrent?: () => void } = {},
   ): Promise<void> {
     const validated = validateReceipt(receipt, receipt.id);
     if (!validated.ok)
@@ -280,25 +305,28 @@ export class GhostInstallReceiptStore {
       await this.ensureMigrationMarker(receipt.id);
     }
     const target = this.receiptPath(receipt.id);
-    const temp = path.join(
-      root,
-      `.${receipt.id}-${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`,
-    );
     const persistedReceipt = {
       ...validated.receipt,
       manifest: ghostManifestToAuthorFormat(validated.receipt.manifest),
     };
+    let temp: string | undefined;
     try {
-      await fs.promises.writeFile(temp, `${JSON.stringify(persistedReceipt, null, 2)}\n`, {
-        encoding: 'utf8',
-        flag: 'wx',
-        mode: 0o600,
-      });
-      await fs.promises.rename(temp, target);
+      temp = await writeExclusiveStateTempFile(
+        root,
+        `.${receipt.id}-${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`,
+        `${JSON.stringify(persistedReceipt, null, 2)}\n`,
+      );
+      if (options.assertCurrent) {
+        // No event-loop gap between owner validation and publishing approval.
+        options.assertCurrent();
+        fs.renameSync(temp, target);
+      } else {
+        await fs.promises.rename(temp, target);
+      }
     } catch (error) {
       throw error;
     } finally {
-      await fs.promises.rm(temp, { force: true }).catch(() => undefined);
+      if (temp) await fs.promises.rm(temp, { force: true }).catch(() => undefined);
     }
     await this.pruneStaleSkillSnapshots(receipt);
   }
@@ -557,9 +585,13 @@ export class GhostInstallReceiptStore {
     const root = this.rootDir();
     await fs.promises.mkdir(root, { recursive: true });
     const target = this.migrationMarkerPath(id);
-    const temp = path.join(root, `.migrated-${id}-${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`);
+    let temp: string | undefined;
     try {
-      await fs.promises.writeFile(temp, '', { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+      temp = await writeExclusiveStateTempFile(
+        root,
+        `.migrated-${id}-${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`,
+        '',
+      );
       // Publish via hard-link first so the operation is no-clobber:
       // link fails with EEXIST if a concurrent writer already created
       // the marker, while rename would silently replace it and claim
@@ -593,7 +625,7 @@ export class GhostInstallReceiptStore {
       // proceeding with a receipt that lacks the migration guard.
       throw error;
     } finally {
-      await fs.promises.rm(temp, { force: true }).catch(() => undefined);
+      if (temp) await fs.promises.rm(temp, { force: true }).catch(() => undefined);
     }
   }
 
@@ -630,19 +662,16 @@ export class GhostInstallReceiptStore {
     const root = this.rootDir();
     await fs.promises.mkdir(root, { recursive: true });
     const target = this.migrationLedgerPath();
-    const temp = path.join(
-      root,
-      `.legacy-migration-${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`,
-    );
+    let temp: string | undefined;
     try {
-      await fs.promises.writeFile(temp, `${JSON.stringify(ledger, null, 2)}\n`, {
-        encoding: 'utf8',
-        flag: 'wx',
-        mode: 0o600,
-      });
+      temp = await writeExclusiveStateTempFile(
+        root,
+        `.legacy-migration-${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`,
+        `${JSON.stringify(ledger, null, 2)}\n`,
+      );
       await fs.promises.rename(temp, target);
     } finally {
-      await fs.promises.rm(temp, { force: true }).catch(() => undefined);
+      if (temp) await fs.promises.rm(temp, { force: true }).catch(() => undefined);
     }
   }
 
@@ -657,19 +686,16 @@ export class GhostInstallReceiptStore {
     const root = this.rootDir();
     await fs.promises.mkdir(root, { recursive: true });
     const target = this.pendingMutationPath(id);
-    const temp = path.join(
-      root,
-      `.pending-${id}-${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`,
-    );
+    let temp: string | undefined;
     try {
-      await fs.promises.writeFile(temp, `${JSON.stringify({ version: 1, id, ...entry })}\n`, {
-        encoding: 'utf8',
-        flag: 'wx',
-        mode: 0o600,
-      });
+      temp = await writeExclusiveStateTempFile(
+        root,
+        `.pending-${id}-${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`,
+        `${JSON.stringify({ version: 1, id, ...entry })}\n`,
+      );
       await fs.promises.rename(temp, target);
     } finally {
-      await fs.promises.rm(temp, { force: true }).catch(() => undefined);
+      if (temp) await fs.promises.rm(temp, { force: true }).catch(() => undefined);
     }
   }
 
@@ -888,7 +914,7 @@ export class GhostInstallReceiptStore {
    * 回收同一插件下非当前 revision 的技能快照与崩溃残留的 `.tmp` 目录。
    *
    * 只在新 receipt 已经原子提交之后跑:此刻旧 revision 已不是批准事实，留着
-   * 就是每次更新泄漏一份完整拷贝。共享技能根里指向旧 revision 的链接会因此
+   * 就是每次更新泄漏一份完整拷贝。插件技能根里指向旧 revision 的链接会因此
    * 短暂断链，直到下一轮对账重指——对越出沙箱的 skill 能力来说，短暂"技能不可
    * 用"是正确的收敛方向，留着旧批准版本继续生效不是。
    *
@@ -1020,6 +1046,7 @@ export function readLegacyInstallTrust(dir: string): GhostTrustInfo | null {
 }
 
 export function createGhostInstallReceipt(input: {
+  taskCapabilityApproved?: true;
   manifest: GhostManifest;
   localeResources: Record<string, GhostManifestLocaleResource>;
   enabled: boolean;
@@ -1043,6 +1070,7 @@ export function createGhostInstallReceipt(input: {
     enabled: input.enabled,
     trust: input.trust,
     skillContentSha256: input.skillContentSha256,
+    ...(input.taskCapabilityApproved === true ? { taskCapabilityApproved: true as const } : {}),
     ...(input.packageSha256 ? { packageSha256: input.packageSha256 } : {}),
     ...(input.iconDataUrl ? { iconDataUrl: input.iconDataUrl } : {}),
     ...(input.installOrigin !== undefined ? { installOrigin: input.installOrigin } : {}),
@@ -1219,6 +1247,7 @@ function validateReceipt(
       enabled: value.enabled,
       trust,
       skillContentSha256,
+      ...(value.taskCapabilityApproved === true ? { taskCapabilityApproved: true as const } : {}),
       ...(typeof value.packageSha256 === 'string' ? { packageSha256: value.packageSha256 } : {}),
       ...(typeof value.iconDataUrl === 'string' ? { iconDataUrl: value.iconDataUrl } : {}),
       ...(installOrigin !== undefined ? { installOrigin } : {}),

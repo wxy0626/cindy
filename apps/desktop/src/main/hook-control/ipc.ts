@@ -21,6 +21,10 @@ import { isModelVisible, visibleModelUnion } from '@cindy/model-providers';
 import { BRAND_NAME } from '@cindy/maker-shared/branding';
 
 import { createLogger } from '../logger.js';
+import { t } from '../i18n.js';
+import { buildOfficialBotCommandMenus } from '../im/shared/botCommands.js';
+import { stopSessionTurnExplicitly } from '../maker-ipc/register.js';
+import { onChannelTurn } from '../maker-ipc/channelTurnSignal.js';
 import { getMaker, restartCodexAfterAuthModeChange } from '../maker-host/index.js';
 import { shutdownCodexEnvironment } from '../mcp-integrations/codexEnvironment.js';
 import { getDesktopProviderService } from '../maker-host/createDesktopProviderService.js';
@@ -54,6 +58,7 @@ import { createWorkspacePrefsMirror } from './workspacePrefsMirror.js';
 import { patchSessionMetaInDb } from '../localDb/ipc/sessions.js';
 import {
   dialogueWorkspaceRootDir,
+  dialogueWorkspaceRoots,
   ensureDialogueWorkspaceDir,
 } from '../localDb/dialogueWorkspace.js';
 import * as authManager from '../authManager.js';
@@ -108,6 +113,7 @@ import { resetTelegramSpeakerRegistrationCache } from '../im/telegram/contactsAu
 import { assertTrustedAppRendererEvent } from '../security/trustedAppRenderer.js';
 import { getAgentIslandService } from '../agent-island/service.js';
 import { setLifecycleAnnouncementFromIpc } from './lifecycleAnnouncementIpc.js';
+import { setSlackCommunicationsFromIpc } from './slackCommunicationsIpc.js';
 
 const log = createLogger('hook-control');
 
@@ -193,8 +199,7 @@ async function drainCodexMcpRefreshForSlackAvailability(): Promise<void> {
     while (codexMcpRefreshPending) {
       codexMcpRefreshPending = false;
       try {
-        await restartCodexAfterAuthModeChange();
-        await shutdownCodexEnvironment();
+        await restartCodexAfterAuthModeChange(shutdownCodexEnvironment);
         log.info('Codex MCP environment refreshed after Slack provider availability changed', {
           enabled: latestSlackToolProviderEnabled,
         });
@@ -515,6 +520,7 @@ function ensureInstances(): { store: SlackHookStore; manager: HookControlManager
       // 内置「对话」伪目录(chat): 与桌面端无项目对话同一套 app 托管目录
       dialogue: {
         rootDir: dialogueWorkspaceRootDir,
+        rootDirs: dialogueWorkspaceRoots,
         allocateDir: async (sessionId) => ensureDialogueWorkspaceDir(sessionId, Date.now()),
       },
       // task.cancel 的中断出口: 与用户手动 Stop 同一条 session.abort() 路径
@@ -534,6 +540,9 @@ function ensureInstances(): { store: SlackHookStore; manager: HookControlManager
         }
         await session.abort();
       },
+      // 渠道 /stop(task.cancel): 与桌面 Stop 同一套清理(撤续跑 / 取消恢复 / 暂停 Goal /
+      // 停输入队列并中止当前一轮), 见 docs/dev-rules/im-turn-flow.md 不变量 9。
+      stopSessionExplicitly: (sessionId) => stopSessionTurnExplicitly(sessionId),
       // session.archive 的归档出口: 与 device-link 远程归档同一条
       // patchSessionMetaInDb 路径(落库 + sessions:patched 广播, sidebar 即时移出)
       archiveSessionRow: async (sessionId) => {
@@ -544,10 +553,14 @@ function ensureInstances(): { store: SlackHookStore; manager: HookControlManager
       // 「用户在桌面端点了重试 / 继续任务」信号 -> 把那一轮接回渠道原消息
       // (turn.reopen, 协议阶段 18)。信号由 maker 的发送事务发布。
       subscribeUiContinuation: onUiContinuation,
+      subscribeChannelTurn: (listener) => onChannelTurn((session, phase, source) => listener(session.id, session.workDir, phase, source)),
       subscribeUiSessionIntervention: onUiSessionIntervention,
       subscribeUiTurnDispatching: onUiTurnDispatching,
       subscribeUiTurnUndispatched: onUiTurnUndispatched,
       accountInitiallyActive: false,
+      // 官方 Telegram 命令菜单以 desktop 注册表为准(telegram-commands-v1), 按 Telegram
+      // 用户语言各渲染一份。
+      telegramCommandMenus: () => buildOfficialBotCommandMenus((key, locale) => t(key, locale)),
       log,
     });
     manager = createHookControlManager({
@@ -913,14 +926,18 @@ export function registerHookControlIpc(): void {
     return runMultiTeamAction((mgr) => mgr.rebindTeam(teamId));
   });
 
-  registerTrustedHookControlHandler(HOOK_CONTROL_INVOKE.REVOKE_TEAM, (_e, payload) => {
+  registerTrustedHookControlHandler(HOOK_CONTROL_INVOKE.SET_SLACK_COMMUNICATIONS, (_e, payload) => {
+    requireHookControl();
+    return setSlackCommunicationsFromIpc(ensureInstances().manager, payload);
+  });
+
+  registerTrustedHookControlHandler(HOOK_CONTROL_INVOKE.REVOKE_TEAM, async (_e, payload) => {
     requireHookControl();
     const p = requireObject(payload);
     const teamId = requireString(p.teamId, 'teamId');
-    // displaced 行的删除是纯本地操作, 离线也要能删 —— 不做 multi-team 能力
-    // 前置检查(manager 内部区分 displaced/活跃行)
+    // manager 区分旧 server 本地缓存清理、新 server 通讯 grant 撤销和 Bot 解绑。
     const mgr = ensureInstances().manager;
-    if (!mgr.revokeTeam(teamId)) {
+    if (!await mgr.revokeTeam(teamId)) {
       throwIpcError('HOOK_NOT_CONNECTED', 'slack hook is not connected');
     }
     return { hook: mgr.snapshot() };

@@ -1003,7 +1003,7 @@ describe('Ghost manifest contract', () => {
     expect(validateGhostManifest(withoutMin)).toEqual({ ok: true, manifest: withoutMin });
   });
 
-  it('keeps v2 main-view paired and rejects unsafe or unknown mainView fields', () => {
+  it('keeps v2 main-view paired, rejects unsafe paths and preserves extension fields', () => {
     const legacyBase = {
       ...validManifest,
       minCindyVersion: '1.2.3',
@@ -1057,8 +1057,8 @@ describe('Ghost manifest contract', () => {
         mainView: { html: 'main-view.html', position: 'left' },
       }),
     ).toMatchObject({
-      ok: false,
-      reason: expect.stringContaining('不允许的字段'),
+      ok: true,
+      manifest: { mainView: { position: 'left' } },
     });
   });
 
@@ -1073,8 +1073,8 @@ describe('Ghost manifest contract', () => {
     });
     const withNode = (node: Record<string, unknown>) => validateGhostManifest({ ...base, node });
     expect(withNode({ entry: 'node/a.cjs', protocol: 'mcp-stdio', command: 'sh' })).toMatchObject({
-      ok: false,
-      reason: expect.stringContaining('不能声明 command/args/shell/env'),
+      ok: true,
+      manifest: { node: { command: 'sh', entry: 'node/a.cjs', protocol: 'mcp-stdio' } },
     });
     expect(withNode({ entry: '../a.cjs', protocol: 'mcp-stdio' }).ok).toBe(false);
     expect(withNode({ entry: 'index.js', protocol: 'mcp-stdio' })).toMatchObject({
@@ -1178,6 +1178,29 @@ describe('Ghost manifest contract', () => {
         url: 'https://mail.example.com/settings',
       },
     ]);
+  });
+
+  it('preserves OAuth references for plugin-local runtime resolution', () => {
+    const manifest = {
+      ...validManifest, settingsHtml: 'settings.html', slots: ['tool', 'network', 'node'],
+      network: { hosts: ['example.test'], secrets: [{
+        key: 'mail_account', label: 'Mail', source: 'oauth',
+        inject: { header: 'Authorization', format: 'Bearer {value}' },
+        oauth: { authorizeUrl: 'https://example.test/auth', tokenUrl: 'https://example.test/token', scopes: ['mail'] },
+      }] },
+      node: { entry: 'node/worker.cjs', protocol: 'json-rpc-stdio', secretBindings: [{
+        key: 'access_token', label: 'Mail', methods: ['run'], oauthSecret: 'mail_account',
+      }] },
+    };
+    const result = validateGhostManifest(manifest);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.manifest.node?.secretBindings?.[0]?.oauthSecret).toBe('mail_account');
+    const missing = structuredClone(manifest);
+    missing.node.secretBindings[0].oauthSecret = 'other_plugin';
+    expect(validateGhostManifest(missing).ok).toBe(true);
+    const staticSource = structuredClone(manifest);
+    staticSource.network.secrets[0].source = 'user';
+    expect(validateGhostManifest(staticSource).ok).toBe(false);
   });
 
   it('rejects unsafe Node secret bindings and shared credential-key collisions', () => {
@@ -1305,7 +1328,6 @@ describe('Ghost manifest contract', () => {
       { ...binding, methods: ['mail/action', 'mail/action'] },
       { ...binding, hint: '' },
       { ...binding, url: 'http://mail.example.com/settings' },
-      { ...binding, unexpected: true },
     ]) {
       expect(
         validateGhostManifest({
@@ -1390,18 +1412,18 @@ describe('Ghost manifest contract', () => {
       ok: true,
       manifest: { skill: { items: goodItems } },
     });
-    // items 形状:空/超限/非对象/自造字段一律拒
+    // 已知字段校验形状；扩展字段保留但不改变技能安装范围。
     expect(validateGhostManifest({ ...base, skill: { items: [] } }).ok).toBe(false);
     expect(validateGhostManifest({ ...base, skill: {} }).ok).toBe(false);
     expect(validateGhostManifest({ ...base, skill: { items: goodItems, extra: 1 } }).ok).toBe(
-      false,
+      true,
     );
     expect(
       validateGhostManifest({
         ...base,
         skill: { items: [{ ...goodItems[0], scope: 'global' }] },
       }).ok,
-    ).toBe(false);
+    ).toBe(true);
     const five = Array.from({ length: 5 }, (_, i) => ({
       dir: `skills/s${i}`,
       name: `s${i}`,
@@ -1517,7 +1539,7 @@ describe('Ghost manifest contract', () => {
         manual: { items: [], extra: true },
       }).ok,
     ).toBe(false);
-    expect(item({ extra: true }).ok).toBe(false);
+    expect(item({ extra: true }).ok).toBe(true);
     const nine = Array.from({ length: 9 }, (_, index) => ({
       dir: `manual/unit-${index}`,
       name: `unit-${index}`,
@@ -1792,9 +1814,9 @@ describe('cindy 详单:media/text/embed/search 类目与 oneshotModel 校验', (
     });
   });
 
-  it('text 与 embed 的动作集各归各(不接受串用)', () => {
-    expect(validateGhostManifest({ ...base, cindy: { text: ['text'] } }).ok).toBe(false);
-    expect(validateGhostManifest({ ...base, cindy: { embed: ['oneshot'] } }).ok).toBe(false);
+  it('保留当前类目尚未实现的动作，不替换或映射到其它类目', () => {
+    expect(validateGhostManifest({ ...base, cindy: { text: ['text'] } })).toMatchObject({ ok: true, manifest: { cindy: { text: ['text'] } } });
+    expect(validateGhostManifest({ ...base, cindy: { embed: ['oneshot'] } })).toMatchObject({ ok: true, manifest: { cindy: { embed: ['oneshot'] } } });
   });
 
   it('接受 search.web 并要求真实工具声明', () => {
@@ -1809,7 +1831,7 @@ describe('cindy 详单:media/text/embed/search 类目与 oneshotModel 校验', (
     if (accepted.ok) expect(accepted.manifest.cindy).toEqual({ search: ['web'] });
 
     expect(validateGhostManifest({ ...base, cindy: { search: ['web'] } }).ok).toBe(false);
-    expect(validateGhostManifest({ ...manifest, cindy: { search: ['deep'] } }).ok).toBe(false);
+    expect(validateGhostManifest({ ...manifest, cindy: { search: ['deep'] } }).ok).toBe(true);
     expect(validateGhostManifest({ ...manifest, cindy: { search: [] } }).ok).toBe(false);
     expect(validateGhostManifest({ ...manifest, cindy: { search: ['web', 'web'] } }).ok).toBe(
       false,

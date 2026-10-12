@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, expect, it, vi } from 'vitest';
+import { builtinApiKeyPresentationId } from '../../secrets/builtinApiKeyBridge.js';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-presentation-test-'));
 let owner = 'first';
@@ -14,6 +15,16 @@ vi.mock('../../appSessionState.js', () => ({
   activeOwnerScopeKey: () => `${owner}:${generation}`,
   ownerScopedUserDataPath: (name: string) => path.join(tmpDir, owner, name),
 }));
+// 供应商展示名已迁到机器级共享命名空间（machineSharedStorage，生产上跨云账号可见）。
+// 这里按用例自己的 owner 目录隔离，让每个断言仍从干净状态出发。
+vi.mock('../../machineSharedStorage.js', async () => {
+  const nodePath = await import('node:path');
+  return {
+    machineSharedUserDataPath: (...parts: string[]) => nodePath.join(tmpDir, owner, ...parts),
+    machineSharedLegacyFileCandidates: () => [],
+    machineSharedOwnerDirectories: () => [],
+  };
+});
 const {
   readProviderPresentation,
   setProviderPresentation,
@@ -36,6 +47,17 @@ it.each(['openai', 'anthropic', 'xai', 'google', 'generic-oauth'])('does not fai
     write.mockRestore();
     owner = 'first';
   }
+});
+
+it.each(['gemini', 'openai-images'])('restores the visible row for removed builtin key slot %s', async (slot) => {
+  owner = `builtin-${slot}`;
+  const visibleId = builtinApiKeyPresentationId(slot);
+  expect(visibleId).toBe(slot === 'openai-images' ? 'openai' : 'gemini');
+  await setProviderPresentation(visibleId, { removed: true });
+  await retainProviderPresentationAfterAuthChange(visibleId);
+  expect(readProviderPresentation(visibleId).removed).toBe(false);
+  if (slot === 'openai-images') expect(readProviderPresentation(slot)).toEqual({});
+  owner = 'first';
 });
 
 it('persists generic OAuth restoration after a removed connection logs in again', async () => {

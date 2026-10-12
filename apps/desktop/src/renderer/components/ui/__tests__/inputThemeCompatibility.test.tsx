@@ -110,15 +110,16 @@ describe.each(['light', 'dark'] as const)('旧设置输入主题消费：%s', (t
   });
 });
 
-it('所有内置主题未做局部覆盖时，旧设置封装与标准 Input 逐值相同', () => {
+it('所有内置主题未做局部覆盖时，旧设置封装与标准 Input 各保持自己的默认绑定', () => {
   const { container } = render(<>
     <SettingsTextInput value="legacy" onChange={() => {}} />
     <Input value="general" onChange={() => {}} />
   </>);
   const [legacy, general] = container.querySelectorAll('input');
   for (const theme of Object.values(builtinThemes)) {
-    for (const [prefix] of BINDINGS) {
-      expect(consumed(legacy, prefix, theme), `${theme.id} ${prefix}`).toBe(consumed(general, prefix, theme));
+    for (const [prefix, semantic, alias] of BINDINGS) {
+      expect(consumed(legacy, prefix, theme), `${theme.id} legacy ${prefix}`).toBe(resolved(theme, alias));
+      expect(consumed(general, prefix, theme), `${theme.id} general ${prefix}`).toBe(resolved(theme, semantic));
     }
   }
 });

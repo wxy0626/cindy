@@ -1,10 +1,10 @@
-import { app, shell } from 'electron';
+import { app } from 'electron';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { AuthState } from '@cindy/maker-core';
+import type { AgentDeps, AuthState } from '@cindy/maker-core';
 import { getActiveAppSession } from '../appSessionState.js';
 import { getCachedBinaryStatus, isVettedAgentBinaryPath } from '../agent-binaries/index.js';
 import { getActiveCatalog } from './active-catalog.js';
@@ -41,17 +41,42 @@ export async function invalidateCodexAccount(providerId: string, reason: string,
   await retireAccount(providerId);
 }
 
+/** 当前账号在 `codex-accounts/` 下的目录名(owner id 的 sha256);没有登录的账号时为 null。 */
+export function codexAccountOwnerDir(): string | null {
+  const ownerId = getActiveAppSession().dataOwnerId;
+  return ownerId ? createHash('sha256').update(ownerId).digest('hex') : null;
+}
+
 export function codexAccountHome(providerId: string): string {
   if (!/^[a-z0-9_-]{1,40}$/.test(providerId)) throw new Error('Invalid Codex provider id');
-  const ownerId = getActiveAppSession().dataOwnerId;
-  if (!ownerId) throw new Error('An active owner is required');
-  const owner = createHash('sha256').update(ownerId).digest('hex');
+  const owner = codexAccountOwnerDir();
+  if (!owner) throw new Error('An active owner is required');
   return path.join(app.getPath('userData'), 'codex-accounts', owner, providerId);
 }
 
 interface AccountIdentity {
   principal: string;
   label: string;
+}
+
+/** Legacy names have no customization flag; recognize only the generated shape. */
+export function codexAccountLoginName(
+  name: string,
+  previousIdentity: string | undefined,
+  identity: string,
+  occupiedNames: ReadonlySet<string>,
+): string | undefined {
+  if (previousIdentity === identity) return undefined;
+  const oldBase = previousIdentity ? `OpenAI · ${previousIdentity}`.slice(0, 50) : undefined;
+  const generated = oldBase && (
+    name === oldBase ||
+    (name.startsWith(oldBase) && /^ \((?:[2-9]|[1-9]\d+)\)$/.test(name.slice(oldBase.length)))
+  );
+  if (name !== 'OpenAI' && !generated) return undefined;
+  const base = `OpenAI · ${identity}`.slice(0, 50);
+  let next = base;
+  for (let suffix = 2; occupiedNames.has(next); suffix++) next = `${base} (${suffix})`;
+  return next;
 }
 
 /** Pure parser: never return tokens through account status or IPC. */
@@ -100,10 +125,10 @@ export function codexAccountState(providerId: string): AuthState {
   }
 }
 
-export async function prepareCodexAccountHome(providerId: string): Promise<string> {
+export async function prepareCodexAccountHome(providerId: string, managedRoots: readonly string[], managedSkills: Awaited<ReturnType<NonNullable<AgentDeps['getManagedSkills']>>>): Promise<string> {
   if (!codexAccountState(providerId).authenticated) throw new Error('Codex account requires login');
   const home = codexAccountHome(providerId);
-  await Promise.all([prepareCodexGlobalSkillsLinks(home), prepareCodexGlobalRulesCopy(home)]);
+  await Promise.all([prepareCodexGlobalSkillsLinks(home, { managedRoots, managedSkills }), prepareCodexGlobalRulesCopy(home)]);
   const plugins = await prepareCodexGlobalPluginsBridge(home, {
     capabilityRouting: DESKTOP_CAPABILITY_ROUTING_POLICY,
   });
@@ -124,10 +149,12 @@ export function cancelCodexAccountLogin(providerId: string): void {
 export async function loginCodexAccount(
   providerId: string,
   isCurrent: () => boolean,
+  onBrowserUrl?: (url: string | null) => void,
 ): Promise<{
   ok: boolean;
   reason?: string;
   firstLogin?: boolean;
+  previousIdentity?: string;
   rollbackCredentials?: () => boolean;
 }> {
   if (!isCodexAccountProvider(providerId)) throw new Error('Unknown Codex account provider');
@@ -171,24 +198,44 @@ export async function loginCodexAccount(
         detached: process.platform !== 'win32',
         windowsHide: true,
       });
-      let output = '';
-      let opened = false;
-      const progress = (chunk: Buffer) => {
-        output = (output + chunk.toString()).slice(-32_768);
-        const url = output.match(/(https:\/\/auth\.openai\.com\/[^\s<>"'\x1b]+)\s/)?.[1];
-        if (!opened && url && current()) {
-          opened = true;
-          void shell.openExternal(url).catch(() => operation.cancel());
-        }
-      };
-      proc.stdout?.on('data', progress);
-      proc.stderr?.on('data', progress);
+      // The CLI opens the browser itself; its manual fallback message is unconditional.
+      // Keep one validated URL for an explicit user action, never a second auto-open.
+      let published = false;
+      let outputActive = true;
+      for (const stream of [proc.stdout, proc.stderr]) {
+        let pending = '';
+        let oversized = false;
+        stream?.setEncoding('utf8');
+        stream?.on('data', (chunk: string) => {
+          for (const part of chunk.split(/(?<=\n)/)) {
+            if (pending.length + part.length > 16_384) oversized = true;
+            if (!oversized) pending += part;
+            if (!part.endsWith('\n')) continue;
+            if (!oversized && !published && outputActive && current()) {
+              const candidate = pending.match(/https:\/\/auth\.openai\.com\/[^\s\x1b]+/)?.[0];
+              if (candidate) {
+                const url = new URL(candidate);
+                if (url.origin === 'https://auth.openai.com' &&
+                    ['/authorize', '/oauth/authorize'].includes(url.pathname) &&
+                    !url.username && !url.password && !url.hash) {
+                  published = true;
+                  onBrowserUrl?.(url.href);
+                }
+              }
+            }
+            pending = '';
+            oversized = false;
+          }
+        });
+      }
       const timeout = setTimeout(operation.cancel, 5 * 60_000);
       proc.once('error', (error) => {
+        outputActive = false;
         clearTimeout(timeout);
         reject(error);
       });
       proc.once('exit', (code) => {
+        outputActive = false;
         clearTimeout(timeout);
         resolve(code);
       });
@@ -204,8 +251,8 @@ export async function loginCodexAccount(
     } catch {
       /* first login */
     }
-    if (previous && previous.principal !== identity.principal)
-      return { ok: false, reason: 'account_mismatch' };
+    // An explicit login may replace this connection's account or workspace.
+    // Retire its old runtime before committing the newly authorized identity.
     await retireAccount(providerId);
     if (!current()) return { ok: false, reason: 'login_cancelled' };
     const files = ['auth.json', 'account.json', 'config.toml', 'disconnected', 'invalidated'];
@@ -238,8 +285,9 @@ export async function loginCodexAccount(
     fs.renameSync(path.join(staging, 'auth.json'), path.join(home, 'auth.json'));
     fs.rmSync(path.join(home, 'disconnected'), { force: true });
     fs.rmSync(path.join(home, 'invalidated'), { force: true });
-    return { ok: true, firstLogin: previous === null, rollbackCredentials };
+    return { ok: true, firstLogin: previous === null, previousIdentity: previous?.label, rollbackCredentials };
   } finally {
+    onBrowserUrl?.(null);
     if (logins.get(home) === operation) logins.delete(home);
     try {
       await fsp.rm(staging, { recursive: true, force: true });

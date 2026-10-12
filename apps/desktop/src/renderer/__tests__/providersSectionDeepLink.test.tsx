@@ -114,8 +114,8 @@ vi.mock('@/state/modelVisibilityPrefs', () => ({
   useModelVisibilityVersion: () => 0,
 }));
 
-vi.mock('@/components/settings/CustomProviderDialog', () => ({
-  CustomProviderDialog: (props: unknown) => {
+vi.mock('@/components/settings/ProviderConnectionDialog', () => ({
+  ProviderConnectionDialog: (props: unknown) => {
     customDialogSpy(props);
     return React.createElement('div', { 'data-testid': 'custom-provider-dialog-stub' });
   },
@@ -131,6 +131,14 @@ vi.mock('@/components/settings/AddProviderWizard', () => ({
 import { updateCustomProvider } from '@/lib/customProviders';
 
 import { ProvidersSection } from '@/components/settings/ProvidersSection';
+import { useProviderSubscriptionCard } from '@/components/settings/useProviderSubscriptionCard';
+import { __testing as localProviderGroupsTesting } from '@/features/provider-group/useLocalProviderGroups';
+
+vi.mock('@/components/settings/useProviderSubscriptionCard', () => ({
+  useProviderSubscriptionCard: vi.fn(() => null),
+}));
+
+vi.mock('@/components/settings/LlamaCppProviderDetail', () => ({ LlamaCppProviderDetail: () => null }));
 
 vi.mock('@/components/settings/OllamaProviderDetail', () => ({ OllamaProviderDetail: () => null }));
 
@@ -172,6 +180,7 @@ function renderAt(search: string) {
 }
 
 beforeEach(() => {
+  vi.mocked(useProviderSubscriptionCard).mockReset().mockReturnValue(null);
   confirmSpy.mockReset().mockResolvedValue(true);
   codexAuthState.state = { kind: 'unauthenticated' };
   codexAuthState.reconnectCredentialScope = undefined;
@@ -191,8 +200,10 @@ beforeEach(() => {
       listProviders: vi.fn(async () => ({ providers: providersState.providers, dataOwnerId: 'owner', ownerGeneration: 1 })),
       setProviderPresentation: vi.fn(async () => ({ ok: true })),
       providerOAuthLogout: vi.fn(async () => ({ ok: true })),
+      onProviderOAuthProgress: vi.fn(() => () => undefined),
       auth: { logout: codexAuthActions.logout },
       scanLocalCli: vi.fn(async () => ({ detections: [] })),
+      llamaCppStatus: vi.fn(async () => ({ installed: false, supported: true, running: false, models: [] })),
       localModelStatus: vi.fn(async () => ({ kind: 'ready' })),
       onLocalModelStatus: vi.fn(() => () => undefined),
       requestProviderModelsAutoRefresh: vi.fn(async () => ({ ok: true })),
@@ -247,14 +258,79 @@ describe('ProvidersSection — 深链定位', () => {
     },
   );
 
-  it.each(['anthropic', 'xai', 'cindy-local-ollama'])('shows the saved name in both sidebar and detail header for %s', async (id) => {
+  it('uses the same local header and empty model treatment for llama.cpp', async () => {
+    providersState.providers = [makeProvider('cindy-local-llamacpp', { name: 'llama.cpp', source: 'user', auth: { method: 'none' }, connected: true })];
+    renderAt('?tab=providers&connect=cindy-local-llamacpp');
+    expect(await screen.findByText(/^settings\.providers\.local\.subtitle/)).toBeTruthy();
+    expect(screen.queryByText('settings.providers.detail.emptyModelsConnected')).toBeNull();
+    expect(screen.queryByText('settings.providers.pill.configured')).toBeNull();
+    expect(await screen.findByText('settings.providers.llamacpp.startOnUse')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'settings.providers.custom.editAria' })).toBeNull();
+  });
+  it.each(['anthropic', 'xai', 'cindy-local-ollama', 'cindy-local-llamacpp'])('shows the saved name in both sidebar and detail header for %s', async (id) => {
     providersState.providers = [makeProvider(id, {
       name: 'My renamed provider', connected: true,
-      source: id === 'cindy-local-ollama' ? 'user' : 'builtin',
+      source: id.startsWith('cindy-local-') ? 'user' : 'builtin',
     })];
     renderAt(`?tab=providers&connect=${id}`);
     await waitFor(() => expect(screen.getAllByText('My renamed provider').length).toBeGreaterThanOrEqual(2));
   });
+
+  it.each(['openai', 'anthropic', 'xai', 'custom-api', 'custom-oauth'])(
+    'keeps identity outside the shared model scroll area for %s',
+    async (id) => {
+      providersState.providers = [
+        makeProvider(id, {
+          name: 'Scroll provider',
+          source: id.startsWith('custom') ? 'user' : 'builtin',
+          connected: true,
+          auth: id === 'custom-api' ? { method: 'apiKey' } : { method: 'oauth', native: 'codex' },
+          agents: ['codex'],
+          models: {
+            codex: [
+              {
+                id: 'scroll-model',
+                name: 'Scroll Model',
+                contextWindow: 0,
+                efforts: [],
+                defaultEffort: null,
+              },
+            ],
+          },
+        }),
+      ];
+      renderAt(`?tab=providers&connect=${id}`);
+      const scroll = await screen.findByTestId('provider-detail-scroll');
+      expect(scroll.contains(screen.getByTestId('provider-detail-identity'))).toBe(false);
+      expect(within(scroll).getByText('Scroll Model')).toBeTruthy();
+      expect(
+        within(scroll).getByTestId('provider-model-toolbar').classList.contains('sticky'),
+      ).toBe(true);
+      // No nested scrolling surface may trap wheel input above or below the model list.
+      expect(scroll.querySelector('.overflow-y-auto')).toBeNull();
+    },
+  );
+
+  it.each(['subscriptionAccount', 'openAiAccount'] as const)(
+    'shows usage windows without a details disclosure across %s changes',
+    async (identityField) => {
+      const account = { title: 'ChatGPT', windows: [{ key: 'weekly', title: 'Weekly', window: { utilization: 20 }, detail: 'Weekly usage details' }] };
+      vi.mocked(useProviderSubscriptionCard).mockReturnValue(account);
+      const provider = makeProvider('openai', {
+        connected: true,
+        [identityField]: { source: 'oauth', identity: 'first@example.test' },
+      });
+      providersState.providers = [provider];
+      const view = render(<MemoryRouter><ProvidersSection /></MemoryRouter>);
+      const usage = await screen.findByTestId('provider-usage-module');
+      expect(within(usage).getByRole('progressbar', { name: 'Weekly' })).toBeTruthy();
+      expect(within(usage).queryByText('Weekly usage details')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'quotaCard.usageTitle' })).toBeNull();
+      providersState.providers = [{ ...provider, [identityField]: { source: 'oauth', identity: 'second@example.test' } }];
+      view.rerender(<MemoryRouter><ProvidersSection /></MemoryRouter>);
+      expect(within(screen.getByTestId('provider-usage-module')).getByRole('progressbar', { name: 'Weekly' })).toBeTruthy();
+    },
+  );
 
   it('added OpenAI shares status and moves rename/delete into the single menu', async () => {
     providersState.providers = [
@@ -297,6 +373,52 @@ describe('ProvidersSection — 深链定位', () => {
     expect(customDialogSpy).not.toHaveBeenCalled();
   });
 
+  it('renames an account when its sidebar row is double-clicked', async () => {
+    providersState.providers = [
+      makeProvider('openai-work', {
+        name: 'Work account',
+        source: 'user',
+        agents: ['codex'],
+        connected: true,
+        auth: { method: 'oauth', native: 'codex' },
+        models: { codex: [] },
+      }),
+    ];
+    renderAt('?tab=providers');
+
+    fireEvent.doubleClick(await screen.findByRole('button', { name: /Work account/ }));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'settings.providers.pill.rename' }),
+    ));
+    await waitFor(() => expect(window.electronAPI.maker.setProviderPresentation).toHaveBeenCalledWith(
+      {
+        providerId: 'openai-work',
+        action: 'rename',
+        name: 'Work account',
+        dataOwnerId: 'owner',
+        ownerGeneration: 1,
+      },
+    ));
+  });
+
+  it('does not offer double-click rename for Cindy AI', async () => {
+    providersState.providers = [makeProvider('xd', {
+      name: 'Cindy AI',
+      auth: { method: 'managed' } as ProviderView['auth'],
+      agents: ['claude-code', 'codex'],
+      models: { 'claude-code': [], codex: [] },
+    })];
+    renderAt('?tab=providers');
+
+    fireEvent.doubleClick(
+      await screen.findByRole('button', { name: 'settings.providers.xd.title' }),
+    );
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(window.electronAPI.maker.setProviderPresentation).not.toHaveBeenCalled();
+  });
+
   it('API key presence is configured rather than authenticated', async () => {
     providersState.providers = [
       makeProvider('api-work', {
@@ -323,6 +445,43 @@ describe('ProvidersSection — 深链定位', () => {
     expect(within(actions).getByRole('button', { name: 'settings.providers.button.disconnect' })).toBeTruthy();
   });
 
+  it('reveals replacement-key inputs once without resetting scroll while typing', async () => {
+    providersState.providers = [makeProvider('gemini', { connected: true, auth: { method: 'apiKey' } })];
+    renderAt('?tab=providers&connect=gemini');
+    const scroll = await screen.findByTestId('provider-detail-scroll');
+    scroll.scrollTop = 500;
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'settings.providers.detail.moreActionsAria' }), { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByText('settings.providers.builtinApiKey.replaceKey'));
+    const input = await screen.findByPlaceholderText('settings.providers.builtinApiKey.keyPlaceholder');
+    expect(scroll.scrollTop).toBe(0);
+    scroll.scrollTop = 100;
+    fireEvent.change(input, { target: { value: 'fixture-key' } });
+    expect(scroll.scrollTop).toBe(100);
+    fireEvent.click(screen.getByRole('button', { name: 'settings.providers.button.cancel' }));
+    expect(scroll.scrollTop).toBe(100);
+  });
+
+  it('reveals device-code authorization above a scrolled model list', async () => {
+    let complete!: (result: { ok: boolean }) => void;
+    Object.assign(window.electronAPI.maker, {
+      providerOAuthLogin: vi.fn(() => new Promise<{ ok: boolean }>((resolve) => { complete = resolve; })),
+      providerOAuthCancel: vi.fn(async () => ({ ok: true })),
+    });
+    providersState.providers = [makeProvider('device-provider', {
+      source: 'user',
+      auth: { method: 'oauth', oauth: {
+        flow: 'device-code', deviceAuthorizationUrl: 'https://auth.example.test/device',
+        tokenUrl: 'https://auth.example.test/token', clientId: 'fixture', scopes: 'openid',
+      } },
+    })];
+    renderAt('?tab=providers&connect=device-provider');
+    const scroll = await screen.findByTestId('provider-detail-scroll');
+    scroll.scrollTop = 500;
+    fireEvent.click(screen.getByRole('button', { name: 'settings.providers.wizard.authorizeWithDeviceCode' }));
+    expect(scroll.scrollTop).toBe(0);
+    await act(async () => complete({ ok: false }));
+  });
+
   it('added OpenAI recovery overrides a stale connected snapshot', async () => {
     providersState.providers = [
       makeProvider('openai-work', {
@@ -345,10 +504,14 @@ describe('ProvidersSection — 深链定位', () => {
 
   it('a cancelled login cannot clear a newer login on the same account', async () => {
     const completions: ((result: { ok: boolean }) => void)[] = [];
-    const login = vi.fn(() => new Promise<{ ok: boolean }>((resolve) => completions.push(resolve)));
+    const login = vi.fn((_id: string, _options?: { ownerId?: string }) => new Promise<{ ok: boolean }>((resolve) => completions.push(resolve)));
+    let progress!: Parameters<typeof window.electronAPI.maker.onProviderOAuthProgress>[0];
+    const openExternal = vi.fn(async () => ({ success: true }));
+    window.electronAPI.openExternal = openExternal;
     Object.assign(window.electronAPI.maker, {
       providerOAuthLogin: login,
       providerOAuthCancel: vi.fn(async () => ({ ok: true })),
+      onProviderOAuthProgress: vi.fn((callback) => { progress = callback; return () => undefined; }),
     });
     providersState.providers = [
       makeProvider('openai-work', {
@@ -365,7 +528,12 @@ describe('ProvidersSection — 深链定位', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'settings.providers.button.cancel' }));
     fireEvent.click(screen.getByRole('button', { name: 'settings.providers.button.authorize' }));
+    const url = 'https://auth.openai.com/authorize?fake=1';
+    act(() => progress({ providerId: 'openai-work', ownerId: login.mock.calls[1][1]!.ownerId!, phase: 'browser-url', url }));
     await act(async () => completions[0]({ ok: false }));
+    expect(openExternal).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'settings.providers.genericOAuth.reopenLoginPage' }));
+    expect(openExternal).toHaveBeenCalledExactlyOnceWith(url);
     expect(screen.getByRole('button', { name: 'settings.providers.button.cancel' })).toBeTruthy();
     expect(toastError).not.toHaveBeenCalled();
     expect(login).toHaveBeenCalledTimes(2);
@@ -374,6 +542,7 @@ describe('ProvidersSection — 深链定位', () => {
       expect.objectContaining({ ownerId: expect.any(String) }),
     ]);
     await act(async () => completions[1]({ ok: false }));
+    expect(screen.queryByRole('button', { name: 'settings.providers.genericOAuth.reopenLoginPage' })).toBeNull();
     expect(
       screen.getByRole('button', { name: 'settings.providers.button.authorize' }),
     ).toBeTruthy();
@@ -648,7 +817,7 @@ describe('ProvidersSection — 深链定位', () => {
     },
   );
 
-  it('自定义供应商深链会打开编辑表单并定位模型上下文窗口', async () => {
+  it('自定义供应商深链定位统一模型列表，不打开连接编辑器', async () => {
     providersState.providers = [
       makeProvider('custom-provider', {
         name: 'Custom Provider',
@@ -671,15 +840,35 @@ describe('ProvidersSection — 深链定位', () => {
     ];
     renderAt('?tab=providers&connect=custom-provider&model=custom-model&agent=codex');
 
-    expect(await screen.findByTestId('custom-provider-dialog-stub')).not.toBeNull();
-    expect(customDialogSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        focusModelId: 'custom-model',
-        focusAgent: 'codex',
-        initial: expect.objectContaining({ id: 'custom-provider' }),
-      }),
-    );
+    await waitFor(() => expect(document.querySelector('[data-deep-link-target="true"]')).not.toBeNull());
+    expect(customDialogSpy).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByTestId('search').textContent).toBe('?tab=providers'));
+  });
+
+  it('keeps enterprise models visible inside the unified detail layout without connection editing', async () => {
+    const status = { state: 'ready', providers: [{ providerId: 'byok-team', state: 'ready' }] } as const;
+    const retryByok = vi.fn(async () => status);
+    Object.assign(window.electronAPI, {
+      modelAccess: { getByokStatus: vi.fn(async () => status), retryByok },
+    });
+    providersState.providers = [makeProvider('byok-team', {
+      name: 'Enterprise Provider', source: 'organization',
+      connected: true, agents: ['codex'], auth: { method: 'managed' },
+      models: { codex: [{
+        id: 'byok-team/company-chat', name: 'Company Chat', contextWindow: 128000,
+        efforts: [], defaultEffort: null,
+      }] },
+    })];
+    renderAt('?tab=providers&connect=byok-team&model=byok-team%2Fcompany-chat&agent=codex');
+
+    await screen.findByRole('switch', { name: 'Company Chat' });
+    await waitFor(() => expect(document.querySelector('[data-deep-link-target="true"]')).not.toBeNull());
+    expect(customDialogSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'settings.providers.models.refreshAria' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'settings.providers.custom.editAria' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'settings.providers.byok.refresh' }));
+    await waitFor(() => expect(retryByok).toHaveBeenCalledOnce());
+    expect(updateCustomProvider).not.toHaveBeenCalled();
   });
 
   it('connect=<目录外 id> → 视为 preset id,向导 preset entry 打开', async () => {
@@ -820,5 +1009,62 @@ describe('ProvidersSection — 深链定位', () => {
       releaseOwner: true,
       ownerId,
     });
+  });
+});
+
+describe('ProvidersSection — 允许被远程调用与供应商组', () => {
+  afterEach(() => localProviderGroupsTesting.reset());
+
+  it('folds the provider group into the remote-use row and waits for the group settings before showing it', async () => {
+    localProviderGroupsTesting.reset();
+    let answer!: (groups: Record<string, unknown>) => void;
+    const list = new Promise<Record<string, unknown>>((resolve) => {
+      answer = resolve;
+    });
+    const command = vi.fn((cmd: { action: string }) =>
+      cmd.action === 'list' ? list : Promise.reject(new Error(`unexpected ${cmd.action}`)),
+    );
+    Object.assign(window.electronAPI, {
+      deviceLink: {
+        getState: vi.fn(async () => ({ remoteControlEnabled: true })),
+        listDevices: vi.fn(async () => ({ devices: [] })),
+        onPresenceChanged: () => () => undefined,
+        onControlTargetChanged: () => () => undefined,
+      },
+      providerGroup: { command, onChanged: () => () => undefined },
+    });
+    providersState.providers = [
+      makeProvider('anthropic', { name: 'Anthropic', connected: true, remoteInvocationEnabled: true }),
+    ];
+    renderAt('?tab=providers&connect=anthropic');
+    await waitFor(() => expect(command).toHaveBeenCalledWith({ action: 'list' }));
+    await waitFor(() => expect(window.electronAPI.deviceLink.getState).toHaveBeenCalled());
+    // 等「允许远程控制」读完，只剩组设置没读到。
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // 组设置还没读到：整行先不出现，不先显示「远程与分享」再跳成组。
+    expect(screen.queryByTestId('provider-remote-access')).toBeNull();
+
+    await act(async () => {
+      answer({
+        anthropic: {
+          strategy: 'least',
+          autoSwitch: true,
+          members: [
+            { key: 'local', kind: 'local', agentDeviceId: null, providerId: 'anthropic', limit: 4, weight: 1, paused: false },
+            { key: 'device:mini:anthropic', kind: 'device', agentDeviceId: 'mini', providerId: 'anthropic', limit: 4, weight: 1, paused: false },
+          ],
+        },
+      });
+      await list;
+    });
+    const row = await screen.findByTestId('provider-remote-access');
+    // 组的状态写在入口按钮上，不再单独占一行；有组时说明 Agent 由组选电脑运行。
+    expect(within(row).getByTestId('provider-share-entry').textContent).toBe('settings.providers.remote.groupBadge');
+    expect(within(row).getByText('settings.providers.detail.remoteAccess.descriptionGroup')).toBeTruthy();
+    expect(within(row).getByRole('switch', { name: 'settings.providers.detail.remoteAccess.ariaLabel' })).toBeTruthy();
+    expect(screen.queryByTestId('provider-group-row')).toBeNull();
+    expect(command).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'get' }));
   });
 });

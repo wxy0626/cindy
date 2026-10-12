@@ -74,6 +74,7 @@ function createSymlinkedSkill() {
   fs.symlinkSync(actualDir, exposedDir, process.platform === 'win32' ? 'junction' : 'dir');
 
   return {
+    actualDir,
     actualSkillMd: path.join(actualDir, 'SKILL.md'),
     exposedDir,
     exposedPricingJson: path.join(exposedDir, 'pricing.json'),
@@ -82,6 +83,83 @@ function createSymlinkedSkill() {
 }
 
 describe('scanAllSkills', () => {
+  it('always projects the bundled Skill as non-uninstallable and keeps a user same-name copy distinct', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skillhub-built-in-'));
+    tempRoots.push(root);
+    const builtIn = path.join(root, 'user-data', 'system-skills', 'cindy-skill-creator');
+    const userSkill = path.join(root, 'home', '.agents', 'skills', 'cindy-skill-creator');
+    for (const [skillPath, description] of [[builtIn, 'Cindy copy'], [userSkill, 'User copy']] as const) {
+      fs.mkdirSync(skillPath, { recursive: true });
+      fs.writeFileSync(path.join(skillPath, 'SKILL.md'), `---\nname: cindy-skill-creator\ndescription: ${description}\n---\nBody\n`);
+    }
+    const maker = { listCustomizations: vi.fn(async () => ({ errors: [], items: [{
+      engine: 'codex' as const,
+      kind: 'skill',
+      scope: 'user',
+      name: 'cindy-skill-creator',
+      description: 'User copy',
+      absolutePath: userSkill,
+      mdPath: path.join(userSkill, 'SKILL.md'),
+      files: [],
+    }] })) } as unknown as Maker;
+
+    const result = await scanAllSkills({}, maker, [], [{
+      name: 'cindy-skill-creator',
+      absolutePath: builtIn,
+      nativeClaudePath: path.join(root, 'user-data', 'claude-home', 'skills', 'cindy-skill-creator'),
+    }]);
+
+    expect(result.skills).toHaveLength(2);
+    expect(result.skills.find((skill) => skill.builtIn)).toMatchObject({
+      name: 'cindy-skill-creator',
+      description: 'Cindy copy',
+      builtIn: true,
+      canUninstall: false,
+      cindyEnabled: true,
+      linkedEngines: [],
+    });
+    expect(result.skills.find((skill) => !skill.builtIn)).toMatchObject({
+      description: 'User copy',
+      canUninstall: true,
+    });
+  });
+
+  it('lists only engines that actually discover the bundled Skill path', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skillhub-built-in-engines-'));
+    tempRoots.push(root);
+    const builtIn = path.join(root, 'shared-system-skills', 'learn');
+    fs.mkdirSync(builtIn, { recursive: true });
+    fs.writeFileSync(path.join(builtIn, 'SKILL.md'), '---\nname: learn\ndescription: Learn\n---\nBody\n');
+    const items = (['codex', 'pi'] as const).map((engine) => ({
+      engine,
+      kind: 'skill' as const,
+      scope: 'user' as const,
+      name: 'learn',
+      description: 'Learn',
+      absolutePath: builtIn,
+      mdPath: path.join(builtIn, 'SKILL.md'),
+      files: [],
+    }));
+    const maker = {
+      listCustomizations: vi.fn(async () => ({ errors: [], items })),
+    } as unknown as Maker;
+
+    const result = await scanAllSkills({}, maker, [], [{
+      name: 'learn',
+      absolutePath: builtIn,
+      nativeClaudePath: path.join(root, 'claude-home', 'skills', 'learn'),
+    }]);
+
+    expect(result.skills).toHaveLength(1);
+    expect(result.skills[0]).toMatchObject({
+      builtIn: true,
+      linkedEngines: [
+        { engine: 'codex', label: 'Codex' },
+        { engine: 'pi', label: 'Pi' },
+      ],
+    });
+  });
+
   it('projects the registry slug joined by physical path without replacing native directory names', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skillhub-registry-slug-'));
     tempRoots.push(root);
@@ -463,6 +541,45 @@ describe('scanAllSkills', () => {
     expect(fs.readFileSync(skillMd, 'utf-8')).toBe('# Updated Pi Demo\n');
   });
 
+  it('allows attested built-in reads outside discovery roots without following escaping children', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skillhub-attested-built-in-'));
+    tempRoots.push(root);
+    const builtInRoot = path.join(root, 'shared-system-skills', 'learn');
+    const skillMd = path.join(builtInRoot, 'SKILL.md');
+    const notes = path.join(builtInRoot, 'notes.txt');
+    const outside = path.join(root, 'outside.txt');
+    fs.mkdirSync(builtInRoot, { recursive: true });
+    fs.writeFileSync(skillMd, '---\nname: learn\n---\n\n# Learn\n', 'utf-8');
+    fs.writeFileSync(notes, 'notes\n', 'utf-8');
+    fs.writeFileSync(outside, 'private\n', 'utf-8');
+
+    await expect(readSkillContent({ mdPath: skillMd, attestedRoot: builtInRoot })).resolves.toMatchObject({
+      success: true,
+      content: '\n# Learn\n',
+    });
+    await expect(listSkillFolderChildren({ dirPath: builtInRoot, attestedRoot: builtInRoot })).resolves.toMatchObject({
+      success: true,
+      entries: expect.arrayContaining([{ name: 'SKILL.md', kind: 'file' }]),
+    });
+    await expect(readSkillSiblingFile({ filePath: notes, attestedRoot: builtInRoot })).resolves.toMatchObject({
+      success: true,
+      content: 'notes\n',
+    });
+    await expect(readSkillRawFile({ filePath: skillMd, attestedRoot: builtInRoot })).resolves.toMatchObject({
+      success: true,
+      content: expect.stringContaining('# Learn'),
+    });
+
+    if (canLinkFile) {
+      const escape = path.join(builtInRoot, 'escape.txt');
+      fs.symlinkSync(outside, escape, 'file');
+      await expect(readSkillSiblingFile({ filePath: escape, attestedRoot: builtInRoot })).resolves.toMatchObject({
+        success: false,
+        error: 'path is not under a recognized skills directory',
+      });
+    }
+  });
+
   it('filters sensitive entries from the initial skill files snapshot', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skillhub-scan-files-'));
     tempRoots.push(root);
@@ -637,7 +754,7 @@ describe('skill file access', () => {
   });
 
   it('follows a supported skill path symlink across detail, files panel, and editor access', async () => {
-    const { actualSkillMd, exposedDir, exposedPricingJson, exposedSkillMd } = createSymlinkedSkill();
+    const { actualDir, actualSkillMd, exposedDir, exposedPricingJson, exposedSkillMd } = createSymlinkedSkill();
 
     const grantedRoot = resolveExistingSkillPathForGrant(exposedDir);
     expect(grantedRoot).toBe(fs.realpathSync.native(exposedDir));
@@ -648,9 +765,9 @@ describe('skill file access', () => {
       success: true,
       content: '\n# Lark Drive\n\nOriginal content\n',
     });
-    fs.mkdirSync(path.join(exposedDir, '.config', 'gcloud'), { recursive: true });
+    fs.mkdirSync(path.join(actualDir, '.config', 'gcloud'), { recursive: true });
     const excludedMarkdown = path.join(exposedDir, '.config', 'gcloud', 'README.md');
-    fs.writeFileSync(excludedMarkdown, '# Credentials note\n', 'utf-8');
+    fs.writeFileSync(path.join(actualDir, '.config', 'gcloud', 'README.md'), '# Credentials note\n', 'utf-8');
     await expect(readSkillContent({ mdPath: excludedMarkdown })).resolves.toMatchObject({
       success: false,
       error: 'path is excluded from SkillHub packages',
@@ -666,7 +783,7 @@ describe('skill file access', () => {
       success: true,
       content: '{"tier":"internal"}\n',
     });
-    fs.writeFileSync(path.join(exposedDir, '.env'), 'TOKEN=secret\n', 'utf-8');
+    fs.writeFileSync(path.join(actualDir, '.env'), 'TOKEN=secret\n', 'utf-8');
     await expect(readSkillSiblingFile({ filePath: path.join(exposedDir, '.env') })).resolves.toMatchObject({
       success: false,
       error: 'path is excluded from SkillHub packages',
@@ -692,39 +809,39 @@ describe('skill file access', () => {
   });
 
   it('shows declared dotfile fixtures in the files panel and hides unsafe package paths', async () => {
-    const { exposedDir } = createSymlinkedSkill();
-    fs.writeFileSync(path.join(exposedDir, '.cca-bindings.json'), '{"task":"demo"}\n', 'utf-8');
-    fs.mkdirSync(path.join(exposedDir, '.cca-state', 'task'), { recursive: true });
-    fs.writeFileSync(path.join(exposedDir, '.cca-state', 'task', 'current-goal.md'), 'goal\n', 'utf-8');
-    fs.writeFileSync(path.join(exposedDir, '.env'), 'TOKEN=secret\n', 'utf-8');
-    fs.writeFileSync(path.join(exposedDir, '.envrc'), 'export TOKEN=secret\n', 'utf-8');
-    fs.writeFileSync(path.join(exposedDir, '.npmrc'), '//registry/:_authToken=secret\n', 'utf-8');
-    fs.writeFileSync(path.join(exposedDir, '.netrc'), 'machine example.com password secret\n', 'utf-8');
-    fs.writeFileSync(path.join(exposedDir, '.pypirc'), '[pypi]\npassword=secret\n', 'utf-8');
-    fs.writeFileSync(path.join(exposedDir, '.DS_Store'), 'metadata', 'utf-8');
-    fs.mkdirSync(path.join(exposedDir, '.ssh'), { recursive: true });
-    fs.writeFileSync(path.join(exposedDir, '.ssh', 'id_rsa'), 'private key\n', 'utf-8');
-    fs.mkdirSync(path.join(exposedDir, '.aws'), { recursive: true });
-    fs.writeFileSync(path.join(exposedDir, '.aws', 'credentials'), 'aws_secret_access_key=secret\n', 'utf-8');
-    fs.mkdirSync(path.join(exposedDir, '.docker'), { recursive: true });
-    fs.writeFileSync(path.join(exposedDir, '.docker', 'config.json'), '{"auths":{"example.com":{}}}\n', 'utf-8');
-    fs.mkdirSync(path.join(exposedDir, '.gem'), { recursive: true });
-    fs.writeFileSync(path.join(exposedDir, '.gem', 'credentials'), ':rubygems_api_key: secret\n', 'utf-8');
-    fs.mkdirSync(path.join(exposedDir, '.config', 'gcloud'), { recursive: true });
+    const { actualDir, exposedDir } = createSymlinkedSkill();
+    fs.writeFileSync(path.join(actualDir, '.cca-bindings.json'), '{"task":"demo"}\n', 'utf-8');
+    fs.mkdirSync(path.join(actualDir, '.cca-state', 'task'), { recursive: true });
+    fs.writeFileSync(path.join(actualDir, '.cca-state', 'task', 'current-goal.md'), 'goal\n', 'utf-8');
+    fs.writeFileSync(path.join(actualDir, '.env'), 'TOKEN=secret\n', 'utf-8');
+    fs.writeFileSync(path.join(actualDir, '.envrc'), 'export TOKEN=secret\n', 'utf-8');
+    fs.writeFileSync(path.join(actualDir, '.npmrc'), '//registry/:_authToken=secret\n', 'utf-8');
+    fs.writeFileSync(path.join(actualDir, '.netrc'), 'machine example.com password secret\n', 'utf-8');
+    fs.writeFileSync(path.join(actualDir, '.pypirc'), '[pypi]\npassword=secret\n', 'utf-8');
+    fs.writeFileSync(path.join(actualDir, '.DS_Store'), 'metadata', 'utf-8');
+    fs.mkdirSync(path.join(actualDir, '.ssh'), { recursive: true });
+    fs.writeFileSync(path.join(actualDir, '.ssh', 'id_rsa'), 'private key\n', 'utf-8');
+    fs.mkdirSync(path.join(actualDir, '.aws'), { recursive: true });
+    fs.writeFileSync(path.join(actualDir, '.aws', 'credentials'), 'aws_secret_access_key=secret\n', 'utf-8');
+    fs.mkdirSync(path.join(actualDir, '.docker'), { recursive: true });
+    fs.writeFileSync(path.join(actualDir, '.docker', 'config.json'), '{"auths":{"example.com":{}}}\n', 'utf-8');
+    fs.mkdirSync(path.join(actualDir, '.gem'), { recursive: true });
+    fs.writeFileSync(path.join(actualDir, '.gem', 'credentials'), ':rubygems_api_key: secret\n', 'utf-8');
+    fs.mkdirSync(path.join(actualDir, '.config', 'gcloud'), { recursive: true });
     fs.writeFileSync(
-      path.join(exposedDir, '.config', 'gcloud', 'application_default_credentials.json'),
+      path.join(actualDir, '.config', 'gcloud', 'application_default_credentials.json'),
       '{"client_secret":"secret"}\n',
       'utf-8',
     );
-    fs.mkdirSync(path.join(exposedDir, '.kube'), { recursive: true });
-    fs.writeFileSync(path.join(exposedDir, '.kube', 'config'), 'token: secret\n', 'utf-8');
-    fs.mkdirSync(path.join(exposedDir, '.config', 'gh'), { recursive: true });
-    fs.writeFileSync(path.join(exposedDir, '.config', 'gh', 'hosts.yml'), 'oauth_token: secret\n', 'utf-8');
-    fs.mkdirSync(path.join(exposedDir, '.azure'), { recursive: true });
-    fs.writeFileSync(path.join(exposedDir, '.azure', 'accessTokens.json'), '[]\n', 'utf-8');
-    fs.mkdirSync(path.join(exposedDir, '.config', 'tool'), { recursive: true });
-    fs.writeFileSync(path.join(exposedDir, '.config', 'tool', 'settings.json'), '{"fixture":true}\n', 'utf-8');
-    fs.mkdirSync(path.join(exposedDir, 'node_modules', 'pkg'), { recursive: true });
+    fs.mkdirSync(path.join(actualDir, '.kube'), { recursive: true });
+    fs.writeFileSync(path.join(actualDir, '.kube', 'config'), 'token: secret\n', 'utf-8');
+    fs.mkdirSync(path.join(actualDir, '.config', 'gh'), { recursive: true });
+    fs.writeFileSync(path.join(actualDir, '.config', 'gh', 'hosts.yml'), 'oauth_token: secret\n', 'utf-8');
+    fs.mkdirSync(path.join(actualDir, '.azure'), { recursive: true });
+    fs.writeFileSync(path.join(actualDir, '.azure', 'accessTokens.json'), '[]\n', 'utf-8');
+    fs.mkdirSync(path.join(actualDir, '.config', 'tool'), { recursive: true });
+    fs.writeFileSync(path.join(actualDir, '.config', 'tool', 'settings.json'), '{"fixture":true}\n', 'utf-8');
+    fs.mkdirSync(path.join(actualDir, 'node_modules', 'pkg'), { recursive: true });
 
     const result = await listSkillFolderChildren({ dirPath: exposedDir });
     expect(result).toMatchObject({ success: true });

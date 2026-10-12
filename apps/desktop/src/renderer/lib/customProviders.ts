@@ -1,4 +1,4 @@
-import { mergeDiscoveredRuntimeModels, type DiscoveredModel } from '@cindy/model-providers';
+import { catalogModelMetadata, mergeDiscoveredRuntimeModels, isOpenRouterModelsUrl, type DiscoveredModel } from '@cindy/model-providers';
 /**
  * customProviders —— 自定义供应商「配置 + per-runtime 密钥」的 renderer 侧写入编排。
  *
@@ -57,6 +57,9 @@ export function piCatalogProviderIdAfterRouteEdit(
     : undefined;
 }
 
+/** per-runtime 密钥输入：键为 agent，值为该 runtime 的 API key（空串 = 不改 / 不存）。 */
+export type RuntimeKeys = Partial<Record<AgentKind, string>>;
+
 /** 开启 Pi reasoning 时的保守常用档位；xhigh/max 仍需用户明确勾选。 */
 export const DEFAULT_PI_CUSTOM_REASONING_EFFORTS: readonly PiReasoningEffort[] = [
   'minimal',
@@ -64,9 +67,6 @@ export const DEFAULT_PI_CUSTOM_REASONING_EFFORTS: readonly PiReasoningEffort[] =
   'medium',
   'high',
 ];
-
-/** per-runtime 密钥输入：键为 agent，值为该 runtime 的 API key（空串 = 不改 / 不存）。 */
-export type RuntimeKeys = Partial<Record<AgentKind, string>>;
 
 /**
  * 模型 id 代表模型身份；一旦改变，旧模型携带的 contextWindow 等隐藏元数据不再可信。
@@ -99,23 +99,11 @@ export function setCustomProviderModelPiApi(
           : piApi === 'openai-responses'
             ? 'openai-responses'
             : undefined;
-    // "Inherit default" means inheriting both protocol and endpoint. For an explicit override,
-    // retain a model endpoint only when it already speaks that protocol; otherwise the provider
-    // endpoint is the only safe pair (also repairs legacy protocol/route mismatches on save).
     if (!selectedWireProtocol || next.route?.wireProtocol !== selectedWireProtocol) {
       delete next.route;
     }
     return next;
   });
-}
-
-/** PI always persists the selected protocol, including its common Chat default. */
-export function customProviderWireProtocolForSave(
-  agent: AgentKind,
-  wireProtocol: ProviderWireProtocol,
-  defaultWireProtocol: ProviderWireProtocol,
-): ProviderWireProtocol | undefined {
-  return agent === 'pi' || wireProtocol !== defaultWireProtocol ? wireProtocol : undefined;
 }
 
 export function setCustomProviderModelSupportsImageInput(
@@ -177,6 +165,15 @@ export function setCustomProviderModelReasoningEffort(
   });
 }
 
+/** PI always persists the selected protocol, including its common Chat default. */
+export function customProviderWireProtocolForSave(
+  agent: AgentKind,
+  wireProtocol: ProviderWireProtocol,
+  defaultWireProtocol: ProviderWireProtocol,
+): ProviderWireProtocol | undefined {
+  return agent === 'pi' || wireProtocol !== defaultWireProtocol ? wireProtocol : undefined;
+}
+
 /**
  * 运行期 CatalogModel 已把缺省 contextWindow 物化为通用默认值；转回用户配置时不能把该
  * 默认快照写成 override，否则未来默认升级后老配置无法跟随。判据以 contextWindowExplicit
@@ -184,24 +181,11 @@ export function setCustomProviderModelReasoningEffort(
  * 推断（PR review P1）；无标记的旧视图快照回退等值判断,行为不变。
  */
 export function customProviderModelConfigFromCatalogModel(
-  model: Pick<
-    CatalogModel,
-    | 'id'
-    | 'name'
-    | 'contextWindow'
-    | 'contextWindowExplicit'
-    | 'userModelConfig'
-    | 'discoveredMetadata'
-    | 'nameExplicit'
-    | 'defaultEnabled'
-    | 'supportsImageInput'
-    | 'piApi'
-    | 'route'
-  > &
-    Partial<Pick<CatalogModel, 'efforts' | 'defaultEffort'>>,
+  model: Pick<CatalogModel, 'id' | 'name' | 'contextWindow'> & Partial<CatalogModel>,
   agent?: AgentKind,
 ): ProviderRuntimeModelConfig {
   if (model.userModelConfig) return structuredClone(model.userModelConfig);
+  const { contextWindow: _window, name: _name, ...capabilities } = catalogModelMetadata(model);
   const reasoningEfforts =
     agent === 'pi'
       ? (model.efforts ?? []).filter((effort): effort is PiReasoningEffort =>
@@ -209,9 +193,12 @@ export function customProviderModelConfigFromCatalogModel(
         )
       : [];
   return {
+    ...capabilities,
+    ...(model.api ? { api: model.api } : {}),
     id: model.id,
     name: model.name,
     discoveredMetadata: model.discoveredMetadata,
+    discoveredCost: model.discoveredCost,
     nameExplicit: model.nameExplicit,
     ...(agent === 'pi' && model.piApi ? { piApi: model.piApi } : {}),
     ...(model.route ? { route: { ...model.route } } : {}),
@@ -255,6 +242,8 @@ export function providerViewToCustomProviderConfig(p: ProviderView): CustomProvi
       ...(agent === 'codex' && routing?.supportsImageGeneration === true
         ? { supportsImageGeneration: true }
         : {}),
+      ...(routing?.imageApi ? { imageApi: routing.imageApi } : {}),
+      ...(routing?.videoApi ? { videoApi: routing.videoApi } : {}),
       models: models.map((model) => customProviderModelConfigFromCatalogModel(model, agent)),
       ...(routing?.headerOverride && Object.keys(routing.headerOverride).length > 0
         ? { headers: { ...routing.headerOverride } }
@@ -276,12 +265,33 @@ export function providerViewToCustomProviderConfig(p: ProviderView): CustomProvi
   };
 }
 
-/** 刷新时只追加接口新发现的模型，并让新增模型默认隐藏。端点声明的 contextWindow 随发现带入(#386)。 */
+/** Refresh metadata and append new models; native-engine defaults decide visibility. */
 export function appendDiscoveredCustomProviderModels(
   existing: readonly ProviderRuntimeModelConfig[],
   discovered: readonly DiscoveredModel[],
+  discoveryUrl?: string,
 ): { models: ProviderRuntimeModelConfig[]; addedIds: string[] } {
-  const models = mergeDiscoveredRuntimeModels(existing, discovered, true);
+  let prior = existing;
+  if (discoveryUrl && isOpenRouterModelsUrl(discoveryUrl)) {
+    const actual = new Map(discovered.map(model => [model.id, model]));
+    // Repair only discovery-created Anthropic wrappers confirmed by the complete
+    // canonical response. Keep manual IDs and never guess another supplier's aliases.
+    const canonicalId = (model: ProviderRuntimeModelConfig) => {
+      if (actual.has(model.id) || !model.discoveredMetadata || model.nameExplicit || model.route || model.piApi || !model.id.startsWith('anthropic/')) return model.id;
+      const candidate = model.id.slice('anthropic/'.length).replace(/\[1m\]$/, '');
+      return actual.has(candidate) ? candidate : model.id;
+    };
+    const normalized = new Map(existing.filter(model => canonicalId(model) === model.id).map(model => [model.id, model]));
+    for (const model of existing) {
+      const id = canonicalId(model);
+      if (id === model.id) continue;
+      const canonical = normalized.get(id);
+      normalized.set(id, { ...model, ...canonical, id,
+        name: canonical?.nameExplicit ? canonical.name : actual.get(id)?.name ?? model.name });
+    }
+    prior = [...normalized.values()];
+  }
+  const models = mergeDiscoveredRuntimeModels(prior, discovered);
   const known = new Set(existing.map((model) => model.id));
   return {
     models,

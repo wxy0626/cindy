@@ -20,6 +20,9 @@ export interface BotSkillSummaryWire {
   name: string;
   description: string;
   updatedAt: string;
+  filePath?: string;
+  bodyStartLine?: number;
+  enabled?: boolean;
 }
 
 export interface BotSkillCallbacks {
@@ -31,13 +34,16 @@ export interface BotSkillCallbacks {
     slug?: string;
   }): Promise<
     ControlResult<
-      { skill: BotSkillSummaryWire; created: boolean; effective: 'next-session' },
+      { skill: BotSkillSummaryWire; created: boolean; effective: 'next-turn' | 'next-session' },
       string
     >
   >;
   list(params: {
     callerSessionId: string;
-  }): Promise<ControlResult<{ skills: BotSkillSummaryWire[] }, string>>;
+    query?: string;
+    offset?: number;
+    limit?: number;
+  }): Promise<ControlResult<{ skills: BotSkillSummaryWire[]; total?: number; nextOffset?: number }, string>>;
 }
 
 export interface BotSkillToolDeps {
@@ -58,13 +64,14 @@ export function registerBotSkillTools(
   deps: BotSkillToolDeps,
 ): void {
   registry.register({
-    name: 'save_bot_skill',
+    name: 'save_teammate_skill',
     category: 'bots',
     description:
-      '把刚做完的一类任务的可复用做法,存成当前 Bot 自己的一个技能(真技能文件,不是记忆分片)。'
+      '把刚做完的一类任务的可复用做法,存成当前伙伴自己的一个技能(真技能文件,不是记忆分片)。'
       + '同名技能会被原地更新 —— 发现更好的做法就用同一个 name 再存一次。'
       + 'body 写成可照做的步骤,不要写这一次的具体结论。'
-      + '技能在**下一次任务**才会被挂载,本次任务里不要指望能立刻调用它。',
+      + '需要当前运行位置支持伙伴自有 Skill 存储；远端未挂载时返回不可用，不会代写本机，也不能声称已保存或生效。'
+      + '宿主会在当前聊天的安全轮次边界加载技能；以返回的 effective 为准，旧宿主可能需要下一任务。当前轮不要调用尚未挂载的新技能。',
     inputShape: {
       name: z
         .string()
@@ -101,19 +108,35 @@ export function registerBotSkillTools(
   });
 
   registry.register({
-    name: 'list_bot_skills',
+    name: 'list_teammate_skills',
     category: 'bots',
     description:
-      '列出当前 Bot 已经学会的技能(名称 / 说明 / 更新时间,不含正文)。'
+      '列出当前伙伴已经学会的技能(名称 / 说明 / 更新时间,不含正文)。'
+      + '按 query 搜索完整名称和说明；返回短预览和原文件路径。大目录分页返回，使用 nextOffset 继续，不能把第一页当成全部。'
+      + '需要使用时从 filePath 的 bodyStartLine 开始分段读正文，资源相对路径以原文件目录为准；enabled=false 的技能保留但未启用。'
+      + '需要当前运行位置支持伙伴自有 Skill 存储；远端未挂载时返回不可用，不把本机技能表冒充远端可用技能。'
       + '打算沉淀新技能前先看一眼:已经有的就用同名更新,不要重复学一遍。',
-    inputShape: {},
-    handler: async () => {
+    inputShape: {
+      query: z.string().max(1024).optional().describe('名称或说明中的关键词，空白分隔的词均须匹配'),
+      offset: z.number().int().min(0).optional().describe('上一页返回的 nextOffset'),
+      limit: z.number().int().min(1).max(50).optional().describe('每页最多条数，默认 20；宿主同时限制响应大小'),
+    },
+    handler: async ({ query, offset, limit }) => {
       const sessionId = callerSessionId(deps);
       if (!sessionId) return missingSession();
-      const result = await deps.callbacks.list({ callerSessionId: sessionId });
+      const result = await deps.callbacks.list({ callerSessionId: sessionId,
+        ...(query !== undefined ? { query } : {}),
+        ...(offset !== undefined ? { offset } : {}),
+        ...(limit !== undefined ? { limit } : {}),
+      });
       return result.ok
-        ? okPayload({ skills: result.skills })
+        ? okPayload({ skills: result.skills,
+          ...(result.total !== undefined ? { total: result.total } : {}),
+          ...(result.nextOffset !== undefined ? { nextOffset: result.nextOffset } : {}),
+        })
         : errorPayload(result.errorCode, result.message);
     },
   });
+  registry.registerAlias('save_bot_skill', 'save_teammate_skill');
+  registry.registerAlias('list_bot_skills', 'list_teammate_skills');
 }

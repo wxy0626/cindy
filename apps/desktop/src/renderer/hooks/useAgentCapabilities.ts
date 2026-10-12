@@ -123,6 +123,11 @@ export interface AgentCapabilities {
   /** 被控端支持把 UI initial_task 延后到 Lead 首条输入 accepted 后派发。 */
   supportsDeferredOrcaUiAssignment?: boolean;
   /**
+   * 被控端支持给协同 Worker 单独指定 Agent 所在电脑(远程供应商，`agentDeviceId`)。
+   * 老被控端无此字段 → undefined：Worker 面板不列远程供应商、不发这个字段(老端会静默丢掉)。
+   */
+  supportsOrcaWorkerAgentDevice?: boolean;
+  /**
    * 手动压缩会话上下文能力(pi 原生 compact)。与 maker-core Capabilities.manualCompact
    * 同形；device-link 老被控端序列化的 capabilities 无此字段 → undefined = 不支持。
    * 上下文环压缩入口据此判定(见 resolveManualCompactChannel),不再硬编码 agentKind 列表。
@@ -288,6 +293,7 @@ function parseAgentCapabilities(value: unknown): AgentCapabilities {
     !isOptionalBoolean(value.supportsSessionAgentSwitchCas) ||
     !isOptionalBoolean(value.supportsOrcaWorkerPermissionMode) ||
     !isOptionalBoolean(value.supportsDeferredOrcaUiAssignment) ||
+    !isOptionalBoolean(value.supportsOrcaWorkerAgentDevice) ||
     !isOptionalCapabilityStatus(value.writableDirs) ||
     !isOptionalCapabilityStatus(value.manualCompact)
   ) {
@@ -623,7 +629,7 @@ export function beginLocalCapabilitiesRefresh(): number {
 export async function loadLocalCapabilitiesSnapshot(): Promise<LocalCapabilitiesSnapshot> {
   const api = getMakerApi();
   if (!api) throw new Error('maker IPC not available');
-  const entries = await Promise.all(
+  const results = await Promise.allSettled(
     ALL_AGENT_KINDS.map(async (agent): Promise<readonly [AgentKind, AgentCapabilities] | null> => {
       try {
         return [agent, await api.getCapabilities(agent)] as const;
@@ -640,6 +646,10 @@ export async function loadLocalCapabilitiesSnapshot(): Promise<LocalCapabilities
       }
     }),
   );
+  const entries = results.map((result) => {
+    if (result.status === 'rejected') throw result.reason;
+    return result.value;
+  });
   return entries.filter(
     (entry): entry is readonly [AgentKind, AgentCapabilities] => entry !== null,
   );

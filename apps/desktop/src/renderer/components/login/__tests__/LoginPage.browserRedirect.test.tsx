@@ -115,7 +115,7 @@ describe('LoginPage browser redirect waiting state', () => {
     expect(screen.getByText('login.localModeDescription')).toBeTruthy();
   });
 
-  it('makes retained accounts reachable from the signed-out error screen', async () => {
+  it('keeps retained accounts reachable from the signed-out error screen', async () => {
     const listAccounts = vi.fn().mockResolvedValue({
       accounts: [{ accountKey: 'saved-account' }],
       mutationAllowed: true,
@@ -138,13 +138,15 @@ describe('LoginPage browser redirect waiting state', () => {
     expect(listAccounts).toHaveBeenCalledOnce();
     fireEvent.click(trigger);
     expect(await screen.findByTestId('account-switcher-dialog')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'login.localModeEntry' })).toBeTruthy();
   });
 
-  it('does not advertise account switching when no reusable account remains', async () => {
+  it('does not expose saved-account switching while waiting for browser login', async () => {
     render(<LoginPage />);
 
     await vi.waitFor(() => expect(loginHook.value.listAccounts).toHaveBeenCalledOnce());
     expect(screen.queryByRole('button', { name: 'sidebar.accountSwitcher.title' })).toBeNull();
+    expect(screen.queryByTestId('account-switcher-dialog')).toBeNull();
   });
 
   it('disables local entry while a login request is pending', () => {

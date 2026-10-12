@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { createRef, useState } from 'react';
+import { act, createRef, useState } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -107,20 +107,13 @@ describe('AccountSwitcherDialog', () => {
     await waitFor(() => expect(syncAccounts).toHaveBeenCalledOnce());
 
     fireEvent.click(screen.getByRole('button', { name: /Example CorpOrganization Cindy/ }));
-    fireEvent.click(await screen.findByTestId('login-local-project-sync-confirm'));
-    await waitFor(() => expect(switchAccount).toHaveBeenCalledWith('org-key', {
-      projectConversation: true,
-      projectFiles: true,
-      projectList: true,
-      projectRuntimeRecords: true,
-      independentConversations: true,
-      nonSensitivePreferences: true,
-    }));
+    await waitFor(() => expect(switchAccount).toHaveBeenCalledWith('org-key'));
+    expect(switchAccount.mock.calls[0]).toHaveLength(1);
     expect(confirm).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it('does not switch when local sync settings are cancelled', async () => {
+  it('does not switch when the selected row is already current', async () => {
     render(
       <AccountSwitcherDialog
         open
@@ -130,14 +123,15 @@ describe('AccountSwitcherDialog', () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: /Example CorpOrganization Cindy/ }));
-    fireEvent.click(await screen.findByTestId('login-local-project-sync-cancel'));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Personal Cindypersonal@example.com/ }),
+    );
 
     expect(switchAccount).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
 
-  it('passes the edited local sync whitelist to the account switch', async () => {
+  it('does not pass deprecated local-sync options to the account switch', async () => {
     render(
       <AccountSwitcherDialog
         open
@@ -148,19 +142,9 @@ describe('AccountSwitcherDialog', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: /Example CorpOrganization Cindy/ }));
-    fireEvent.click(await screen.findByTestId('login-local-project-sync-projectFiles'));
-    fireEvent.click(await screen.findByTestId('login-local-project-sync-confirm'));
 
-    await waitFor(() =>
-      expect(switchAccount).toHaveBeenCalledWith('org-key', {
-        projectConversation: true,
-        projectFiles: false,
-        projectList: true,
-        projectRuntimeRecords: true,
-        independentConversations: true,
-        nonSensitivePreferences: true,
-      }),
-    );
+    await waitFor(() => expect(switchAccount).toHaveBeenCalledWith('org-key'));
+    expect(switchAccount.mock.calls[0]).toHaveLength(1);
   });
 
   it('starts the full sign-in flow from the add-account action', async () => {
@@ -263,7 +247,6 @@ describe('AccountSwitcherDialog', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: /Example CorpOrganization Cindy/ }));
-    fireEvent.click(await screen.findByTestId('login-local-project-sync-confirm'));
 
     await waitFor(() =>
       expect(confirm).toHaveBeenCalledWith({
@@ -275,34 +258,34 @@ describe('AccountSwitcherDialog', () => {
       }),
     );
     expect(switchAccount).not.toHaveBeenCalled();
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
-  it('closes the account dialog while editing sync settings and reopens it on cancel', async () => {
-    function Harness() {
-      const [open, setOpen] = useState(true);
-
-      return (
-        <AccountSwitcherDialog
-          open={open}
-          onOpenChange={setOpen}
-          onAddAccount={vi.fn()}
-          triggerRef={createRef<HTMLButtonElement>()}
-        />
-      );
-    }
-
-    render(<Harness />);
+  it('keeps the account dialog open until the account switch finishes', async () => {
+    const onOpenChange = vi.fn();
+    let resolveSwitch!: () => void;
+    switchAccount.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveSwitch = resolve;
+      }),
+    );
+    render(
+      <AccountSwitcherDialog
+        open
+        onOpenChange={onOpenChange}
+        onAddAccount={vi.fn()}
+        triggerRef={createRef<HTMLButtonElement>()}
+      />,
+    );
 
     fireEvent.click(await screen.findByRole('button', { name: /Example CorpOrganization Cindy/ }));
-    expect(screen.queryByText('sidebar.accountSwitcher.title')).toBeNull();
-    expect(screen.getByTestId('login-local-project-sync-dialog')).toBeTruthy();
+    await waitFor(() => expect(switchAccount).toHaveBeenCalledWith('org-key'));
+    expect(onOpenChange).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId('login-local-project-sync-cancel'));
-
-    await waitFor(() => expect(screen.getByText('sidebar.accountSwitcher.title')).toBeTruthy());
-    expect(screen.queryByTestId('login-local-project-sync-dialog')).toBeNull();
-    expect(switchAccount).not.toHaveBeenCalled();
+    await act(async () => {
+      resolveSwitch();
+    });
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 
   it('switches only after the user confirms interruption of running tasks', async () => {
@@ -318,10 +301,9 @@ describe('AccountSwitcherDialog', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: /Example CorpOrganization Cindy/ }));
-    fireEvent.click(await screen.findByTestId('login-local-project-sync-confirm'));
 
     await waitFor(() => expect(confirm).toHaveBeenCalledOnce());
-    await waitFor(() => expect(switchAccount).toHaveBeenCalledWith('org-key', expect.any(Object)));
+    await waitFor(() => expect(switchAccount).toHaveBeenCalledWith('org-key'));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -346,7 +328,6 @@ describe('AccountSwitcherDialog', () => {
     render(<Harness />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Example CorpOrganization Cindy/ }));
-    fireEvent.click(await screen.findByTestId('login-local-project-sync-confirm'));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 
     fireEvent.click(screen.getByRole('button', { name: 'reopen' }));

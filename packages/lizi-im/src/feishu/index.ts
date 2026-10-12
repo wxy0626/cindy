@@ -16,6 +16,7 @@
  */
 
 import { BaseIM } from '../BaseIM.js';
+import { processingReaction } from '../processingReactions.js';
 import type { ChannelIM } from '../channelIM.js';
 import type {
   IMHost,
@@ -395,6 +396,11 @@ export class FeishuIM extends BaseIM implements ChannelIM {
 
   // ── outbound ────────────────────────────────────────────────────────────────
 
+  /** Send a notification and retain the provider receipt for host-side reply routing. */
+  sendNotification(userId: string, markdown: string): Promise<{ messageId: string; chatId?: string }> {
+    return outbound.sendNotification(userId, markdown);
+  }
+
   async sendText(
     userId: string,
     text: string,
@@ -403,7 +409,7 @@ export class FeishuIM extends BaseIM implements ChannelIM {
     return this.sendWithDeferredOpenerConsume(
       userId,
       'markdown',
-      () => outbound.sendText(userId, text),
+      () => outbound.sendText(userId, text, opts),
       opts?.fallbackOpenerId,
     );
   }
@@ -427,7 +433,7 @@ export class FeishuIM extends BaseIM implements ChannelIM {
     return this.sendWithDeferredOpenerConsume(
       userId,
       'markdown',
-      () => outbound.sendInteractive(userId, { body: markdown, buttons: [] }),
+      () => outbound.sendInteractive(userId, { body: markdown, buttons: [] }, opts),
       opts?.fallbackOpenerId,
     );
   }
@@ -435,8 +441,9 @@ export class FeishuIM extends BaseIM implements ChannelIM {
   startStreamingText(
     userId: string,
     initial?: string,
+    opts?: { threadTs?: string },
   ): Promise<StreamingTextHandle> {
-    return streamingText.start(userId, initial);
+    return streamingText.start(userId, initial, opts);
   }
 
   /**
@@ -722,8 +729,8 @@ export class FeishuIM extends BaseIM implements ChannelIM {
     return outbound.updateInteractive(messageId, spec);
   }
 
-  sendFile(userId: string, absPath: string, displayName?: string): Promise<SendFileResult> {
-    return outbound.sendFile(userId, absPath, displayName);
+  sendFile(userId: string, absPath: string, displayName?: string, opts?: { threadTs?: string }): Promise<SendFileResult> {
+    return outbound.sendFile(userId, absPath, displayName, opts);
   }
 
   /**
@@ -750,7 +757,8 @@ export class FeishuIM extends BaseIM implements ChannelIM {
 
   /**
    * 下载任意历史消息的附件(群历史图片/文件进上下文用)。复用私聊入站的
-   * messageResource 下载与 mediaStore 缓存;client 未就绪时全部进 unsupported。
+   * messageResource 下载与同一套存放(媒体进 host 总仓, 其余文件交 host 暂存);
+   * client 未就绪时全部进 unsupported。
    */
   async downloadMessageAttachments(
     messageId: string,
@@ -766,7 +774,8 @@ export class FeishuIM extends BaseIM implements ChannelIM {
         })),
       };
     }
-    return downloadAttachments(c, messageId, refs);
+    // 只供群历史上下文: 图片按可回收缓存写入(只进模型、不落库, 没有任务引用)。
+    return downloadAttachments(c, messageId, refs, { history: true });
   }
 
   /**
@@ -778,7 +787,7 @@ export class FeishuIM extends BaseIM implements ChannelIM {
    * reasonable default.
    */
   reactToMessage(messageId: string, emojiType: string): Promise<string | null> {
-    return outbound.addReaction(messageId, emojiType);
+    return outbound.addReaction(messageId, processingReaction(emojiType));
   }
 
   /**

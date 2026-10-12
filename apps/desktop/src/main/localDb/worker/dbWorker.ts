@@ -19,7 +19,11 @@ const workerPort = parentPort;
 if (!workerPort) throw new Error('db worker must be spawned via worker_threads');
 const activeWorkerPort = workerPort;
 
-const moduleRequire = createRequire(import.meta.url);
+// CJS 产物（Forge preload target / 测试 helper 构建）会把 import.meta.url 替成
+// undefined；那里回退到 CJS 自带的 __filename，避免 createRequire 直接抛错。
+const moduleRequire = createRequire(
+  typeof __filename === 'string' ? __filename : import.meta.url,
+);
 const startupOptions = (workerData ?? {}) as DbWorkerStartupOptions;
 const DatabaseCtor = loadDatabaseConstructor(startupOptions.betterSqliteModulePath);
 
@@ -29,14 +33,17 @@ let initError: { code: string; message: string; stack?: string } | null = null;
 setDatabase(startupOptions);
 
 activeWorkerPort.on('message', async (req: RpcRequest) => {
+  const startedAt = performance.timeOrigin + performance.now();
+  const timing = () => ({ startedAt, finishedAt: performance.timeOrigin + performance.now() });
   try {
     const result = await dispatchRequest(req);
-    activeWorkerPort.postMessage({ id: req.id, ok: true, result } satisfies RpcResponse);
+    activeWorkerPort.postMessage({ id: req.id, ok: true, result, timing: timing() } satisfies RpcResponse);
   } catch (err) {
     activeWorkerPort.postMessage({
       id: req.id,
       ok: false,
       error: serializeWorkerError(err),
+      timing: timing(),
     } satisfies RpcResponse);
   }
 });

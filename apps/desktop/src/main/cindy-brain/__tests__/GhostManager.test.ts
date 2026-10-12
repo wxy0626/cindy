@@ -308,6 +308,57 @@ describe('hashApprovedSkillContent · item.dir 路径段校验', () => {
 });
 
 describe('GhostManager · 存量插件一次性迁移(§5 升级无感)', () => {
+  it.each(['future', { future: true }, ['future'], null, false])('keeps historical unknown tasks %j enabled without task approval', async (tasks) => {
+    await writeLegacyInstall('hello', {...goodManifest(), slots:['tool','agent'], agent:{tasks}});
+    await manager.migrateLegacyApprovalsOnce();
+    const old = manager.list()[0];
+    expect(old).toMatchObject({enabled:true, manifest:{agent:{tasks}}, approval:{state:'approved'}});
+    expect(old.taskCapabilityApproved).toBeUndefined();
+    if (old.approval.state !== 'approved') throw new Error('fixture not approved');
+    expect(await manager.approveTaskCapability('hello', old.approval.revision, () => true)).toBe(false);
+    await manager.setEnabled('hello', false);
+    await manager.setEnabled('hello', true);
+    expect(manager.list()[0]).toMatchObject({enabled:true,manifest:{agent:{tasks}},approval:old.approval});
+    expect(manager.list()[0].taskCapabilityApproved).toBeUndefined();
+  });
+  it('keeps legacy tasks data inert, persists only explicit approval, and preserves it through enable and update', async () => {
+    const manifest = {...goodManifest(), slots:['tool','agent'], agent:{tasks:true}};
+    await writeLegacyInstall('hello', manifest);
+    await manager.migrateLegacyApprovalsOnce();
+    const old = manager.list()[0];
+    expect(old.enabled).toBe(true);
+    expect(old.taskCapabilityApproved).toBeUndefined();
+    if (old.approval.state !== 'approved') throw new Error('fixture not approved');
+    expect(await manager.approveTaskCapability('hello', 'stale', () => true)).toBe(false);
+    expect(await manager.approveTaskCapability('hello', old.approval.revision, () => false)).toBe(false);
+    expect(await manager.approveTaskCapability('hello', old.approval.revision, () => true)).toBe(true);
+    expect(manager.list()[0]).toMatchObject({enabled:true,taskCapabilityApproved:true,approval:old.approval});
+    await manager.setEnabled('hello', false);
+    expect(await manager.approveTaskCapability('hello', old.approval.revision, () => true)).toBe(false);
+    await manager.setEnabled('hello', true);
+    expect(manager.list()[0].taskCapabilityApproved).toBe(true);
+    const pkg = await makeCindy('tasks-update.cindy', {...manifest,version:'1.0.1'}, {'main.js':'// plugin'});
+    const updated = await manager.update(pkg, {expectedInstalledApproval:ghostInstallApprovalToken(old.approval)});
+    expect(updated).toHaveProperty('ghost.taskCapabilityApproved', true);
+  });
+  it('does not publish task approval when owner changes during receipt preparation', async () => {
+    await writeLegacyInstall('hello', {...goodManifest(), slots:['tool','agent'], agent:{tasks:true}});
+    await manager.migrateLegacyApprovalsOnce();
+    const old = manager.list()[0];
+    if (old.approval.state !== 'approved') throw new Error('fixture not approved');
+    let current = true;
+    const write = fs.promises.writeFile.bind(fs.promises);
+    const spy = vi.spyOn(fs.promises, 'writeFile').mockImplementation(async (file, data, options) => {
+      await write(file, data, options);
+      if (String(file).endsWith('.tmp') && String(data).includes('"taskCapabilityApproved": true')) current = false;
+    });
+    expect(await manager.approveTaskCapability('hello', old.approval.revision, () => current)).toBe(false);
+    spy.mockRestore();
+    expect(manager.list()[0].taskCapabilityApproved).toBeUndefined();
+    expect(await manager.approveTaskCapability('hello', old.approval.revision, () => true)).toBe(true);
+    expect(manager.list()[0].taskCapabilityApproved).toBe(true);
+  });
+
   /** 带 skill 槽的旧布局清单 + 配套 SKILL.md(frontmatter 与声明逐字一致)。 */
   const legacySkillManifest = (id = 'skilled'): Record<string, unknown> => ({
     ...goodManifest(id),
@@ -1556,6 +1607,35 @@ describe('GhostManager · 装入/更新崩溃窗口恢复(事务标记)', () => 
   const freshManager = () =>
     new GhostManager({ getRootDir: () => rootDir, getLocale: () => hostLocale, onChanged });
 
+  it('rejects cancellation during install preparation before publishing bytes and allows retry', async () => {
+    const file = await makeCindy('cancelled.cindy', goodManifest());
+    const controller = new AbortController();
+    const writePending = GhostInstallReceiptStore.prototype.writePendingMutation;
+    const pendingSpy = vi.spyOn(GhostInstallReceiptStore.prototype, 'writePendingMutation')
+      .mockImplementation(async function (this: GhostInstallReceiptStore, ...args) {
+        await writePending.apply(this, args);
+        controller.abort();
+      });
+    const guard = vi.fn(() => {
+      expect(fs.existsSync(pendingMarkerPath())).toBe(true);
+      expect(fs.existsSync(path.join(rootDir, 'hello'))).toBe(false);
+      controller.signal.throwIfAborted();
+    });
+    try {
+      await expectRejection(await manager.install(file, { beforePackagePlacement: guard }), 'io');
+      expect(guard).toHaveBeenCalledOnce();
+      expect(manager.list()).toEqual([]);
+      expect(fs.existsSync(pendingMarkerPath())).toBe(false);
+      expect(fs.existsSync(receiptPath())).toBe(false);
+      expect((await fs.promises.readdir(rootDir)).filter(name => name.startsWith('.cindy-installing-'))).toEqual([]);
+      expect(onChanged).not.toHaveBeenCalled();
+    } finally {
+      pendingSpy.mockRestore();
+    }
+    const retried = await manager.install(file);
+    expect(retried).toMatchObject({ ghost: { manifest: { id: 'hello' }, enabled: true } });
+  });
+
   it('崩溃的装入(有 finalDir、无 receipt、有 install 标记)被恢复删除,不被迁移收编', async () => {
     // install 在 rename(staging→final) 之后、写 receipt 之前崩溃:finalDir 完整、无
     // receipt、无 ledger。若不处理,迁移会把它(崩溃窗口内可能被改过 manifest)当 legacy
@@ -2357,7 +2437,7 @@ describe('GhostManager · install', () => {
     expect(manager.readEffectiveInstallOrigin('missing')).toBe('manual');
   });
 
-  it('按宿主语言返回本地化清单，切换语言后 list 立即更新，不支持语言固定回退英文', async () => {
+  it('按宿主语言返回本地化清单，切换语言后 list 立即更新，不支持语言固定回退中文', async () => {
     const manifest = {
       ...goodManifest(),
       name: 'Base name',
@@ -2389,18 +2469,24 @@ describe('GhostManager · install', () => {
       },
     });
 
-    hostLocale = 'ja';
+    hostLocale = 'en';
     expect(manager.list()[0].manifest).toMatchObject({
       name: 'English name',
       description: 'English description',
-      resolvedLocale: 'ja',
+      resolvedLocale: 'en',
       tools: [{ name: 'do_thing', description: 'English tool' }],
     });
-    hostLocale = 'fr-FR';
-    expect(manager.list()[0].manifest).toMatchObject({
-      name: 'English name',
-      resolvedLocale: 'en',
-    });
+    // 只保留中英双语后，宿主语言不在支持列表内（历史 ja、其它语言）统一回退默认中文，
+    // 不再按旧五语语义保留 resolvedLocale。
+    for (const unsupported of ['ja', 'fr-FR', 'zh-TW']) {
+      hostLocale = unsupported;
+      expect(manager.list()[0].manifest).toMatchObject({
+        name: '中文名称',
+        description: '中文说明',
+        resolvedLocale: 'zh-CN',
+        tools: [{ name: 'do_thing', description: '中文工具' }],
+      });
+    }
   });
 
   it('installed locale symlinks cannot replace the Host-approved locale snapshot', async () => {

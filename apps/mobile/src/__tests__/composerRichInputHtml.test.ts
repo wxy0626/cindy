@@ -548,6 +548,22 @@ describe('mobile composer rich input HTML', () => {
     }, true, { nodeIndex: 1, offset: 8 });
     expect(selection.anchorNode).toBe(children[2]);
     expect(selection.anchorOffset).toBe(8);
+    // Without focusAfter the caret is restored only while the editor already has focus.
+    let focusCalls = 0;
+    root.focus = () => { focusCalls += 1; };
+    const dictated = {
+      version: 1,
+      nodes: [{ type: 'text', text: 'dictated text' }],
+    };
+    // Replacing the DOM drops the live selection, as a real contenteditable does.
+    selection.removeAllRanges();
+    windowStub.cindyComposer?.applyDocument(dictated, false, { nodeIndex: 0, offset: 4 });
+    expect(selection.anchorNode).toBeNull();
+    Object.assign(documentStub, { activeElement: root });
+    windowStub.cindyComposer?.applyDocument(dictated, false, { nodeIndex: 0, offset: 4 });
+    expect(selection.anchorNode).toBe(children[0]);
+    expect(selection.anchorOffset).toBe(4);
+    expect(focusCalls).toBe(0);
     expect(legacyHtml).not.toContain('.flatMap(');
   });
 
@@ -649,10 +665,10 @@ describe('mobile composer rich input HTML', () => {
     // 无障碍激活(VoiceOver / TalkBack)只走 onPress,不会派发 onPressIn:两者都必须挂,
     // 否则读屏用户按下这个「停止录音」按钮不会有任何反应。
     expect(overlaySource).toContain('onPress={handleComposerInputPressIn}');
-    // 单行听写时 inputFrame 只有 28pt,命中层必须靠父容器撑到 44pt 触控目标——
-    // hitSlop 无效(RN 的命中区不会越过父视图边界),所以不许再用它顶替。
+    // Android 保留覆盖层的 44pt 命中区；iOS 使用常驻麦克风停止录音，
+    // 不再为了文字覆盖层额外抬高已展开的输入框。
     expect(overlaySource).not.toContain('hitSlop');
-    expect(screenSource).toContain('inputFrameMinHeight={voiceIsListening ? MOBILE_COMPOSER_MIN_TOUCH_TARGET : undefined}');
+    expect(screenSource).toContain("inputFrameMinHeight={Platform.OS !== 'ios' && voiceIsListening ? MOBILE_COMPOSER_MIN_TOUCH_TARGET : undefined}");
 
     // hidden 的富文本编辑器必须同时从两端的无障碍树里摘掉:opacity: 0 不隐藏读屏焦点,
     // 而它的 focus 已不再停听写,焦点留在那里会让读屏用户卡在「按了没反应」的输入框上。

@@ -43,6 +43,8 @@ export interface AuthState {
   mode: 'signed-out' | 'local' | 'cloud';
   dataOwnerId: string | null;
   ownerGeneration: number;
+  /** Main marks the transient signed-out projection while an owner boundary is pending. */
+  ownerBoundaryPending?: boolean;
   canEnterApp: boolean;
   isAuthenticated: boolean;
   isCanary: boolean;
@@ -86,6 +88,7 @@ export function createAuthService(): AuthService {
       mode: rawState.mode,
       dataOwnerId: rawState.dataOwnerId,
       ownerGeneration: rawState.ownerGeneration,
+      ownerBoundaryPending: rawState.ownerBoundaryPending === true,
       canEnterApp: rawState.canEnterApp,
       isAuthenticated: rawState.isAuthenticated,
       isCanary: rawState.isCanary === true,
@@ -105,6 +108,7 @@ export function createAuthService(): AuthService {
         mode: raw.mode,
         dataOwnerId: raw.dataOwnerId,
         ownerGeneration: raw.ownerGeneration,
+        ownerBoundaryPending: raw.ownerBoundaryPending === true,
         canEnterApp: raw.canEnterApp,
         isAuthenticated: raw.isAuthenticated,
         isCanary: raw.isCanary === true,

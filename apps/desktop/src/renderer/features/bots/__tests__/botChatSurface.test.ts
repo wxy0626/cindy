@@ -15,6 +15,8 @@ const read = (relativePath: string): string =>
 
 const sessionView = read('features/cc-agent/CCAgentSessionView.tsx');
 const messageStream = read('components/chat/MessageStream.tsx');
+const botConversation = read('features/bots/botConversationPresentation.ts');
+const botWorkingStatus = read('features/bots/BotWorkingStatus.tsx');
 const messageActionBar = read('components/chat/MessageActionBar.tsx');
 const chatInput = read('components/new-chat/ChatInput.tsx');
 const botSettings = read('features/bots/BotsHomeView.tsx');
@@ -37,9 +39,7 @@ describe('Bot 对话的判定条件', () => {
   });
 
   it('伙伴对话换掉任务顶栏,而不是在它旁边再加一个', () => {
-    expect(sessionView).toContain(
-      '<BotSessionContentHeaderRegistration bot={botChatIdentity} sessionId={sessionId} />',
-    );
+    expect(sessionView).toContain('<BotSessionContentHeaderRegistration bot={botChatIdentity} />');
     expect(sessionView).toContain('<SessionContentHeaderRegistration');
   });
 });
@@ -53,9 +53,8 @@ describe('消息流的头像挂载', () => {
 
   it('只有 assistant 分支挂头像', () => {
     expect(messageStream).toContain('return withAssistantAvatar(\n        assistantAvatar,');
-    // 全文只有「定义 + 一处调用」两次出现:user 气泡、工具卡、工作组里的中间
-    // 过程文字都不经过它。
-    expect(messageStream.match(/withAssistantAvatar\(/g)?.length).toBe(2);
+    // 普通助手正文挂头像；伙伴任务卡额外保留一个不可见占位，保证卡片与正文左缘对齐。
+    expect(messageStream.match(/withAssistantAvatar\(/g)?.length).toBe(3);
   });
 });
 
@@ -68,7 +67,9 @@ describe('伙伴输入框只保留对话动作', () => {
   });
 
   it('伙伴仍可使用权限快捷键，锁定任务不能切换', () => {
-    expect(chatInput).toContain('settingsLocked ? [] : (activeAgentCapabilities?.permissionModes ?? [])');
+    expect(chatInput).toContain(
+      'settingsLocked || sharedGuest ? [] : (activeAgentCapabilities?.permissionModes ?? [])',
+    );
     expect(chatInput).not.toContain('settingsLocked || hideRuntimeControls');
   });
 
@@ -92,18 +93,18 @@ describe('伙伴设置包含独立能力选择入口', () => {
 describe('伙伴消息流收起内部工作过程', () => {
   it('只对伙伴过滤工作卡，正文流式出现后让单一思考状态退场', () => {
     expect(sessionView).toContain('simplifiedBotConversation={Boolean(botChatIdentity)}');
-    expect(messageStream).toContain('simplifyBotRenderItems(grouped, isSessionStreaming)');
-    expect(messageStream).toContain("item.message.role === 'assistant'");
-    expect(messageStream).toContain('item.message.content.trim().length > 0');
-    expect(messageStream).not.toContain('data-testid="bot-thinking-indicator"');
-    expect(sessionView).toContain('data-testid="bot-thinking-indicator"');
-    expect(sessionView).toContain("t('ccAgent.agentStatus.thinking')");
-    expect(sessionView).toContain('botChatIdentity ? (');
-    expect(sessionView).toContain(
-      'Boolean(botChatIdentity) && hasBotAssistantOutputInCurrentTurn(messages)',
+    expect(messageStream).toContain(
+      'simplifyBotRenderItems(grouped, isSessionStreaming, visibleGeneratedFileKeys)',
     );
-    expect(sessionView).toContain('composerRuntimeVisible && !botAssistantOutputStarted');
-    expect(sessionView).toContain('botThinkingVisible ? (');
+    expect(botConversation).toContain("item.message.role === 'assistant'");
+    expect(botConversation).toContain('item.message.content.trim()');
+    expect(messageStream).not.toContain('data-testid="bot-thinking-indicator"');
+    expect(botWorkingStatus).toContain('data-testid="bot-working-indicator"');
+    expect(botWorkingStatus).toContain('resolvePlainAgentPhase(status, messages, startedAt)');
+    expect(botWorkingStatus).toContain('if (!visible) return null;');
+    expect(sessionView).toContain('<BotWorkingStatus');
+    expect(sessionView).toContain('botChatIdentity ? (');
+    expect(sessionView).toContain('visible={composerRuntimeVisible}');
   });
 
   it('时间戳只挂在伙伴消息分组上', () => {
@@ -121,7 +122,9 @@ describe('伙伴消息流收起内部工作过程', () => {
 
   it('伙伴消息操作栏常显，外显回复，并隐藏费用与 Fork', () => {
     expect(messageStream).toContain('simplifiedBotConversation={simplifiedBotConversation}');
-    expect(messageActionBar).toContain('const replyBtn = simplifiedBotConversation');
+    expect(messageActionBar).toContain(
+      'const replyBtn = (replyAction || (simplifiedBotConversation && onAddToChat))',
+    );
     expect(messageActionBar).toContain('const forkBtn = !simplifiedBotConversation');
     expect(messageActionBar).toContain('simplifiedBotConversation ? null : costText || tokensText');
     expect(messageActionBar).toContain('simplifiedBotConversation || visible || menuOpen');

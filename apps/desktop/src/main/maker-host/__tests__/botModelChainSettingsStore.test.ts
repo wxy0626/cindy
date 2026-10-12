@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import type { ProviderView } from '@cindy/model-providers';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   readBotModelChainSettingsState,
@@ -26,6 +26,26 @@ vi.mock('../../appSessionState.js', () => ({
   activeOwnerScopeKey: () => owner.key,
   ownerScopedUserDataPath: () => owner.root,
 }));
+// 未显式传 rootPath 时，模型链设置落在机器级共享命名空间（machineSharedStorage）：
+// 该命名空间在生产上不随云账号切换而变化。单测把它重定向到每用例独立的临时根，
+// 显式传 rootPath 的用例不受影响。
+const machineShared = vi.hoisted(() => ({ root: '' }));
+vi.mock('../../machineSharedStorage.js', async () => {
+  const nodePath = await import('node:path');
+  return {
+    machineSharedUserDataPath: (...parts: string[]) => nodePath.join(machineShared.root, ...parts),
+    machineSharedLegacyFileCandidates: () => [],
+    machineSharedOwnerDirectories: () => [],
+  };
+});
+
+import { setModelVisibilityMirror } from '../model-visibility-mirror';
+import { setNewMakerDraftCache } from '../newMakerDefaultsCache';
+beforeEach(async () => {
+  setModelVisibilityMirror({}, { fallback: true });
+  setNewMakerDraftCache({ selectedRoute: { harness: 'codex', providerId: 'openai', model: 'gpt-5.6-sol', effort: 'medium', fastMode: false }, lastByVendor: {}, effortByModel: {}, fastModeByModel: {} }, owner.key);
+  machineShared.root = await testRoot();
+});
 
 const roots: string[] = [];
 
@@ -56,6 +76,10 @@ describe('bot model chain settings store', () => {
       routing: { codex: { upstream: 'https://example.invalid', authStrategy: 'oauth-passthrough' } },
       models: { codex: [{ id: 'gpt-5.6-sol', mode: 'chat', status: 'active', efforts: ['medium'], defaultEffort: 'medium' }] },
     }] as ProviderView[];
+    // Connected catalog alone cannot select a model while the default mirror is absent.
+    setNewMakerDraftCache({ lastByVendor: {}, effortByModel: {}, fastModeByModel: {} }, owner.key);
+    expect((await readBotModelChainSettingsState({ rootPath, providers })).value.modelChain).toEqual([]);
+    setNewMakerDraftCache({ selectedRoute: { harness: 'codex', providerId: 'openai', model: 'gpt-5.6-sol', effort: 'medium', fastMode: false }, lastByVendor: {}, effortByModel: {}, fastModeByModel: {} }, owner.key);
     const state = await readBotModelChainSettingsState({ rootPath, providers });
     expect(state.isCustomized).toBe(false);
     expect(state.value.modelChain[0]).toMatchObject({
@@ -67,6 +91,30 @@ describe('bot model chain settings store', () => {
     await writeBotModelChainSettings(state.value.modelChain, { rootPath });
     expect((await readBotModelChainSettingsState({ rootPath, providers: [] })).value)
       .toEqual(state.value);
+  });
+
+  it('uses only enabled Luna with Cindy tuning for new and existing default-following partners', async () => {
+    const rootPath = await testRoot();
+    const providers = [{
+      id: 'openai', source: 'builtin', connected: true, agents: ['codex'],
+      access: { kind: 'subscription', product: 'ChatGPT' },
+      routing: { codex: { upstream: 'https://example.invalid', authStrategy: 'oauth-passthrough' } },
+      models: { codex: ['gpt-5.6-sol', 'gpt-5.6-luna'].map(id => ({
+        id, mode: 'chat', status: 'active', efforts: ['low', 'medium'], defaultEffort: 'low',
+      })) },
+    }] as ProviderView[];
+    const selectedRoute = { harness: 'codex' as const, providerId: 'openai', model: 'gpt-5.6-luna', effort: 'medium', fastMode: false };
+    setModelVisibilityMirror({ 'codex:openai:gpt-5.6-luna': true }, { fallback: false, followCatalogKeys: [] });
+    setNewMakerDraftCache({ selectedRoute, lastByVendor: {}, effortByModel: {}, fastModeByModel: {} }, owner.key);
+    expect((await readBotModelChainSettingsState({ rootPath, providers })).value.modelChain).toEqual([selectedRoute]);
+    expect(await readEffectiveBotModelChain({ modelChainOverride: null, model: 'gpt-5.6-sol', effort: 'low' }, { rootPath, providers })).toEqual([selectedRoute]);
+    setNewMakerDraftCache({ selectedRoute: { ...selectedRoute, providerId: null }, lastByVendor: {}, effortByModel: {}, fastModeByModel: {} }, owner.key);
+    expect(await readEffectiveBotModelChain({ modelChainOverride: null }, { rootPath, providers })).toEqual([selectedRoute]);
+    expect(await fs.readdir(rootPath)).toEqual([]);
+    setModelVisibilityMirror({}, { fallback: true });
+    expect((await readBotModelChainSettingsState({ rootPath, providers })).value.modelChain).toEqual([selectedRoute]);
+    setModelVisibilityMirror({ 'codex:openai:gpt-5.6-luna': false }, { fallback: true });
+    expect(await readEffectiveBotModelChain({ modelChainOverride: null }, { rootPath, providers })).toEqual([]);
   });
 
   it('persists an ordered 1-5 route chain as the Main-owned source of truth', async () => {
@@ -168,10 +216,11 @@ describe('bot model chain settings store', () => {
   it('does not clear either account when the owner changes while waiting for the lock', async () => {
     owner.root = await testRoot();
     owner.key = 'owner-a:1';
+    // 默认（不传 rootPath）走机器级共享根：它不随 owner 切换而变化，正是这条用例要守的语义。
+    machineShared.root = await testRoot();
     await writeBotModelChainSettings([{ harness: 'pi', model: 'owner-a-model' }]);
-    const file = path.join(owner.root, 'bot-model-chain-settings.json');
+    const file = path.join(machineShared.root, 'bot-model-chain-settings.json');
     const before = await fs.readFile(file, 'utf8');
-    const oldRoot = owner.root;
     const otherRoot = await testRoot();
     await writeBotModelChainSettings([{ harness: 'pi', model: 'owner-b-model' }], { rootPath: otherRoot });
     vi.spyOn(locks, 'withCrossProcessLock').mockImplementationOnce(async (_path, _options, operation) => {
@@ -181,7 +230,8 @@ describe('bot model chain settings store', () => {
     });
     await expect(resetBotModelChainSettings()).rejects.toThrow('scope changed');
     expect(await fs.readFile(file, 'utf8')).toBe(before);
-    expect((await readBotModelChainSettingsState({ rootPath: oldRoot })).isCustomized).toBe(true);
+    // 默认根未被清空：新 owner 读到的仍是共享根里那份未被删除的覆盖。
+    expect((await readBotModelChainSettingsState()).value.modelChain[0]?.model).toBe('owner-a-model');
     expect((await readBotModelChainSettingsState({ rootPath: otherRoot })).value.modelChain[0]?.model).toBe('owner-b-model');
   });
 

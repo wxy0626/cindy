@@ -4,9 +4,11 @@ import { createElement } from 'react';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import '@/i18n';
+import { i18n } from '@/i18n';
 import type { PendingAskUser } from '@/lib/makerChatStore';
 import { AskUserQuestionPrompt } from '../components/new-chat/AskUserQuestionPrompt';
+
+const t = (key: string): string => String(i18n.t(key));
 
 afterEach(() => {
   cleanup();
@@ -46,8 +48,10 @@ describe('AskUserQuestionPrompt long answers', () => {
       vi.fn(),
     );
 
-    fireEvent.click(getByText('Type something else…'));
-    const textarea = getByPlaceholderText('Type your answer…') as HTMLTextAreaElement;
+    fireEvent.click(getByText(t('chat.askUserQuestion.customAnswer')));
+    const textarea = getByPlaceholderText(
+      t('chat.askUserQuestion.answerPlaceholder'),
+    ) as HTMLTextAreaElement;
     expect(textarea.tagName).toBe('TEXTAREA');
 
     mockScrollHeight(textarea, 96);
@@ -80,7 +84,9 @@ describe('AskUserQuestionPrompt long answers', () => {
       onAnswer,
     );
 
-    const textarea = getByPlaceholderText('Type your answer…') as HTMLTextAreaElement;
+    const textarea = getByPlaceholderText(
+      t('chat.askUserQuestion.answerPlaceholder'),
+    ) as HTMLTextAreaElement;
     expect(textarea.tagName).toBe('TEXTAREA');
     fireEvent.change(textarea, { target: { value: 'First point\nSecond point' } });
 
@@ -110,8 +116,8 @@ describe('AskUserQuestionPrompt long answers', () => {
     );
 
     fireEvent.click(getByText('A'));
-    fireEvent.click(getByText('Type something else…'));
-    const textarea = getByPlaceholderText('Type your answer…');
+    fireEvent.click(getByText(t('chat.askUserQuestion.customAnswer')));
+    const textarea = getByPlaceholderText(t('chat.askUserQuestion.answerPlaceholder'));
     fireEvent.change(textarea, { target: { value: 'Extra\ncontext' } });
 
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });

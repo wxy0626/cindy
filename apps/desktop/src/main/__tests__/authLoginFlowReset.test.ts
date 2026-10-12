@@ -42,6 +42,34 @@ describe('auth login-flow reset', () => {
     expect(clearBody).toContain('canaryFlagStore.clear();');
   });
 
+  it('keeps successful personal credentials private until the region choice and excludes saved-account activation', () => {
+    const start = source.indexOf('async function finishFreshLogin(');
+    const finish = source.slice(start, source.indexOf('async function runLoginAction(', start));
+    expect(finish).toContain('discoverPersonalLoginOrganization(outcome.membership');
+    expect(finish.indexOf('assertLoginFlowCurrent(expectedLoginFlowEpoch)')).toBeGreaterThan(finish.indexOf('await discoverPersonalLoginOrganization'));
+    expect(finish).toContain('pendingPersonalLogin = { outcome, realm: personalRealm }');
+    expect(finish).toContain('personalLoginAvailable: true');
+    expect(finish).not.toContain('pendingAuthRealm = discovery.region');
+    expect(finish).toContain('return completeLogin(outcome, expectedLoginFlowEpoch)');
+    const lookupStart = source.indexOf('async function lookupOrganizationRealm(');
+    const lookup = source.slice(lookupStart, source.indexOf('async function completeLogin(', lookupStart));
+    expect(lookup).not.toContain('pendingAuthRealm =');
+    const continueStart = source.indexOf("if (action.type === 'cancel-sso-realm')");
+    const continueBody = source.slice(continueStart, source.indexOf('if (!providerConfig)', continueStart));
+    expect(continueBody).toContain('pendingAuthRealm = personal.realm');
+    expect(continueBody).toContain('await completeLogin(personal.outcome, actionLoginFlowEpoch)');
+    expect(continueBody).not.toContain('finishFreshLogin(');
+    const confirmStart = source.indexOf("if (action.type === 'confirm-sso-realm')");
+    const confirmBody = source.slice(confirmStart, continueStart);
+    expect(confirmBody.indexOf('pendingPersonalLogin = null')).toBeLessThan(confirmBody.indexOf('pendingAuthRealm = confirmation.targetRegion'));
+    expect(confirmBody).toContain('pendingAccountRefreshToken = null');
+    expect(source.slice(0, source.indexOf('async function acceptLoginOutcome('))).not.toContain('await finishFreshLogin(');
+    expect(source).toContain("await finishFreshLogin({ status: 'ok', ...pair }, actionLoginFlowEpoch)");
+    const reset = source.slice(source.indexOf('function resetLoginFlowState()'), source.indexOf('function clearAuth('));
+    expect(reset).toContain('pendingPersonalLogin = null');
+    expect(reset).toContain('handledLoginEmail = null');
+  });
+
   it('keeps the login-epoch guard and does not resurrect the legacy feishu token chain', () => {
     const completeStart = source.indexOf('async function completeLogin(');
     const completeEnd = source.indexOf('\n}\n\nasync function acceptLoginOutcome', completeStart);
@@ -100,20 +128,31 @@ describe('auth login-flow reset', () => {
     expect(actionPreamble).toContain('const loginRealm = pendingAuthRealm ?? activeAuthRealm;');
     expect(actionPreamble).not.toContain('? AUTH_REGION');
     expect(actionPreamble).toContain('const client = createAuthClient(loginRealm);');
+  });
 
-    const personalActionSetup = source.slice(
-      source.indexOf('if (!providerConfig) await loadLoginProviders', actionStart),
-      source.indexOf("if (action.type === 'discover')", actionStart),
+  it('keeps cross-region email choices gated and preserves SSO after failed personal code sending', () => {
+    const discover = source.slice(
+      source.indexOf("if (action.type === 'discover') {"),
+      source.indexOf("if (action.type === 'discover-sso-org') {"),
     );
-    expect(personalActionSetup).not.toContain('pendingAuthRealm = loginRealm;');
-    expect(source).toContain('return authServerUrl(activeAuthRealm) + LOGIN_CAPTCHA_PAGE_PATH;');
+    expect(discover).toContain('discoverEmailLogin(action.email');
+    expect(discover.indexOf('discoveredMethods = [];')).toBeLessThan(discover.indexOf('await discoverEmailLogin'));
+    expect(discover).toContain('discoverOrganizationRealm(domain, actionLoginFlowEpoch)');
+    expect(discover).toContain('pendingAuthRealm = region;');
+    expect(discover.indexOf("type: 'realm-switch-required'")).toBeLessThan(discover.indexOf('discoveredMethods = methods;'));
+    expect(source).toContain("email: confirmation.email ?? ''");
+    const requestStart = source.indexOf("if (action.type === 'request-code') {");
+    const request = source.slice(requestStart, source.indexOf("if (action.type === 'verify-code') {", requestStart));
+    expect(request.indexOf('pendingAuthRealm = loginRealm;')).toBeGreaterThan(request.indexOf('await client.requestCode('));
+    expect(request).toContain('discoveredMethods = [];');
   });
 
   it('does not leave expired private tickets on a screen that can only reuse them', () => {
     expect(source).toContain("'INVALID_LOGIN_TICKET',");
     expect(source).toContain("'INVALID_BIND_TICKET',");
     expect(source).toContain("'INVALID_SSO_VERIFICATION_TICKET',");
-    expect(source).toContain("? { step: 'error', code, recoverTo: 'identifier' }");
+    expect(source).toContain('const errorState = loginPreparingErrorState(');
+    expect(source).toContain('? errorState');
   });
 
   it('keeps account access tokens in memory while persisting only encrypted refresh sessions', () => {

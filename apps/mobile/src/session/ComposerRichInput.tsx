@@ -1,3 +1,4 @@
+import { ComposerNativeInput, nativeComposerAvailable } from './ComposerNativeInput';
 import { forwardRef, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
@@ -27,10 +28,13 @@ import { registerMobileMessageWebView } from '@/session/mobileMessageWebViewMetr
 import { useComposerWebViewRecovery } from '@/session/useComposerWebViewRecovery';
 
 export interface ComposerRichInputHandle {
+  expand?(): void;
   getSelection(draft: string): ComposerSelection;
   rememberSelection(draft: string, selection: { start: number; end: number }): void;
   applyDocumentAndSetSelectionToEnd(document: ComposerDocument): void;
   applyDocumentAndFocusSelection(document: ComposerDocument, offset: number): void;
+  /** Apply a document and place the caret where possible without opening the keyboard. */
+  applyDocumentAndSetSelection(document: ComposerDocument, offset: number): void;
   blur(): void;
   focus(): void;
   insertNode(node: ComposerNode): void;
@@ -45,6 +49,8 @@ export interface ComposerRichInputProps {
   /** Resize follows the UI thread without an RN render or WebView reload. */
   animatedHeight?: SharedValue<number>;
   hidden?: boolean;
+  /** Hide the native insertion caret while dictation supplies visible text. */
+  caretHidden?: boolean;
   maxHeight: number;
   onBlur?: () => void;
   onChangeDocument(document: ComposerDocument): void;
@@ -67,7 +73,7 @@ interface PendingImagePaste {
 }
 
 /** Editable WebView wrapper; the native side only accepts the semantic protocol above. */
-export const ComposerRichInput = forwardRef<ComposerRichInputHandle, ComposerRichInputProps>(
+const ComposerWebInput = forwardRef<ComposerRichInputHandle, ComposerRichInputProps>(
   function ComposerRichInput({
     accessibilityHint,
     accessibilityLabel,
@@ -94,6 +100,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, ComposerRic
     useEffect(() => registerMobileMessageWebView('composer'), []);
     const readyRef = useRef(false);
     const webSignatureRef = useRef('');
+    const localDocumentsRef = useRef(new WeakSet<ComposerDocument>());
     const projectedDraft = useMemo(() => composerDocumentProjectedText(document), [document]);
     const webDocumentRef = useRef({ document, draft: projectedDraft, id: 0 });
     const selectionRef = useRef<(ComposerSelection & { draft: string }) | null>(null);
@@ -182,6 +189,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, ComposerRic
     }, [inject]);
 
     useEffect(() => {
+      // A native edit may advance again before React commits its previous
+      // snapshot. Echoes acknowledge that edit; they must not reset the DOM
+      // or caret to an older value. External replacements still apply below.
+      if (localDocumentsRef.current.delete(document)) return;
       const signature = JSON.stringify(document);
       if (signature === webSignatureRef.current) return;
       webSignatureRef.current = signature;
@@ -211,6 +222,12 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, ComposerRic
         applyDocumentAndFocusSelection: (value, offset) => {
           webSignatureRef.current = JSON.stringify(value);
           applyDocument(value, true, composerCaretPosition(value, offset));
+        },
+        // Restores the caret only if the editor is already focused; otherwise
+        // getSelection keeps the remembered insertion point until the user taps it.
+        applyDocumentAndSetSelection: (value, offset) => {
+          webSignatureRef.current = JSON.stringify(value);
+          applyDocument(value, false, composerCaretPosition(value, offset));
         },
         blur: () => {
           pendingFocusRef.current = false;
@@ -397,6 +414,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, ComposerRic
         if (selectionRef.current?.atomRange) selectionRef.current = null;
         webSignatureRef.current = JSON.stringify(normalized);
         webDocumentRef.current = { document: normalized, draft: composerDocumentProjectedText(normalized), id: webDocumentRef.current.id };
+        localDocumentsRef.current.add(normalized);
         onChangeDocument(normalized);
         return;
       }
@@ -524,4 +542,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     flex: 1,
   },
+});
+
+/** Older installed native builds retain the existing editor until their next native update. */
+export const ComposerRichInput = forwardRef<ComposerRichInputHandle, ComposerRichInputProps>(function ComposerRichInput(props, ref) {
+  return nativeComposerAvailable ? <ComposerNativeInput {...props} ref={ref} /> : <ComposerWebInput {...props} ref={ref} />;
 });

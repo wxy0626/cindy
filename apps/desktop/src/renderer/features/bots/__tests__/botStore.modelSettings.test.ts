@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/state/newMakerDraft', () => ({
   getDraft: () => ({ lastByVendor: { cc: {}, codex: {}, pi: {} } }),
+  getDraftForPreferenceSync: () => ({ vendor: 'cc', lastByVendor: { cc: { model: '' } }, fastModeByModel: {} }),
   getPersistedVendorModel: () => '',
 }));
 vi.mock('@/lib/modelDefinitions', () => ({
@@ -25,6 +26,7 @@ function apiFixture() {
   let disk = saved;
   const api = {
     list: vi.fn(async () => [] as unknown[]),
+    create: vi.fn(async (input: Record<string, unknown>) => input),
     getModelChainSettings: vi.fn(async () => disk),
     setModelChainSettings: vi.fn(async ({ modelChain }: { modelChain: typeof saved.modelChain }) => {
       disk = { modelChain, isCustomized: true };
@@ -42,6 +44,60 @@ async function hydratedStore(api: ReturnType<typeof apiFixture>) {
 }
 
 beforeEach(() => { vi.resetModules(); window.localStorage.clear(); });
+
+describe('invitation locale before provider mount', () => {
+  it.each(['zh-CN', 'en'])(
+    'sends the saved %s locale in initial hydration without menu synchronization',
+    async (locale) => {
+      const api = apiFixture();
+      Object.assign(window.electronAPI, { preferredSystemLocale: 'en', setApplicationMenuLocale: vi.fn() });
+      window.localStorage.setItem('language', locale);
+      await hydratedStore(api);
+      expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ locale }));
+      expect(window.electronAPI.setApplicationMenuLocale).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['system', 'invalid-locale'])(
+    'falls back to the default locale for the legacy %s preference before hydration',
+    async (preference) => {
+      const api = apiFixture();
+      Object.assign(window.electronAPI, { preferredSystemLocale: 'en' });
+      window.localStorage.setItem('language', preference);
+      await hydratedStore(api);
+      expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ locale: 'zh-CN' }));
+    },
+  );
+
+  it('keeps the current UI language when preference storage cannot be written', async () => {
+    const api = apiFixture();
+    window.localStorage.setItem('language', 'zh-CN');
+    const storageWrite = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+    try {
+      const { writeStoredLocale } = await import('@/lib/localePreference');
+      writeStoredLocale('en');
+      await hydratedStore(api);
+      expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ locale: 'en' }));
+    } finally { storageWrite.mockRestore(); }
+  });
+
+  it('freezes the create-request locale before asynchronous model preparation', async () => {
+    const api = apiFixture();
+    const store = await hydratedStore(api);
+    window.localStorage.setItem('language', 'en');
+    const read = deferred<typeof saved>();
+    api.getModelChainSettings.mockReturnValueOnce(read.promise);
+    const creating = store.addBotProfileAndWait({
+      name: 'Locale test', description: '', prepareInvitation: true,
+      capabilities: { ...route('saved'), modelChainOverride: saved.modelChain },
+    });
+    await vi.waitFor(() => expect(api.getModelChainSettings).toHaveBeenCalledTimes(2));
+    window.localStorage.setItem('language', 'zh-CN');
+    read.resolve(saved);
+    await creating;
+    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ locale: 'en' }));
+  });
+});
 
 describe('global teammate model restore', () => {
   it('refreshes followers, preserves explicit per-Bot models, and drops the legacy cache', async () => {
