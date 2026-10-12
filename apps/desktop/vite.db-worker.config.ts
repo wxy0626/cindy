@@ -5,13 +5,8 @@ export default defineConfig({
     conditions: ['node'],
     mainFields: ['module', 'jsnext:main', 'jsnext'],
   },
-  // worker 产物是 CJS 单文件（forge/dbWorkerTestUtils 都用 format: 'cjs'）。
-  // rollup 在 CJS 输出里把 `import.meta.url` 替换成 `{}`，会让 worker 顶层的
-  // `createRequire(import.meta.url)` 抛 ERR_INVALID_ARG_VALUE（filename undefined），
-  // 直接导致真实 worker 启动即崩。这里显式把 import.meta.url 绑定到当前文件路径。
-  define: {
-    'import.meta.url': 'require("url").pathToFileURL(__filename).href',
-  },
+  // worker 源码已用 `typeof __filename === 'string' ? __filename : import.meta.url`
+  // 兼容 CJS；不要再给 import.meta.url 配表达式 define，Vite 只接受实体名或字面量。
   build: {
     rollupOptions: {
       // db worker 是 Node worker_threads 运行时，原生模块必须在 packaged

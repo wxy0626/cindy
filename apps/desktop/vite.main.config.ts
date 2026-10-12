@@ -107,12 +107,18 @@ export default defineConfig(({ mode }) => {
       'process.env.XDT_VOICE_INPUT_DISABLE_PRECONNECT': JSON.stringify(
         readMainEnv('XDT_VOICE_INPUT_DISABLE_PRECONNECT'),
       ),
+      // CJS 输出会把 import.meta.url 降级成 `{}.url`，导致 vendored browser runtime
+      // 顶层 createRequire(import.meta.url) 在 Electron 启动时直接崩溃。用实体名
+      // define，并在每个 chunk 顶部由 banner 初始化为当前文件的 file URL。
+      'import.meta.url': '__CINDY_IMPORT_META_URL__',
     },
     build: {
       watch:
         mode === 'development' ? { buildDelay: DEV_WATCH_BUILD_DELAY_MS } : undefined,
       rollupOptions: {
         output: {
+          banner:
+            'const __CINDY_IMPORT_META_URL__ = require("url").pathToFileURL(__filename).href;',
           // rolldown 实验开关（2026-09-13）：rolldown 默认拆 chunk + 动态 import，
           // 而 plugin-vite / Electron 期望单文件 CJS 入口——实测多 chunk 产物会
           // 挂在 Electron 启动早期（进程起来但无任何日志）。dev +

@@ -90,6 +90,12 @@ export function binaryRelativePathFor(kind, platformKey) {
   return requiredBinFiles(kind, platformKey)[0] ?? null;
 }
 
+function requiredDirDistFilesFor(cfg, platformKey) {
+  return typeof cfg.requiredDirDistFiles === 'function'
+    ? cfg.requiredDirDistFiles(platformKey)
+    : (cfg.requiredDirDistFiles ?? []);
+}
+
 /** 读 apps/<binDir>/<platform>/.version 里记录的已安装版本；缺失/读失败返回 null。 */
 export function readInstalledVersion(markerPath) {
   try {
