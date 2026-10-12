@@ -18,6 +18,8 @@ describe('VolcengineSaucAsrProvider protocol helpers', () => {
     expect(volcengineSaucLanguageCode('Traditional Chinese')).toBe('zh-CN');
     expect(volcengineSaucLanguageCode('zh-CN')).toBe('zh-CN');
     expect(volcengineSaucLanguageCode('en')).toBe('en');
+    expect(volcengineSaucLanguageCode('Japanese')).toBeUndefined();
+    expect(volcengineSaucLanguageCode('Korean')).toBeUndefined();
   });
 
   it('encodes the initial provider-native request as Volcengine binary protocol JSON', () => {

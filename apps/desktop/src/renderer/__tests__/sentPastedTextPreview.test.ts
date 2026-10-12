@@ -39,7 +39,7 @@ const sourcePath = resolve(__dirname, '..', 'components', 'chat', 'UserMessage.t
 // 用例(collabEntryPolicy / controlledBannerPlacement 等)同一约定。
 const source = readFileSync(sourcePath, 'utf8').replace(/\r\n/g, '\n');
 
-const LOCALES = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'] as const;
+const LOCALES = ['zh-CN', 'en'] as const;
 
 /** 440 行日志的最小可测替身:行数足够撞穿收起阈值。 */
 function makeLog(lines: number): string {
@@ -191,7 +191,7 @@ describe('UserMessage pasted-text chip wiring', () => {
     expect(source).toContain('bubbleBody === ghostBody');
   });
 
-  it('S4 previewTitle 在四种界面语言里都有', () => {
+  it('S4 previewTitle 在中英两种界面语言里都有', () => {
     for (const locale of LOCALES) {
       const localePath = resolve(__dirname, '..', 'i18n', 'locales', locale, 'common.json');
       const parsed = JSON.parse(readFileSync(localePath, 'utf8')) as {

@@ -47,7 +47,7 @@ describe('Maker Experimental accepted result handling', () => {
   });
 
   it('defines the rejected-send message in every locale', () => {
-    for (const locale of ['zh-CN', 'zh-TW', 'en', 'ja', 'ko']) {
+    for (const locale of ['zh-CN', 'en']) {
       const raw = readFileSync(
         resolve(__dirname, '..', 'i18n', 'locales', locale, 'common.json'),
         'utf8',

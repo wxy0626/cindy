@@ -75,8 +75,8 @@ describe('MacComputerPermissionGuideNativeHost', () => {
     expect(source).toContain('hostSize = NSSize(width: 500, height: 226)');
     expect(source).toContain('cardFrame = NSRect(x: 68, y: 12, width: 432, height: 152)');
     expect(source).toContain('"Open computer automation"');
-    expect(source).toContain('case zhTW = "zh-TW"');
-    expect(source).toContain('readyTitle: "Computer Use 已準備就緒"');
+    expect(source).toContain('case zhCN = "zh-CN"');
+    expect(source).toContain('readyTitle: "Computer Use 已就绪"');
     expect(source).toContain('setAccessibilityLabel("CuaDriver")');
     expect(source).not.toContain('setAccessibilityLabel("Computer Use")');
     expect(source).not.toContain('"Computer Use · Step');
@@ -137,8 +137,6 @@ describe('MacComputerPermissionGuideNativeHost', () => {
       'utf8',
     );
 
-    expect(source).toContain('case ja');
-    expect(source).toContain('case ko');
     expect(source).toContain('GuideLocale(rawValue: CommandLine.arguments[2])');
     expect(source).not.toContain('usesChineseCopy');
     expect(source).toContain('NSColor.controlBackgroundColor.cgColor');
@@ -173,7 +171,7 @@ describe('MacComputerPermissionGuideNativeHost', () => {
       screenRecordingGranted: false,
       draggedAccessibility: true,
       draggedScreenRecording: false,
-    }, 'ja');
+    }, 'en');
 
     await vi.advanceTimersByTimeAsync(0);
     expect(h.spawn).toHaveBeenCalledWith(
@@ -185,7 +183,7 @@ describe('MacComputerPermissionGuideNativeHost', () => {
         'computer-permission-guide',
         'xdt-macos-computer-permission-guide-helper',
       ),
-      ['/tmp/Computer Use.app', 'ja'],
+      ['/tmp/Computer Use.app', 'en'],
       { stdio: ['pipe', 'pipe', 'pipe'] },
     );
     child.stdout.write('{"type":"ready"}\n');

@@ -47,8 +47,8 @@ describe("endpoint 闸门失败屏(_layout.tsx)文案 key 化", () => {
     expect(layoutSource).not.toContain('"重试"');
   });
 
-  it("闸门 key 在 5 语 catalog 全部就位", () => {
-    for (const locale of ["zh-CN", "zh-TW", "en", "ja", "ko"] as const) {
+  it("闸门 key 在中英两语 catalog 全部就位", () => {
+    for (const locale of ["zh-CN", "en"] as const) {
       const catalog = loginMessages[locale];
       expect(catalog.endpointGateTitle.trim(), locale).not.toBe("");
       expect(catalog.endpointGateSubtitle, locale).toContain("{reason}");
@@ -69,13 +69,13 @@ describe("config issue(env.ts)文案 key 化", () => {
     expect(loginSource).not.toContain("issue.message}");
   });
 
-  it("行为桥接:非法 URL → messageKey → 5 语文案非空", () => {
+  it("行为桥接:非法 URL → messageKey → 中英文案非空", () => {
     const issues = getMobileConfigIssues({
       EXPO_PUBLIC_CINDY_AUTH_BASE_URL: "ftp://auth.example.com",
     });
     expect(issues).toHaveLength(1);
     const key = issues[0].messageKey;
-    for (const locale of ["zh-CN", "zh-TW", "en", "ja", "ko"] as const) {
+    for (const locale of ["zh-CN", "en"] as const) {
       expect(loginMessages[locale][key].trim(), locale).not.toBe("");
     }
   });

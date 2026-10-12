@@ -35,6 +35,8 @@ import {
 } from '../shared/releaseNotesContent';
 
 import { getBaseUrl, getPlatformKey } from './manifestService';
+import { fetchLatestUpstreamReleaseVersion } from './upstreamReleaseService';
+import { compareAppUpdateVersions } from './updateVersionPolicy';
 
 import { createLogger } from './logger';
 
@@ -47,6 +49,8 @@ const log = createLogger('releaseNotesService');
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1_000;
+/** 长驻开发进程需要感知新发布的公告，索引不能缓存整个进程生命周期。 */
+const INDEX_CACHE_TTL_MS = 60_000;
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -54,9 +58,9 @@ const cache = new Map<string, RawReleaseNotes>();
 const inFlight = new Map<string, Promise<RawReleaseNotes | null>>();
 
 // Sorted ascending list of every version that has a notice JSON on the CDN
-// for this platform. Cached on success only — a failed fetch falls through so
-// a subsequent call can retry.
-let indexCache: string[] | null = null;
+// for this platform. Cached briefly on success only — a failed fetch falls
+// through so a subsequent call can retry.
+let indexCache: { at: number; versions: string[] } | null = null;
 
 // ── Core ───────────────────────────────────────────────────────────────────
 
@@ -224,21 +228,39 @@ export async function fetchReleaseNotes(version: string): Promise<RawReleaseNote
  * defensively filtered to keep bad CDN edges from crashing renderer code.
  *
  * Returns null on 404 / network / parse error. Successful results are cached
- * for the process lifetime.
+ * briefly so a running development build can pick up newly published notices.
  */
 export async function fetchReleaseNotesIndex(): Promise<string[] | null> {
-  if (indexCache) return indexCache;
+  if (indexCache && Date.now() - indexCache.at < INDEX_CACHE_TTL_MS) {
+    return indexCache.versions;
+  }
 
   const platform = getPlatformKey();
   const url = `${getBaseUrl()}/notice/${platform}/index.json?t=${Date.now()}`;
-  const json = await fetchCdnJson<unknown>(url);
+  // CDN 可能提前挂出尚未发布的公告；GitHub Releases 最新版才是可见性上限。
+  // 两个请求并行，避免额外串行网络等待。
+  const [json, upstreamLatest] = await Promise.all([
+    fetchCdnJson<unknown>(url),
+    fetchLatestUpstreamReleaseVersion(),
+  ]);
   if (!Array.isArray(json)) {
     if (json !== null) log.warn('index.json is not an array; ignoring');
     return null;
   }
-  const versions = json.filter((v): v is string => typeof v === 'string');
-  indexCache = versions;
-  log.info('Fetched index OK: %d versions', versions.length);
+  const cdnVersions = json.filter((v): v is string => typeof v === 'string');
+  // 上游版本不可用或公告版本不是合法 SemVer 时按隐藏处理，绝不展示无法确认的新版本。
+  const versions = upstreamLatest === null
+    ? []
+    : cdnVersions.filter(
+        (version) => compareAppUpdateVersions(version, upstreamLatest) !== 'newer',
+      );
+  indexCache = { at: Date.now(), versions };
+  log.info(
+    'Fetched index OK: %d/%d versions (upstream ceiling=%s)',
+    versions.length,
+    cdnVersions.length,
+    upstreamLatest ?? 'unavailable',
+  );
   return versions;
 }
 
@@ -255,5 +277,22 @@ export async function resolveAvailableReleaseNotesVersion(requested: string): Pr
   if (index.includes(normalized)) return normalized;
   const newest = index[index.length - 1];
   log.info('Release notes version fallback: %s -> %s (not on CDN)', requested, newest);
+  return newest;
+}
+
+/**
+ * 开发版“当前版本”公告优先使用实际版本的公告；只有该版本尚未进入 CDN 索引时，
+ * 才回落到索引里的最新版，避免 CDN 更高的预发布/未公开公告覆盖本地真实版本。
+ * 显式历史版本仍走 resolveAvailableReleaseNotesVersion，不会被这里重写。
+ */
+export async function resolveLatestAvailableReleaseNotesVersion(
+  requested: string,
+): Promise<string> {
+  const normalized = requested.replace(/-.*$/, '');
+  const index = await fetchReleaseNotesIndex();
+  if (index?.includes(normalized)) return normalized;
+  const newest = index?.[index.length - 1];
+  if (!newest) return normalized;
+  log.info('Release notes current-version fallback: %s -> %s (not on CDN)', requested, newest);
   return newest;
 }

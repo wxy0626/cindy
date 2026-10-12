@@ -11,9 +11,7 @@ export interface LocalCatalogModel {
   name: string;
   aliases: string[];
   variants: LocalModelVariant[];
-  descriptions?: Partial<
-    Record<"en" | "zh-CN" | "zh-TW" | "ja" | "ko", string>
-  >;
+  descriptions?: Partial<Record<"en" | "zh-CN", string>>;
   /** Existing client implementation, never executable server instructions. */
   runtimeProfile?: "plain" | "qwen-xhigh";
   evidence?: {
@@ -142,7 +140,7 @@ export function parseLocalModelCatalog(v: unknown): LocalModelCatalog | null {
     if (
       m.descriptions !== undefined &&
       (!object(m.descriptions) ||
-        !fields(m.descriptions, ["en", "zh-CN", "zh-TW", "ja", "ko"]) ||
+        !fields(m.descriptions, ["en", "zh-CN"]) ||
         !Object.values(m.descriptions).every((s) => string(s, 500)))
     )
       return null;

@@ -1,6 +1,6 @@
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Flame, Zap, Wrench, Flower, ChevronDown } from 'lucide-react';
+import { ChevronDown, ExternalLink, Flame, Flower, Wrench, Zap } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -64,6 +64,7 @@ function formatDate(dateStr: string, locale: string): string {
 
 /** Shared content column: one reading measure for every block in the dialog. */
 const CONTENT_COLUMN = 'w-full max-w-[800px]';
+const GITHUB_RELEASES_URL = 'https://github.com/makecindy/cindy/releases';
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -470,7 +471,7 @@ function VersionDropdown({
 }
 
 // ---------------------------------------------------------------------------
-// Auto-mode body: static header badge (v<oldest> → v<newest>), preloaded
+// Auto-mode body: newest-notice header badge, preloaded
 // blocks stacked.
 // ---------------------------------------------------------------------------
 
@@ -487,7 +488,7 @@ function AutoBody({
   const blockRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // Sticky-header observer: track which version block is at the top of the
-  // scroll area so the header badge can follow. Only active for multi-version
+  // scroll area so the body's version jump can follow. Only active for multi-version
   // auto mode — single-version stays at its initial value.
   useEffect(() => {
     const root = scrollRef.current;
@@ -512,7 +513,7 @@ function AutoBody({
     return () => observer.disconnect();
   }, [releaseNotes, onStickyChange]);
 
-  // Fallback: when scrolled to the bottom, pick the last version so the header
+  // Fallback: when scrolled to the bottom, pick the last version so the body
   // badge updates even if the last version is too short to reach the observation
   // zone at the top. When leaving the bottom, recompute the visible version so
   // the badge doesn't stay stuck on the last version.
@@ -525,7 +526,7 @@ function AutoBody({
     // non-integer zoom from making scrollHeight − clientHeight = 1 while
     // the content is visually unscrollable; otherwise scrollTop is always
     // 0 and the condition would trivially hold at the top, causing the
-    // header to show the last version.
+    // jump target to show the last version.
     if (
       el.scrollHeight > el.clientHeight + 1 &&
       el.scrollTop + el.clientHeight >= el.scrollHeight - 1
@@ -583,7 +584,7 @@ interface ManualBodyProps {
   initialLoaded: Map<string, ReleaseNotes>;
   loadVersion: (v: string) => Promise<ReleaseNotes | null>;
   locale: string;
-  /** Called when the topmost visible version changes, so header can update. */
+  /** Called when the topmost visible version changes, so the scroll state can update. */
   onStickyChange: (version: string) => void;
   /** Setter registered by parent so `jumpToVersion` can programmatically scroll. */
   registerJump: (fn: (v: string) => void) => void;
@@ -779,7 +780,7 @@ function ManualBody({
     return () => observer.disconnect();
   }, [allVersions, onStickyChange]);
 
-  // Fallback: when scrolled to the bottom, pick the last version so the header
+  // Fallback: when scrolled to the bottom, pick the last version so the body
   // badge updates even if the last version is too short to reach the top
   // observation zone. When leaving the bottom, recompute the visible version so
   // the badge doesn't stay stuck on the last version.
@@ -792,7 +793,7 @@ function ManualBody({
     // non-integer zoom from making scrollHeight − clientHeight = 1 while
     // the content is visually unscrollable; otherwise scrollTop is always
     // 0 and the condition would trivially hold at the top, causing the
-    // header to show the last version.
+    // jump target to show the last version.
     if (
       el.scrollHeight > el.clientHeight + 1 &&
       el.scrollTop + el.clientHeight >= el.scrollHeight - 1
@@ -886,7 +887,7 @@ export function UpdateNoticeDialog({
   );
 
   // Sticky version state — used only in manual mode; defaults to the newest
-  // preloaded version so the header badge is populated from the very first
+  // preloaded version so the scroll state is populated from the very first
   // frame (no null flash while IntersectionObserver hasn't fired yet).
   const initialSticky = releaseNotes?.[0]?.version ?? '';
   const [stickyVersion, setStickyVersion] = useState<string>(initialSticky);
@@ -1090,7 +1091,20 @@ export function UpdateNoticeDialog({
           <div className="h-px bg-[var(--cmd-palette-border)]" />
 
           {/* ---- Footer ---- */}
-          <div className="flex justify-center px-7 pt-4 pb-5">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-7 pt-4 pb-5">
+            <button
+              type="button"
+              onClick={() => void window.electronAPI.openExternal(GITHUB_RELEASES_URL)}
+              className={cn(
+                'col-start-1 justify-self-start inline-flex items-center gap-1.5 rounded-full px-5 py-2.5 text-14 font-medium',
+                'bg-foreground text-background hover:opacity-90 transition-opacity',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+                'active:scale-[0.98]',
+              )}
+            >
+              {t('update.notice.viewGitHubReleases')}
+              <ExternalLink size={14} aria-hidden="true" />
+            </button>
             {/* Plain button rather than AlertDialog.Action: since the root's
                 onOpenChange is a deliberate no-op (see comment there), we
                 can't rely on AlertDialog.Action calling context.onOpenChange
@@ -1100,7 +1114,7 @@ export function UpdateNoticeDialog({
               type="button"
               onClick={onDismiss}
               className={cn(
-                'rounded-full px-8 py-2.5 text-14 font-medium',
+                'col-start-2 rounded-full px-8 py-2.5 text-14 font-medium',
                 'bg-[var(--chat-input-chip-bg)] text-[var(--chat-input-chip-text)]',
                 'hover:bg-[var(--cmd-palette-item-hover)] transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
@@ -1109,6 +1123,7 @@ export function UpdateNoticeDialog({
             >
               {t('update.notice.gotIt')}
             </button>
+            <span aria-hidden="true" />
           </div>
         </AlertDialog.Content>
       </AlertDialog.Portal>

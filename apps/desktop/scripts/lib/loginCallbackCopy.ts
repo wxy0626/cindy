@@ -24,10 +24,7 @@ const LOCALE_DIR = path.join(
 /** 页面语言 → renderer locale 候选。 */
 export const OAUTH_LANG_TO_APP_LOCALES: Record<OAuthResultPageLang, string[]> = {
   zh: ['zh-CN'],
-  'zh-TW': ['zh-TW', 'zh-CN'],
   en: ['en'],
-  ja: ['ja'],
-  ko: ['ko'],
 };
 
 /** 页面语言全集,与 OAUTH_LANG_TO_APP_LOCALES 保持同源。 */

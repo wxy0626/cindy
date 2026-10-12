@@ -3,8 +3,8 @@ import { and, eq } from 'drizzle-orm';
 import {
   activeOwnerScopeKey,
   isAppSessionBoundaryPending,
-  ownerScopedUserDataPath,
 } from '../appSessionState.js';
+import { machineSharedUserDataPath } from '../machineSharedStorage.js';
 import { getDbClient } from '../localDb/client/current.js';
 import { botProfiles, botProfileVersions } from '../localDb/schema.js';
 import { createLogger } from '../logger.js';
@@ -58,7 +58,7 @@ export function queueBotInvitation(
 ): void {
   if (isAppSessionBoundaryPending()) return;
   const owner = activeOwnerScopeKey();
-  const userDataDir = ownerScopedUserDataPath();
+  const userDataDir = machineSharedUserDataPath();
   const client = getDbClient();
   const key = `${owner}:${botId}`;
   if (pending.has(key) || running.has(key)) return;

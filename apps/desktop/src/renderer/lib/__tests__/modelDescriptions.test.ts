@@ -3,13 +3,10 @@ import { createInstance } from 'i18next';
 import registry from '../../../../../../packages/model-providers/catalog/model-registry.json';
 import en from '../../i18n/locales/en/common.json';
 import cn from '../../i18n/locales/zh-CN/common.json';
-import tw from '../../i18n/locales/zh-TW/common.json';
-import ja from '../../i18n/locales/ja/common.json';
-import ko from '../../i18n/locales/ko/common.json';
 import { localizedModelDescription, modelDescriptionKey } from '../modelDescriptions';
 import { matchesModelName } from '../modelDisplayNames';
 
-const locales = { en, 'zh-CN': cn, 'zh-TW': tw, ja, ko };
+const locales = { en, 'zh-CN': cn };
 const i18n = createInstance();
 beforeAll(async () => {
   await i18n.init({ lng: 'zh-CN', fallbackLng: false, resources: Object.fromEntries(
@@ -18,7 +15,7 @@ beforeAll(async () => {
 });
 
 describe('local model descriptions', () => {
-  it('covers every bundled model and wire route in all five languages', () => {
+  it('covers every bundled model and wire route in both languages', () => {
     for (const model of registry.models) {
       for (const id of [model.id, ...model.routes.map((route) => route.modelId)]) {
         const key = modelDescriptionKey({ id });

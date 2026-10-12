@@ -1,5 +1,5 @@
 /**
- * 可编辑控件（输入框、文本域、contenteditable）原生右键菜单的四语标签。
+ * 可编辑控件（输入框、文本域、contenteditable）原生右键菜单的中英双语标签。
  *
  * 和 applicationMenuLabels.ts 同样是**影子 catalog**:属于用户可见文案,但不走
  * i18next,`check-i18n-glossary.mjs` 只读 renderer 的 locale JSON 扫不到它。覆盖它的
@@ -30,15 +30,6 @@ export const EDITABLE_CONTEXT_MENU_LABELS: Record<SupportedLocale, EditableConte
     pasteAsPlainText: '粘贴为纯文本',
     selectAll: '全选',
   },
-  'zh-TW': {
-    undo: '復原',
-    redo: '重做',
-    cut: '剪下',
-    copy: '拷貝',
-    paste: '貼上',
-    pasteAsPlainText: '貼上為純文字',
-    selectAll: '全選',
-  },
   en: {
     undo: 'Undo',
     redo: 'Redo',
@@ -47,23 +38,5 @@ export const EDITABLE_CONTEXT_MENU_LABELS: Record<SupportedLocale, EditableConte
     paste: 'Paste',
     pasteAsPlainText: 'Paste as Plain Text',
     selectAll: 'Select All',
-  },
-  ja: {
-    undo: '元に戻す',
-    redo: 'やり直す',
-    cut: '切り取り',
-    copy: 'コピー',
-    paste: '貼り付け',
-    pasteAsPlainText: 'テキストのみ貼り付け',
-    selectAll: 'すべて選択',
-  },
-  ko: {
-    undo: '실행 취소',
-    redo: '다시 실행',
-    cut: '잘라내기',
-    copy: '복사',
-    paste: '붙여넣기',
-    pasteAsPlainText: '서식 없이 붙여넣기',
-    selectAll: '모두 선택',
   },
 };

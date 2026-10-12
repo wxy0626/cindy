@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("react-native", () => ({ Alert: { alert: vi.fn() } }));
-vi.mock("expo-localization", () => ({
-  getLocales: vi.fn(() => [{ languageCode: "en" }]),
-}));
 
 import {
   confirmFullAccessChange,
@@ -17,22 +14,22 @@ function confirmingAlert() {
 }
 
 describe("getFullAccessConfirmationCopy", () => {
-  it("selects the supported system language and falls back to English", () => {
-    expect(getFullAccessConfirmationCopy("ja").confirm).toBe(
-      "Full access を有効にする",
-    );
-    expect(getFullAccessConfirmationCopy("ko-KR").cancel).toBe(
-      "현재 권한 유지",
+  it("selects the supported system language and falls back to Chinese", () => {
+    expect(getFullAccessConfirmationCopy("en").confirm).toBe(
+      "Enable Full access",
     );
     expect(getFullAccessConfirmationCopy("zh-Hans-CN").title).toBe(
       "开启 Full access？",
     );
+    // 繁体中文不再作为独立语言,统一回退简体中文。
     expect(getFullAccessConfirmationCopy("zh-Hant-TW").title).toBe(
-      "開啟 Full access？",
+      "开启 Full access？",
     );
     expect(getFullAccessConfirmationCopy("fr").title).toBe(
-      "Enable Full access?",
+      "开启 Full access？",
     );
+    expect(getFullAccessConfirmationCopy("ja").title).toBe("开启 Full access？");
+    expect(getFullAccessConfirmationCopy("ko-KR").cancel).toBe("保留当前权限");
   });
 });
 

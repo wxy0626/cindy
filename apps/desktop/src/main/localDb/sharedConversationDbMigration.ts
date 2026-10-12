@@ -6,10 +6,98 @@ import { createBetterSqliteDatabase } from './betterSqliteFactory.js';
 
 type Row = Record<string, unknown>;
 
+/** 这些表属于本机共享配置/伙伴索引，不应因切换 owner 而丢失。 */
+const SHARED_LOCAL_TABLES = [
+  'custom_providers',
+  'custom_mcp_servers',
+  'bot_profiles',
+  'bot_profile_versions',
+  'bot_session_links',
+  'bot_runtime_snapshots',
+  'bot_lifecycle_events',
+  'bot_delegations',
+  'bot_direct_message_threads',
+  'bot_direct_messages',
+  'daily_spend',
+  'daily_model_usage',
+] as const;
+
 function hasTable(db: Database.Database, name: string): boolean {
   return Boolean(
     db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name),
   );
+}
+
+function hasRows(db: Database.Database, table: string): boolean {
+  return db.prepare(`SELECT 1 FROM ${quote(table)} LIMIT 1`).get() != null;
+}
+
+function mergeSharedLocalTable(
+  target: Database.Database,
+  input: Database.Database,
+  table: string,
+): void {
+  if (!hasTable(target, table) || !hasTable(input, table)) return;
+  // 用量表是按天聚合的事实表。只有目标表为空时才做一次跨旧库合并，
+  // 避免每次启动重复累加；后续新增用量都直接写入共享库。
+  if ((table === 'daily_spend' || table === 'daily_model_usage') && hasRows(target, table)) {
+    return;
+  }
+  const targetCols = columns(target, table);
+  const inputCols = columns(input, table);
+  const sharedCols = targetCols.filter((column) => inputCols.includes(column));
+  if (sharedCols.length === 0) return;
+  if (table === 'daily_spend' || table === 'daily_model_usage') {
+    const keyColumns =
+      table === 'daily_spend'
+        ? ['day', 'cost_currency']
+        : ['day', 'agent_kind', 'model', 'cost_currency'];
+    const amountColumns = [
+      'cost_usd',
+      'cost_amount',
+      'input_tokens',
+      'output_tokens',
+      'cache_read_tokens',
+      'cache_create_tokens',
+    ].filter((column) => sharedCols.includes(column));
+    const conflictColumns = keyColumns.filter((column) => sharedCols.includes(column));
+    if (conflictColumns.length === keyColumns.length) {
+      const updates = amountColumns.map(
+        (column) => `${quote(column)} = ${quote(column)} + excluded.${quote(column)}`,
+      );
+      if (sharedCols.includes('cost_is_approximate')) {
+        updates.push(
+          `${quote('cost_is_approximate')} = ` +
+            `(${quote('cost_is_approximate')} OR excluded.${quote('cost_is_approximate')})`,
+        );
+      }
+      if (sharedCols.includes('updated_at')) {
+        updates.push(
+          `${quote('updated_at')} = MAX(${quote('updated_at')}, excluded.${quote('updated_at')})`,
+        );
+      }
+      const aggregateInsert = target.prepare(
+        `INSERT INTO ${quote(table)} (${sharedCols.map(quote).join(', ')}) VALUES (` +
+          sharedCols.map((column) => '@' + column).join(', ') +
+          `) ON CONFLICT (${conflictColumns.map(quote).join(', ')}) DO UPDATE SET ` +
+          updates.join(', '),
+      );
+      for (const row of input.prepare(`SELECT * FROM ${quote(table)}`).all() as Row[]) {
+        aggregateInsert.run(row);
+      }
+      return;
+    }
+  }
+  const insert = target.prepare(
+    `INSERT OR IGNORE INTO ${quote(table)} (` +
+      sharedCols.map(quote).join(', ') +
+      ') VALUES (' +
+      sharedCols.map((column) => '@' + column).join(', ') +
+      ')',
+  );
+  for (const row of input.prepare(`SELECT * FROM ${quote(table)}`).all() as Row[]) {
+    insert.run(row);
+  }
 }
 
 function columns(db: Database.Database, table: string): string[] {
@@ -52,10 +140,13 @@ export function migrateToSharedConversationDb(
   prefix: string,
 ): void {
   fs.mkdirSync(root, { recursive: true });
-  if (fs.existsSync(targetPath)) return;
   const inputs = sourceDbPaths(root, targetPath, prefix);
   if (inputs.length === 0) return;
-  fs.copyFileSync(inputs[0], targetPath);
+  // 共享库可能在历史版本中已经被创建，但当时没有成功迁入旧分库。
+  // 不能只看目标库 mtime：目标库可能是“已创建但只迁入了少量数据”的半成品。
+  // 这里每次都做幂等补迁，确保旧 owner 中新增或遗漏的数据最终可见。
+  const targetExists = fs.existsSync(targetPath);
+  if (!targetExists) fs.copyFileSync(inputs[0], targetPath);
   const target = createBetterSqliteDatabase(targetPath);
   target.pragma('journal_mode = WAL');
   target.pragma('foreign_keys = ON');
@@ -64,10 +155,15 @@ export function migrateToSharedConversationDb(
     const sessionCols = columns(target, 'sessions');
     const messageCols = hasTable(target, 'messages') ? columns(target, 'messages') : [];
     const deletedKeys = new Set<string>();
+    const liveKeys = new Set<string>();
     for (const row of target
       .prepare("SELECT * FROM sessions WHERE status = 'deleted'")
       .all() as Row[])
       deletedKeys.add(sessionKey(row));
+    for (const row of target
+      .prepare("SELECT * FROM sessions WHERE COALESCE(status, 'active') != 'deleted'")
+      .all() as Row[])
+      liveKeys.add(sessionKey(row));
     for (const inputPath of inputs) {
       let input: Database.Database | null = null;
       try {
@@ -77,23 +173,33 @@ export function migrateToSharedConversationDb(
             .prepare("SELECT * FROM sessions WHERE status = 'deleted'")
             .all() as Row[])
             deletedKeys.add(sessionKey(row));
+          for (const row of input
+            .prepare("SELECT * FROM sessions WHERE COALESCE(status, 'active') != 'deleted'")
+            .all() as Row[])
+            liveKeys.add(sessionKey(row));
         }
       } finally {
         input?.close();
       }
     }
     for (const row of target.prepare('SELECT id, * FROM sessions').all() as Row[]) {
-      if (deletedKeys.has(sessionKey(row)))
+      if (deletedKeys.has(sessionKey(row)) && !liveKeys.has(sessionKey(row)))
         target.prepare('DELETE FROM sessions WHERE id = ?').run(row.id);
     }
     const known = new Map<string, string>();
     for (const row of target.prepare('SELECT * FROM sessions').all() as Row[]) {
       if (row.status !== 'deleted') known.set(sessionKey(row), String(row.id));
     }
-    for (const inputPath of inputs.slice(1)) {
+    // 首次创建时第一份源库已经作为目标基底复制完成；已有目标库扫描全部源库，
+    // 让历史半成品也能补齐。
+    const sourceInputs = targetExists ? inputs : inputs.slice(1);
+    for (const inputPath of sourceInputs) {
       let input: Database.Database | null = null;
       try {
         input = createBetterSqliteDatabase(inputPath, { readonly: true, fileMustExist: true });
+        for (const table of SHARED_LOCAL_TABLES) {
+          mergeSharedLocalTable(target, input, table);
+        }
         if (!hasTable(input, 'sessions')) continue;
         const inputSessionCols = columns(input, 'sessions');
         const inputMessageCols = hasTable(input, 'messages') ? columns(input, 'messages') : [];

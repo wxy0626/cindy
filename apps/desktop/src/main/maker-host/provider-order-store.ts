@@ -11,7 +11,12 @@ import {
   mergeObservedProviderOrder,
   normalizeProviderOrder,
 } from '../../shared/providerOrder.js';
-import { ownerScopedUserDataPath } from '../appSessionState.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  machineSharedLegacyFileCandidates,
+  machineSharedUserDataPath,
+} from '../machineSharedStorage.js';
 import { desktopMakerLogger } from './logger-adapter.js';
 import { createOverrideSettingsFile } from './override-settings-file.js';
 
@@ -23,6 +28,7 @@ interface ProviderOrderPrefs {
 }
 
 const DEFAULTS: ProviderOrderPrefs = { providerOrder: [] };
+let legacySeedChecked = false;
 
 function normalize(raw: unknown): ProviderOrderPrefs {
   if (!raw || typeof raw !== 'object') return { providerOrder: [] };
@@ -32,14 +38,36 @@ function normalize(raw: unknown): ProviderOrderPrefs {
 }
 
 const store = createOverrideSettingsFile<ProviderOrderPrefs>({
-  filePath: () => ownerScopedUserDataPath('provider-order-prefs.json'),
+  filePath: () => machineSharedUserDataPath('provider-order-prefs.json'),
   defaults: DEFAULTS,
   normalize,
   log,
   label: 'provider-order',
 });
 
+function seedLegacyProviderOrder(): void {
+  if (legacySeedChecked) return;
+  legacySeedChecked = true;
+  const target = machineSharedUserDataPath('provider-order-prefs.json');
+  if (fs.existsSync(target)) return;
+  let merged: string[] = [];
+  for (const candidate of machineSharedLegacyFileCandidates('provider-order-prefs.json')) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(candidate, 'utf8')) as {
+        providerOrder?: unknown;
+      };
+      merged = mergeObservedProviderOrder(merged, normalizeProviderOrder(raw.providerOrder));
+    } catch (error) {
+      log.warn('failed to read legacy provider order', { candidate, error: String(error) });
+    }
+  }
+  if (merged.length === 0) return;
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, `${JSON.stringify({ providerOrder: merged }, null, 2)}\n`, 'utf8');
+}
+
 export function readProviderOrder(): string[] {
+  seedLegacyProviderOrder();
   store.invalidateIfChanged();
   const order = [...store.read().providerOrder];
   return order.includes(CINDY_AI_PROVIDER_ID) ? order : [CINDY_AI_PROVIDER_ID, ...order];
@@ -57,4 +85,10 @@ export function setProviderOrder(visibleProviderIds: readonly string[]): boolean
   return true;
 }
 
-export const __testing = { normalize, reset: () => store.reset() };
+export const __testing = {
+  normalize,
+  reset: () => {
+    legacySeedChecked = false;
+    return store.reset();
+  },
+};

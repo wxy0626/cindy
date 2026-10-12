@@ -137,8 +137,8 @@ describe('SystemCard auto-resume 行', () => {
   // 所以「key 归属对了但那个 key 的值被改成了重连文案」这一层测不到 —— 而本 PR 恰恰
   // 就是把 autoResume.label 的值改成了「已重新连接」,第一次修的时候只换回了组件、
   // 没换 key,回归就藏在 i18n 层活了下来。这条直接读四个 locale 的 JSON 补上那一层。
-  it('四个 locale 里分隔条文案与重连文案是两条独立的 key(值不得相同)', () => {
-    const locales = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'] as const;
+  it('中英两个 locale 里分隔条文案与重连文案是两条独立的 key(值不得相同)', () => {
+    const locales = ['zh-CN', 'en'] as const;
     for (const locale of locales) {
       const raw = readFileSync(
         resolve(__dirname, '..', 'i18n', 'locales', locale, 'common.json'),

@@ -4245,8 +4245,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Platform is resolved in main via getPlatformKey() to keep the CDN path
   // axis identical to the hot-update manifest.
   // Returns null on 404 / network / parse error — caller decides UX.
-  fetchReleaseNotes: (version: string): Promise<RawReleaseNotes | null> =>
-    ipcRenderer.invoke('release-notes:fetch', version),
+  fetchReleaseNotes: (
+    version: string,
+    resolveLatest?: boolean,
+  ): Promise<RawReleaseNotes | null> =>
+    ipcRenderer.invoke('release-notes:fetch', version, resolveLatest === true),
 
   // Sorted ascending list of every version with a notice on the CDN. Renderer
   // uses this to gather all unread notes between the user's last-read version

@@ -44,7 +44,7 @@ describe('pluginMarketErrorKey', () => {
     expect(key).not.toBe('settings.ghosts.market.errors.generic');
   });
 
-  it.each(['zh-CN', 'zh-TW', 'en', 'ja', 'ko'])(
+  it.each(['zh-CN', 'en'])(
     'renders the complete reserved-prefix authority in the %s market toast',
     (locale) => {
       const key = pluginMarketErrorKey(serializedIpcError('GHOST_ID_RESERVED'));
@@ -63,10 +63,7 @@ describe('pluginMarketErrorKey', () => {
 
   it.each([
     { locale: 'zh-CN', publisherAction: '联系发布者' },
-    { locale: 'zh-TW', publisherAction: '聯絡釋出者' },
     { locale: 'en', publisherAction: 'Contact the publisher' },
-    { locale: 'ja', publisherAction: '発行元' },
-    { locale: 'ko', publisherAction: '게시자' },
   ])(
     'keeps the broker redirect-port market guidance local and actionable in $locale',
     ({ locale, publisherAction }) => {

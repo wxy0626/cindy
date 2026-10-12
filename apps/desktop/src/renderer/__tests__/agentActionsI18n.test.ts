@@ -22,7 +22,7 @@ import {
   UPDATED_VERB_I18N_KEY,
 } from '../../shared/agentActionVerbKeys';
 
-const locales = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'] as const;
+const locales = ['zh-CN', 'en'] as const;
 
 const VERBS = [
   'edited',

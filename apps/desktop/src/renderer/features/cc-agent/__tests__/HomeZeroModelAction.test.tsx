@@ -69,6 +69,24 @@ describe('HomeZeroModelAction', () => {
     expect(screen.getByTestId('loc').textContent).toBe('/settings?tab=providers&connect=xd');
   });
 
+  it('local: opens the provider wizard without forcing sign-in', () => {
+    renderCard('local');
+    expect(screen.getByText('onboarding.connectProvider.title')).toBeTruthy();
+    expect(screen.getByText('onboarding.connectProvider.desc')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('home-zero-model-cta'));
+    expect(signInMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId('loc').textContent).toBe('/settings?tab=providers&wizard=1');
+  });
+
+  it('local: keeps Cindy sign-in as the secondary action', () => {
+    renderCard('local');
+    expect(screen.getByTestId('home-zero-model-own-api').textContent).toContain(
+      'onboarding.homeZeroModel.cta',
+    );
+    fireEvent.click(screen.getByTestId('home-zero-model-own-api'));
+    expect(signInMock).toHaveBeenCalledTimes(1);
+  });
+
   it('own API link opens the provider wizard', () => {
     renderCard('signed-out');
     fireEvent.click(screen.getByTestId('home-zero-model-own-api'));

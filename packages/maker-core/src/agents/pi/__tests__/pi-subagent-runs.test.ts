@@ -19,6 +19,7 @@ import {
   piSubagentDeletedTombstonePath,
   writePiSubagentDeletedTombstone,
   clearPiSubagentDeletedTombstone,
+  isPiSubagentDeletedTombstonePresent,
   isPiSubagentRunStale,
   piSubagentControlOwnership,
   piSubagentLaunchFencePath,
@@ -234,6 +235,24 @@ describe('PI durable subagent run store', () => {
     );
     expect(() => piSubagentRunRoot('/agent-home', '../escape')).toThrow(/unsafe/);
     expect(() => piSubagentRunRoot('/agent-home', 'a\\b')).toThrow(/unsafe/);
+  });
+
+  it('keeps namespaced parent session ids usable as Windows file names', async () => {
+    expect(piSubagentRunRoot('/agent-home', 'shared:abc123')).toBe(
+      path.join('/agent-home', 'runtime', 'pi-subagent-runs', 'shared%3Aabc123'),
+    );
+    expect(piSubagentDeletedTombstonePath('/agent-home', 'shared:abc123')).toBe(
+      path.join('/agent-home', 'runtime', 'pi-subagent-deleted', 'shared%3Aabc123'),
+    );
+
+    const agentHome = await mkdtemp(path.join(os.tmpdir(), 'cindy-pi-shared-tombstone-'));
+    roots.push(agentHome);
+    await writePiSubagentDeletedTombstone(agentHome, 'shared:abc123');
+    expect(isPiSubagentDeletedTombstonePresent(agentHome, 'shared:abc123')).toBe(true);
+    expect(await readdir(path.join(agentHome, 'runtime', 'pi-subagent-deleted')))
+      .toEqual(['shared%3Aabc123']);
+    await clearPiSubagentDeletedTombstone(agentHome, 'shared:abc123');
+    expect(isPiSubagentDeletedTombstonePresent(agentHome, 'shared:abc123')).toBe(false);
   });
 
   it('keeps the deleted-task tombstone outside the run root and rejects traversal ids', async () => {

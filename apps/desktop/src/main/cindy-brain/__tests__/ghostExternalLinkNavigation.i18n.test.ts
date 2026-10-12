@@ -3,13 +3,10 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-const LOCALES = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'] as const;
+const LOCALES = ['zh-CN', 'en'] as const;
 const OPEN_WEBSITE_COPY = {
   'zh-CN': '打开网站',
-  'zh-TW': '開啟網站',
   en: 'Open Website',
-  ja: 'ウェブサイトを開く',
-  ko: '웹사이트 열기',
 } as const;
 
 function readCopy(locale: (typeof LOCALES)[number]) {

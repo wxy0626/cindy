@@ -145,9 +145,15 @@ describe('Bot task route recovery', () => {
   it('passes the live Bot roster and the teammate identity into the shared task composer', () => {
     expect(source).toContain('window.electronAPI.localDb.bots.list(');
     expect(source).toContain('lastReadAtByBotId: { [botId]: lastReadAt }');
-    expect(source).toContain('botMentions={gate.mentions}');
-    expect(source).toContain('botIdentity={gate.identity}');
-    expect(source).toContain('botUnreadBoundaryAt={gate.unreadBoundaryAt}');
+    expect(source).toContain(
+      "botMentions={visibleGate.kind === 'ready' ? visibleGate.mentions : undefined}",
+    );
+    expect(source).toContain(
+      "botIdentity={visibleGate.kind === 'ready' ? visibleGate.identity : undefined}",
+    );
+    expect(source).toContain(
+      "visibleGate.kind === 'ready' ? visibleGate.unreadBoundaryAt : null",
+    );
   });
 
   it.each(['\n', '\r\n'])('keeps the teammate a teammate in archived transcripts with line ending %j, without touching the write path', (lineEnding) => {
@@ -156,7 +162,7 @@ describe('Bot task route recovery', () => {
     // 只读历史也带头像与伙伴 lockup:这个视图本来就已经查过 history(botId) 确认归属。
     expect(history).toMatch(/window\.electronAPI\.localDb\.bots\s*\.get\(botId\)/);
     expect(history).toContain(
-      '<CCAgentSessionView readOnly {...(identity ? { botIdentity: identity } : {})} />',
+      "botIdentity={{ ...(identity ?? { id: botId, name: '' }), sessionId }}",
     );
   });
 
@@ -165,6 +171,6 @@ describe('Bot task route recovery', () => {
     // 校验归属与展示，不能因为打开页面再产生一次消息写入。
     expect(source).not.toContain('deliverPendingBotWelcome');
     expect(source).not.toContain('messageService.create');
-    expect(source).toContain("if (gate.kind !== 'ready'");
+    expect(source).toContain("if (visibleGate.kind !== 'ready'");
   });
 });

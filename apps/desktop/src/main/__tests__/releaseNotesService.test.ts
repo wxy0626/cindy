@@ -1,8 +1,9 @@
 import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { requestMock } = vi.hoisted(() => ({
+const { requestMock, upstreamLatestMock } = vi.hoisted(() => ({
   requestMock: vi.fn(),
+  upstreamLatestMock: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -25,6 +26,10 @@ vi.mock('../logger', () => ({
   }),
 }));
 
+vi.mock('../upstreamReleaseService', () => ({
+  fetchLatestUpstreamReleaseVersion: upstreamLatestMock,
+}));
+
 class MockRequest extends EventEmitter {
   abort = vi.fn();
   end = vi.fn();
@@ -38,6 +43,8 @@ describe('releaseNotesService', () => {
   beforeEach(() => {
     vi.resetModules();
     requestMock.mockReset();
+    upstreamLatestMock.mockReset();
+    upstreamLatestMock.mockResolvedValue('0.1.97');
   });
 
   it('按 UTF-8 流式解码跨 chunk 的中文字符，避免生成替换字符', async () => {
@@ -327,5 +334,65 @@ describe('releaseNotesService', () => {
     expect(await fetchOnce()).toBeNull();
     expect(await fetchOnce()).toBeNull();
     expect(requestMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('公告索引以 GitHub 最新版为上限,隐藏 CDN 提前挂出的更高版本', async () => {
+    const request = new MockRequest();
+    const response = new MockResponse();
+    requestMock.mockReturnValueOnce(request);
+
+    const { fetchReleaseNotesIndex } = await import('../releaseNotesService');
+    const resolved = fetchReleaseNotesIndex();
+
+    request.emit('response', response);
+    response.emit('data', Buffer.from(JSON.stringify([
+      '0.1.95',
+      '0.1.96',
+      '0.1.97',
+      '0.1.99',
+    ]), 'utf8'));
+    response.emit('end');
+
+    await expect(resolved).resolves.toEqual(['0.1.95', '0.1.96', '0.1.97']);
+  });
+
+  it('上游列表不可用时隐藏未确认的新版本', async () => {
+    upstreamLatestMock.mockResolvedValue(null);
+    const request = new MockRequest();
+    const response = new MockResponse();
+    requestMock.mockReturnValueOnce(request);
+
+    const { fetchReleaseNotesIndex } = await import('../releaseNotesService');
+    const resolved = fetchReleaseNotesIndex();
+
+    request.emit('response', response);
+    response.emit('data', Buffer.from(JSON.stringify([
+      '0.1.96',
+      '0.1.97',
+      '0.1.99',
+    ]), 'utf8'));
+    response.emit('end');
+
+    await expect(resolved).resolves.toEqual([]);
+  });
+
+  it('开发版当前版本已有公告时保留实际上游版本', async () => {
+    const request = new MockRequest();
+    const response = new MockResponse();
+    requestMock.mockReturnValueOnce(request);
+
+    const { resolveLatestAvailableReleaseNotesVersion } = await import('../releaseNotesService');
+    const resolved = resolveLatestAvailableReleaseNotesVersion('0.1.97');
+
+    request.emit('response', response);
+    response.emit('data', Buffer.from(JSON.stringify([
+      '0.1.95',
+      '0.1.96',
+      '0.1.97',
+      '0.1.99',
+    ]), 'utf8'));
+    response.emit('end');
+
+    await expect(resolved).resolves.toBe('0.1.97');
   });
 });

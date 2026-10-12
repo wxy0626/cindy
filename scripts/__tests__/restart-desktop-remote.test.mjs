@@ -271,6 +271,27 @@ test("desktop restart preserves durable PI Subagent runners", () => {
 	}, [checkoutRoot], 999), true);
 });
 
+test("desktop restart never targets its own restart pipeline processes", () => {
+	const checkoutRoot = path.resolve("/repo/cindy-feature");
+	const electron = path.join(checkoutRoot, "node_modules/electron/dist/Electron");
+	// 托盘「重启程序」由运行中的主进程拉起协调器，协调器再拉起清理阶段；
+	// 两者命令行同样带 checkout + node_modules/electron。若被当成 dev 实例，
+	// 清理阶段会杀掉自己的父进程(协调器)，表现为「应用关了但不再重启」。
+	assert.equal(isRepositoryDesktopDevProcess({
+		pid: 46,
+		command: `${electron} ${path.join(checkoutRoot, "scripts/desktop-restart-runner.mjs")} --wait-ready --isolated=dev --isolated-auth`,
+	}, [checkoutRoot], 999), false);
+	assert.equal(isRepositoryDesktopDevProcess({
+		pid: 47,
+		command: `${electron} ${path.join(checkoutRoot, "scripts/restart-desktop-remote.mjs")} --isolated=dev --isolated-auth --kill-only`,
+	}, [checkoutRoot], 999), false);
+	// 旧会话的 dev 启动链仍必须留在清理范围内。
+	assert.equal(isRepositoryDesktopDevProcess({
+		pid: 48,
+		command: `${electron} ${path.join(checkoutRoot, "scripts/desktop-dev-runner.mjs")} remote`,
+	}, [checkoutRoot], 999), true);
+});
+
 test("restart kill scope only targets the checkout that runs the script", () => {
 	const ownRoot = path.resolve("/repo/cindy-feature");
 	const otherRoot = path.resolve("/repo/cindy-pi-sandbox");
@@ -1197,6 +1218,44 @@ test("shouldRefuseHostedRestart blocks same-checkout hosts and other-checkout sh
 	assert.equal(
 		shouldRefuseHostedRestart(null, { preserveRunning: false, ownRootDir: own }),
 		false,
+	);
+});
+
+test("app-owned restart may cross the same-checkout host guard", () => {
+	const own = "/repo/cindy-feature";
+	const ancestor = { pid: 10, command: `electron-forge start ${own}` };
+	assert.equal(
+		shouldRefuseHostedRestart(ancestor, {
+			preserveRunning: false,
+			ownRootDir: own,
+			isolated: true,
+			allowSameCheckoutHostedRestart: true,
+		}),
+		false,
+	);
+	assert.equal(
+		shouldRefuseHostedRestart(
+			{ pid: 11, command: "electron-forge start /repo/cindy-other" },
+			{
+				preserveRunning: false,
+				ownRootDir: own,
+				isolated: true,
+				allowSameCheckoutHostedRestart: true,
+			},
+		),
+		false,
+	);
+	assert.equal(
+		shouldRefuseHostedRestart(
+			{ pid: 12, command: "electron-forge start /repo/cindy-other" },
+			{
+				preserveRunning: false,
+				ownRootDir: own,
+				isolated: false,
+				allowSameCheckoutHostedRestart: true,
+			},
+		),
+		true,
 	);
 });
 

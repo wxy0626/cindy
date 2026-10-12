@@ -5,7 +5,7 @@ import type { MakerSessionCreateOpts } from './sessionRequest.js';
 import { ensureBotWorkspaceDir } from './botProfileFolder.js';
 import { getDbClient } from '../localDb/client/current.js';
 import { botSessionLinks } from '../localDb/schema.js';
-import { ownerScopedUserDataPath } from '../appSessionState.js';
+import { machineSharedUserDataPath } from '../machineSharedStorage.js';
 
 export interface BotWorkspaceRuntimeDeps {
   ensureWorkspaceDir?: typeof ensureBotWorkspaceDir;
@@ -42,7 +42,7 @@ export async function prepareBotWorkspaceRuntime(
   if (!botId) return;
 
   const ensureWorkspaceDir = deps.ensureWorkspaceDir ?? ensureBotWorkspaceDir;
-  const ownerUserDataPath = deps.ownerUserDataPath ?? ownerScopedUserDataPath;
+  const ownerUserDataPath = deps.ownerUserDataPath ?? machineSharedUserDataPath;
   const legacyUserDataPath = deps.legacyUserDataPath ?? (() => app.getPath('userData'));
 
   const workingDir = await ensureWorkspaceDir(ownerUserDataPath(), botId, legacyUserDataPath());

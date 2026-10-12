@@ -771,6 +771,76 @@ describe('CustomProviderDialog accessibility', () => {
     await waitFor(() => expect(customProviderMocks.updateCustomProvider).not.toHaveBeenCalled());
   });
 
+  it('allows an endpoint save after replacing an unreadable saved key', async () => {
+    const initial: CustomProviderConfig = {
+      id: 'existing-provider',
+      name: 'Existing provider',
+      auth: { method: 'apiKey' },
+      runtimes: {
+        codex: {
+          baseUrl: 'https://old.example.test/v1',
+          models: [{ id: 'test-model', name: 'Test Model' }],
+        },
+      },
+    };
+    customProviderMocks.readCustomProviderKey.mockRejectedValue(
+      new Error('safeStorage unavailable'),
+    );
+
+    const user = userEvent.setup();
+    render(<CustomProviderDialog initial={initial} onSaved={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(customProviderMocks.readCustomProviderKey).toHaveBeenCalled());
+
+    const baseUrl = screen.getByPlaceholderText(
+      'settings.providers.custom.fields.baseUrlPlaceholder',
+    );
+    const apiKey = screen.getByPlaceholderText(
+      'settings.providers.custom.fields.apiKeyPlaceholder',
+    );
+    await waitForInitialDialogFocus();
+    await user.clear(baseUrl);
+    await user.type(baseUrl, 'https://new.example.test/v1');
+    await user.type(apiKey, 'replacement-secret');
+    await user.click(screen.getByRole('button', { name: 'settings.providers.custom.save' }));
+
+    await waitFor(() => expect(customProviderMocks.updateCustomProvider).toHaveBeenCalledOnce());
+    expect(customProviderMocks.updateCustomProvider.mock.calls[0]?.[1]).toEqual({
+      codex: 'replacement-secret',
+    });
+  });
+
+  it('opens runtime fill after replacing an unreadable saved key', async () => {
+    const initial: CustomProviderConfig = {
+      id: 'existing-provider',
+      name: 'Existing provider',
+      auth: { method: 'apiKey' },
+      runtimes: {
+        codex: {
+          baseUrl: 'https://old.example.test/v1',
+          models: [{ id: 'test-model', name: 'Test Model' }],
+        },
+      },
+    };
+    customProviderMocks.readCustomProviderKey.mockRejectedValue(
+      new Error('safeStorage unavailable'),
+    );
+
+    const user = userEvent.setup();
+    render(<CustomProviderDialog initial={initial} onSaved={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(customProviderMocks.readCustomProviderKey).toHaveBeenCalled());
+
+    const apiKey = screen.getByPlaceholderText(
+      'settings.providers.custom.fields.apiKeyPlaceholder',
+    );
+    await waitForInitialDialogFocus();
+    await user.type(apiKey, 'replacement-secret');
+    await user.click(
+      screen.getByRole('button', { name: 'settings.providers.custom.runtimeFill.action' }),
+    );
+
+    await screen.findByText('settings.providers.custom.runtimeFill.reviewTitle');
+  });
+
   it('does not send a hydrated key to a changed endpoint during an ad-hoc test', async () => {
     const testProviderConnection = vi
       .fn<(request: unknown) => Promise<{ ok: true; latencyMs: number }>>()

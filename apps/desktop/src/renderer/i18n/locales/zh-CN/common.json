@@ -191,6 +191,7 @@
       "import": "任务导入",
       "connections": "第三方平台",
       "providers": "模型供应商",
+      "decisionModel": "判断模型",
       "remoteControl": "远程连接",
       "tina": "Tina",
       "remote": "远端机器",
@@ -242,7 +243,24 @@
       "windowBehavior": "应用行为",
       "shortcuts": "键盘快捷键",
       "mcpServers": "自定义 MCP",
-      "bots": "伙伴"
+      "bots": "伙伴",
+      "decisionModel": "判断模型"
+    },
+    "decisionModel": {
+      "title": "判断模型",
+      "description": "使用本机 Laya 在创建新任务前推荐 Codex、Claude Code 或 Pi。当前任务创建后不会自动切换 Agent。",
+      "enabled": "自动选择新任务 Agent",
+      "enabledHint": "仅在本地新任务的第一条普通消息发送前判断一次。",
+      "endpoint": "Laya 地址",
+      "endpointHint": "默认使用本机服务的 /predict 接口。",
+      "confidence": "最低置信度",
+      "confidenceHint": "低于此概率时保留你手动选择的 Agent。",
+      "scope": "服务不可用或判断不确定时，自动回退到当前选择。",
+      "testConnection": "测试连接",
+      "testing": "测试中…",
+      "connected": "Laya 连接正常",
+      "connectionFailed": "无法连接 Laya 服务",
+      "invalidEndpoint": "Laya 地址格式不正确"
     },
     "remote": {
       "title": "远端机器",
@@ -754,12 +772,8 @@
       "hint": "仅影响应用界面。Agent 回复语言由 Agent 自身决定。",
       "ariaLabel": "显示语言选择",
       "options": {
-        "system": "跟随系统",
         "zh-CN": "简体中文",
-        "zh-TW": "繁体中文",
-        "en": "English",
-        "ja": "日本語",
-        "ko": "한국어"
+        "en": "English"
       }
     },
     "userProfile": {
@@ -1164,15 +1178,14 @@
         "hint": "自动识别当前语音；指定语言可减少多语言误判。",
         "ariaLabel": "语言选择",
         "options": {
-          "auto": "自动"
+          "auto": "自动",
+          "zh-CN": "简体中文",
+          "en": "English"
         },
         "optionDescriptions": {
           "auto": "由识别服务自动判断",
           "zh-CN": "简体中文（中国大陆）",
-          "zh-TW": "繁体中文（台湾）",
-          "en": "English",
-          "ja": "日本語",
-          "ko": "한국어"
+          "en": "English"
         }
       },
       "shortcut": {
@@ -1741,7 +1754,7 @@
           "selectAll": "全选",
           "clearAll": "清空",
           "empty": "没有匹配的模型",
-          "confirm": "填入所选模型（{{count}}）"
+          "confirm": "填入所选模型（{{count}}，0 为清空）"
         },
         "authMode": {
           "label": "鉴权方式",
@@ -1827,7 +1840,7 @@
           "nothingToFill": "请先填写当前 runtime 的可复用字段",
           "alreadySame": "其他 runtime 中的可填充字段已经一致",
           "loadingKeys": "请等待已保存的 API 密钥加载完成后再填充其他 runtime",
-          "keysUnavailable": "无法读取已保存的 API 密钥，暂时无法填充其他 runtime",
+          "keysUnavailable": "无法读取已保存的 API 密钥；请重新填写当前 runtime 的密钥后再试",
           "modelsBusy": "请先完成正在进行的模型列表获取或选择，再填充其他 runtime",
           "noCompatibleFields": "其他 runtime 不支持当前 runtime 中可复用的字段",
           "filledToast": "已填充 {{targets}}；各 runtime 仍独立"
@@ -7105,6 +7118,7 @@
       "bugFixes": "问题修复",
       "thanksTo": "感谢",
       "gotIt": "我知道了",
+      "viewGitHubReleases": "查看 GitHub 版本",
       "ariaDescription": "版本 {{version}} 的更新说明",
       "ariaDescriptionSpan": "自 v{{from}} 起累计 {{count}} 个版本的更新说明",
       "versionsSpan": "{{count}} 个版本",
@@ -8080,6 +8094,9 @@
       "defaultPlaceholder": "今天我们做点什么呢~",
       "createAgentPlaceholder": "你好，{{appName}}！",
       "recommendationShortcut": "Tab",
+      "decisionSettings": "判断设置",
+      "decisionSettingsHint": "打开判断模型设置",
+      "decisionSettingsOpen": "打开完整设置",
       "voiceInput": {
         "start": "开始语音输入",
         "stop": "停止语音输入",
@@ -9391,6 +9408,7 @@
     },
     "draft": {
       "createSessionFailed": "创建任务失败，请重试",
+      "decisionModelSelected": "Laya 已选择 {{agent}}（{{probability}}%），本任务后续保持使用该 Agent",
       "piRemoteUnsupported": "Pi 仅在本地运行，无法使用 SSH 远程主机。请切换到 Claude 或 Codex 来使用该主机。",
       "localWorktreeCleanupPending": "上一次本地 worktree 任务仍待回收，请等待清理完成后再试。",
       "remoteWorktreeCleanupPending": "上一次远程 worktree 仍待回收，请重新连接设备后再试。",

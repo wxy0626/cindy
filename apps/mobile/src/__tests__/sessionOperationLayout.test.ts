@@ -128,7 +128,7 @@ describe("session operation layout", () => {
 
   it("routes the shared model own disabled reasons through the locale catalog", () => {
     // 这两条理由在共享层是中文直出,而手机端会把它读给 composer 与队列行的
-    // accessibility hint —— 必须按 locale 翻译,否则读屏在 en / ja / ko 下念混语。
+    // accessibility hint —— 必须按 locale 翻译,否则读屏在 en 下念混语。
     expect(composerDisabledReasonI18nKey("session-syncing")).toBe(
       "session.screen.composerSessionNotSynced",
     );
@@ -139,7 +139,7 @@ describe("session operation layout", () => {
     expect(composerDisabledReasonI18nKey("caller-provided")).toBeNull();
     expect(composerDisabledReasonI18nKey(null)).toBeNull();
 
-    for (const lang of ["zh-CN", "zh-TW", "en", "ja", "ko"]) {
+    for (const lang of ["zh-CN", "en"]) {
       const session = JSON.parse(
         readFileSync(
           resolve(process.cwd(), `src/i18n/locales/${lang}/session.json`),

@@ -1,5 +1,5 @@
 /**
- * i18next catalog 平价门:5 个 locale 的组装后 catalog(locales/<locale>/index.ts)
+ * i18next catalog 平价门:2 个 locale 的组装后 catalog(locales/<locale>/index.ts)
  * key 结构必须完全一致,叶子非空,{{占位符}} 集合逐 key 一致。
  * 与根 scripts/check-i18n.mjs(desktop 专用)对应的 mobile 侧强制门,
  * 随 pnpm test:unit 阻断。直接从组装模块取数,新增区域文件自动纳入校验。
@@ -9,16 +9,10 @@ import { describe, expect, it } from "vitest";
 
 import enCommon from "@/i18n/locales/en";
 import zhCNCommon from "@/i18n/locales/zh-CN";
-import jaCommon from "@/i18n/locales/ja";
-import koCommon from "@/i18n/locales/ko";
-import zhTWCommon from "@/i18n/locales/zh-TW";
 
 const CATALOGS: Record<string, unknown> = {
   en: enCommon,
   "zh-CN": zhCNCommon,
-  ja: jaCommon,
-  ko: koCommon,
-  "zh-TW": zhTWCommon,
 };
 
 /** 展平嵌套 catalog 为 dot-path → 叶子字符串。遇到非 string 叶子直接失败。 */

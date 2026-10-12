@@ -23,41 +23,41 @@
 
 这些术语的译法已定，**违反会阻断 CI**。
 
-| 英文 | zh-CN | zh-TW | ja | ko | 禁用译法 |
-| --- | --- | --- | --- | --- | --- |
-| **Active** | 活跃 | 活躍 | アクティブ | 활성 | zh-CN: 活动（仅当英文含 Active）；zh-TW: 活動（仅当英文含 Active） |
-| **Agent** | `Agent`（保留英文） | `Agent`（保留英文） | `Agent`（保留英文） | `Agent`（保留英文） | zh-CN: 智能体；zh-CN: 代理（仅当英文含 Agent）；zh-TW: 智能體；zh-TW: 代理（仅当英文含 Agent） |
-| **Agent session** | Agent 会话 | Agent 會話 | Agent セッション | Agent 세션 | zh-CN: 任务（仅当英文含 agent session）；zh-TW: 任務（仅当英文含 agent session） |
-| **Author** | 作者 | 作者 | 作成者 | 작성자 | zh-CN: 提交者（仅当英文含 Author）；zh-CN: 提出者（仅当英文含 Author）；zh-TW: 提交者（仅当英文含 Author）；zh-TW: 提出者（仅当英文含 Author） |
-| **Automation** | 自动化 | 自動化 | 自動化 | 자동화 | ja: オートメーション；ko: 오토메이션 |
-| **Balance** | 余额 | 餘額 | 残高 | 잔액 | zh-CN: 额度（仅当英文含 Balance）；zh-TW: 額度（仅当英文含 Balance） |
-| **Chat** | 对话 | 對話 | チャット | 채팅 | zh-CN: 聊天；zh-TW: 聊天 |
-| **Collaboration** | 协同 | 協同 | 協同 | 협업 | zh-CN: 协作（仅当英文含 Collaboration）；zh-TW: 協作（仅当英文含 Collaboration） |
-| **Collapse** | 收起 | 收起 | 折りたたむ | 접기 | zh-CN: 折叠（仅当英文含 Collapse）；zh-TW: 折疊（仅当英文含 Collapse） |
-| **Credits** | 点数 | 點數 | クレジット | 크레딧 | zh-CN: 额度（仅当英文含 Credit）；zh-TW: 額度（仅当英文含 Credit） |
-| **Directory** | 目录 | 目錄 | ディレクトリ | 디렉터리 | — |
-| **Dismiss** | 关闭 | 關閉 | 閉じる | 닫기 | zh-CN: 忽略（仅当英文含 Dismiss）；zh-CN: 知道了（仅当英文含 Dismiss）；zh-TW: 忽略（仅当英文含 Dismiss）；zh-TW: 知道了（仅当英文含 Dismiss） |
-| **Effort** | 推理强度 | 推理強度 | 推論強度 | 추론 강도 | zh-CN: 思考强度；zh-CN: 思考深度；zh-CN: 推理深度；zh-CN: 努力程度；zh-CN: 推理力度；zh-TW: 思考強度；zh-TW: 思考深度；zh-TW: 推理深度；zh-TW: 努力程度；zh-TW: 推理力度；ja: 推論レベル；ja: 推論の強度 |
-| **Issue** | `Issue`（保留英文） | `Issue`（保留英文） | `Issue`（保留英文） | 이슈 | zh-CN: 工单；zh-CN: 议题；zh-TW: 工單；zh-TW: 議題；ja: 課題（仅当英文含 Issue） |
-| **Message** | 消息 | 訊息 | メッセージ | 메시지 | zh-CN: 条对话（仅当英文含 Message）；zh-TW: 條對話（仅当英文含 Message） |
-| **Plugin** | 插件 | 插件 | プラグイン | 플러그인 | zh-CN: Plugin；zh-CN: plugin；zh-TW: Plugin；zh-TW: plugin；zh-TW: 外掛 |
-| **Privacy Policy** | 隐私政策 | 隱私政策 | プライバシーポリシー | 개인정보 처리방침 | zh-TW: 隱私協議（仅当英文含 Privacy Policy） |
-| **Project** | 项目 | 專案 | プロジェクト | 프로젝트 | zh-CN: Project；zh-TW: Project |
-| **Provider** | 供应商 | 供應商 | プロバイダー | 제공자 | zh-CN: 提供方；zh-CN: 提供商；zh-TW: 提供方；zh-TW: 提供商；ja: 提供元（仅当英文含 Provider）；ja: 事業者（仅当英文含 Provider）；ko: 공급자；ko: 제공업체 |
-| **Proxy** | `Proxy`（保留英文） | `Proxy`（保留英文） | プロキシ | 프록시 | zh-CN: 代理（仅当英文含 Proxy）；zh-TW: 代理（仅当英文含 Proxy） |
-| **Quota** | 配额 | 配額 | クォータ | 할당량 | ja: 残量；zh-CN: 额度（仅当英文含 Quota）；zh-TW: 額度（仅当英文含 Quota） |
-| **Running** | 运行中 | 執行中 | 実行中 | 실행 중 | zh-CN: 执行中（仅当英文含 Running）；zh-CN: 进行中（仅当英文含 Running）；zh-TW: 進行中（仅当英文含 Running） |
-| **Session** | 任务 | 任務 | セッション | 세션 | zh-CN: 会话；zh-TW: 會話 |
-| **Skill** | 技能 | 技能 | スキル | 스킬 | ja: 技能；ko: 기술 |
-| **SkillHub** | `SkillHub`（保留英文） | `SkillHub`（保留英文） | `SkillHub`（保留英文） | `SkillHub`（保留英文） | ja: スキルハブ；ko: 스킬 허브 |
-| **Subagent** | `Subagent`（保留英文） | `Subagent`（保留英文） | サブエージェント | 하위 에이전트 | zh-CN: 代理（仅当英文含 Subagent）；zh-TW: 代理（仅当英文含 Subagent） |
-| **Task** | 任务 | 任務 | タスク | 작업 | — |
-| **Thread** | 任务 | 任務 | スレッド | 스레드 | zh-CN: 线程；zh-TW: 執行緒 |
-| **Turn** | 轮 | 輪 | ターン | 턴 | — |
-| **Usage** | 用量 | 用量 | 使用量 | 사용량 | zh-CN: 使用情况；zh-CN: 使用表现；zh-TW: 使用情況；zh-TW: 使用表現；ja: 使用状況；ja: 利用状況；ko: 사용 현황 |
-| **Worker** | `Worker`（保留英文） | `Worker`（保留英文） | `Worker`（保留英文） | `Worker`（保留英文） | — |
-| **Working directory** | 工作目录 | 工作目錄 | 作業ディレクトリ | 작업 디렉터리 | zh-CN: 任务空间；zh-CN: 工作空间；zh-TW: 任務空間；zh-TW: 工作空間 |
-| **Worktree** | worktree | worktree | worktree | worktree | zh-CN: 工作树（仅当英文含 Worktree）；zh-CN: 工作区（仅当英文含 Worktree）；zh-TW: 工作樹（仅当英文含 Worktree）；zh-TW: 工作區（仅当英文含 Worktree） |
+| 英文 | zh-CN | 禁用译法 |
+| --- | --- | --- |
+| **Active** | 活跃 | zh-CN: 活动（仅当英文含 Active） |
+| **Agent** | `Agent`（保留英文） | zh-CN: 智能体；zh-CN: 代理（仅当英文含 Agent） |
+| **Agent session** | Agent 会话 | zh-CN: 任务（仅当英文含 agent session） |
+| **Author** | 作者 | zh-CN: 提交者（仅当英文含 Author）；zh-CN: 提出者（仅当英文含 Author） |
+| **Automation** | 自动化 | — |
+| **Balance** | 余额 | zh-CN: 额度（仅当英文含 Balance） |
+| **Chat** | 对话 | zh-CN: 聊天 |
+| **Collaboration** | 协同 | zh-CN: 协作（仅当英文含 Collaboration） |
+| **Collapse** | 收起 | zh-CN: 折叠（仅当英文含 Collapse） |
+| **Credits** | 点数 | zh-CN: 额度（仅当英文含 Credit） |
+| **Directory** | 目录 | — |
+| **Dismiss** | 关闭 | zh-CN: 忽略（仅当英文含 Dismiss）；zh-CN: 知道了（仅当英文含 Dismiss） |
+| **Effort** | 推理强度 | zh-CN: 思考强度；zh-CN: 思考深度；zh-CN: 推理深度；zh-CN: 努力程度；zh-CN: 推理力度 |
+| **Issue** | `Issue`（保留英文） | zh-CN: 工单；zh-CN: 议题 |
+| **Message** | 消息 | zh-CN: 条对话（仅当英文含 Message） |
+| **Plugin** | 插件 | zh-CN: Plugin；zh-CN: plugin |
+| **Privacy Policy** | 隐私政策 | — |
+| **Project** | 项目 | zh-CN: Project |
+| **Provider** | 供应商 | zh-CN: 提供方；zh-CN: 提供商 |
+| **Proxy** | `Proxy`（保留英文） | zh-CN: 代理（仅当英文含 Proxy） |
+| **Quota** | 配额 | zh-CN: 额度（仅当英文含 Quota） |
+| **Running** | 运行中 | zh-CN: 执行中（仅当英文含 Running）；zh-CN: 进行中（仅当英文含 Running） |
+| **Session** | 任务 | zh-CN: 会话 |
+| **Skill** | 技能 | — |
+| **SkillHub** | `SkillHub`（保留英文） | — |
+| **Subagent** | `Subagent`（保留英文） | zh-CN: 代理（仅当英文含 Subagent） |
+| **Task** | 任务 | — |
+| **Thread** | 任务 | zh-CN: 线程 |
+| **Turn** | 轮 | — |
+| **Usage** | 用量 | zh-CN: 使用情况；zh-CN: 使用表现 |
+| **Worker** | `Worker`（保留英文） | — |
+| **Working directory** | 工作目录 | zh-CN: 任务空间；zh-CN: 工作空间 |
+| **Worktree** | worktree | zh-CN: 工作树（仅当英文含 Worktree）；zh-CN: 工作区（仅当英文含 Worktree） |
 
 ### 分场合译法
 
@@ -67,40 +67,22 @@
 | --- | --- | --- | --- |
 | **Active** | zh-CN | 活跃 | 默认 |
 | Active | zh-CN | 生效中 | 计费语境（"no active subscription"→没有生效中的订阅），指订阅状态而非活跃度 |
-| **Active** | zh-TW | 活躍 | 默认 |
-| Active | zh-TW | 生效中 | 計費語境（"no active subscription"→沒有生效中的訂閱），指訂閱狀態而非活躍度 |
 | **Automation** | zh-CN | 自动化 | 默认 |
 | Automation | zh-CN | 自动操作 | Computer Use 语境——「自动操作电脑 / 浏览器」，指代操控设备而非定时任务 |
-| **Automation** | zh-TW | 自動化 | 默认 |
-| Automation | zh-TW | 自動操作 | Computer Use 語境——「自動操作電腦 / 瀏覽器」，指代操控裝置而非定時任務 |
 | **Credits** | zh-CN | 点数 | 默认 |
 | Credits | zh-CN | credits | 指第三方服务自身的 credits（如 Codex / ChatGPT 订阅余量），保留其原生叫法 |
 | Credits | zh-CN | 重置次数 | reset credits——指可用的配额重置次数，与计费点数无关 |
-| **Credits** | zh-TW | 點數 | 默认 |
-| Credits | zh-TW | credits | 指第三方服務自身的 credits（如 Codex / ChatGPT 訂閱餘量），保留其原生叫法 |
-| Credits | zh-TW | 重置次數 | reset credits——指可用的配額重置次數，與計費點數無關 |
 | **Provider** | zh-CN | 供应商 | 默认 |
 | Provider | zh-CN | 模型供应商 | 首次出现或需要消歧时用全称，如设置页标题 |
-| **Provider** | zh-TW | 供應商 | 默认 |
-| Provider | zh-TW | 模型供應商 | 首次出現或需要消歧時用全稱，如設定頁標題 |
 | **Running** | zh-CN | 运行中 | 默认 |
 | Running | zh-CN | 正在运行 | 完整句子里作谓语时（"Agent 正在运行"），不是状态标签 |
-| **Running** | zh-TW | 執行中 | 默认 |
-| Running | zh-TW | 正在執行 | 完整句子裡作謂語時（"Agent 正在執行"），不是狀態標籤 |
 | **Session** | zh-CN | 任务 | 默认 |
 | Session | zh-CN | 对话 | 指任务内人与 AI 交流的过程或其内容（对话区、对话正文、对话记录、继续对话） |
-| **Session** | zh-TW | 任務 | 默认 |
-| Session | zh-TW | 對話 | 指任務內人與 AI 交流的過程或其內容（對話區、對話正文、對話記錄、繼續對話） |
 | **Skill** | zh-CN | 技能 | 默认 |
 | Skill | zh-CN | Skill | 技术语境下指代具体的 skill 文件 / 目录结构时，可保留英文 |
-| **Skill** | zh-TW | 技能 | 默认 |
-| Skill | zh-TW | Skill | 技術語境下指代具體的 skill 檔案 / 目錄結構時，可保留英文 |
 | **Thread** | zh-CN | 任务 | 默认 |
 | Thread | zh-CN | thread | 指 Codex 的 thread 这一外部系统概念时（导入历史、thread 上下文），保留英文 |
 | Thread | zh-CN | 评论 | 指 GitHub PR 的 review thread 时，用「review 评论」 |
-| **Thread** | zh-TW | 任務 | 默认 |
-| Thread | zh-TW | thread | 指 Codex 的 thread 這一外部系統概念時（匯入歷史、thread 上下文），保留英文 |
-| Thread | zh-TW | 評論 | 指 GitHub PR 的 review thread 時，用「review 評論」 |
 
 ### 裁决理由
 
@@ -375,13 +357,13 @@ OS 进程语境(资源用量面板、浏览器 guest 进程、终端)。注意�
 
 中国大陆版登录页区域徽标上的标签值（DESIGN.md §16.3）。四语同值、**不翻译**——它是区域代号不是可译文案，所以把 en 原样写进各语言 translations（同 Agent 条目的做法），这让 caseStandardFor 生效、guard 能挡住 cn／Cn 之类的大小写漂移。forbidden 用条件形态（whenEn=CN）补另一半：大小写规则挡不住“被整体译走”，条件形态又能把拦截精确限定在英文源为 CN 的 key 上，不误伤别处正当的“国内”“中国版”表述。列的是最可能的自造说法，不求穷举。status 取 proposed 与 region-badge 一致：产品尚未拍板是否改用可译文案，改判后本条应随之作废而非沿用。2026-07-28 起同一代号也用于 submit_github_issue 的提交确认卡片与 issue 正文（`issueAgent.confirm.regionCodeCn`）与侧栏用户卡片版本行（`sidebar.user.regionCodeCn`），口径与徽标完全一致：global 不标；「哪些区域要标」的唯一事实源是 `apps/desktop/src/shared/regionCode.ts`。
 
-已确定禁用：`中国版（仅当英文含 CN）`（zh-CN）、`国内版（仅当英文含 CN）`（zh-CN）、`中国版（仅当英文含 CN）`（ja）、`중국판（仅当英文含 CN）`（ko）
+已确定禁用：`中国版（仅当英文含 CN）`（zh-CN）、`国内版（仅当英文含 CN）`（zh-CN）
 
 ### Dev
 
 dev 版登录页区域徽标上的标签值（DESIGN.md §16.3），四语同值、不翻译，理由同 region-code-cn。与 CN 不同的是 dev 还是个普通技术词：豁免的两条文案里“Always on in dev mode.”“dev builds may be authorized…”“dev 模式下始终开启”指的是开发模式而非本区域标签，小写本就正确（四语同 key 一并覆盖）。用 exempt 精确豁免这两条、而不是整条关掉 checkCase，是为了保住徽标值本身的大小写约束——这正是本条存在的意义。2026-07-28 起同一代号也用于 submit_github_issue 的提交确认卡片与 issue 正文（`issueAgent.confirm.regionCodeDev`）与侧栏用户卡片版本行（`sidebar.user.regionCodeDev`），口径与徽标完全一致：global 不标；「哪些区域要标」的唯一事实源是 `apps/desktop/src/shared/regionCode.ts`。2026-08-26 起 CindyDev 内部的业务服务器环境切换也沿用 Dev 标签；这里只表示所连接的服务环境，不能据此改变安装包区域或身份。
 
-已确定禁用：`开发版（仅当英文含 Dev）`（zh-CN）、`開発版（仅当英文含 Dev）`（ja）、`개발판（仅当英文含 Dev）`（ko）
+已确定禁用：`开发版（仅当英文含 Dev）`（zh-CN）
 
 ### Remote computer
 
@@ -439,7 +421,7 @@ Orca Worker 创建卡上的命名字段。它只是派活用的名字，不改�
 
 macOS TCC 的 kTCCServiceListenEvent(系统设置里叫「输入监控」)在 Cindy 内的对外称法。产品侧只按用途讲: 这个权限只服务语音输入快捷键的监听, 不讲系统实现, 所以 zh-CN 沿用设置页权限项已有的「监听权限」(settings.voiceInput.permissions.inputMonitoring.label), 不引入「输入监控」这个直译——后者听起来像 Cindy 在监控用户的全部输入, 与实际能力(只识别快捷键按键组合)不符, 反而制造隐私误解。禁用项都挂 whenEn 条件: 要引用 macOS 系统设置面板名本身时那是 OS 的 UI 名称, 不受本条约束。四语的比喻不统一(en listener / ja 監視 / ko 감지)是现状登记而非裁决——各语言内部一致但跨语言不同, 保持 proposed 等产品拍板, 先把清单摆出来防止继续在 listener / monitoring / detection 之间漂移。
 
-已确定禁用：`输入监控（仅当英文含 shortcut listener permission）`（zh-CN）、`入力監視（仅当英文含 shortcut listener permission）`（ja）、`입력 모니터링（仅当英文含 shortcut listener permission）`（ko）
+已确定禁用：`输入监控（仅当英文含 shortcut listener permission）`（zh-CN）
 
 ### Skip Sign-In
 

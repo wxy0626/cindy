@@ -149,7 +149,7 @@ export interface LearnControllerDeps {
   onUndispatchedUserTurn?: (sessionId: string) => void;
   peekPendingHandoff?: (sessionId: string) => Promise<string | null>;
   consumePendingHandoff?: (sessionId: string) => void;
-  /** 应用当前语言(shared/locale SupportedLocale)—— 蒸馏自述语言跟随系统语言配置。 */
+  /** 应用当前语言(shared/locale SupportedLocale)—— 蒸馏自述语言跟随应用当前语言。 */
   getAppLocale(): string;
   /** 当前 data owner id(run 归属标记 + 按 owner 过滤;未登录返回 null)。 */
   getCurrentDataOwnerId(): string | null;

@@ -3,7 +3,7 @@
  * i18n 术语表(glossary)一致性门禁。
  *
  * 与 check-i18n.mjs 的分工:后者只管 **key 结构**(缺 key / 孤儿 key / 类型冲突),
- * 保证「四语言 key 齐整」;本脚本管 **译文语义**,保证「同一个概念在所有地方译法一致」。
+ * 保证「中英 key 齐整」;本脚本管 **译文语义**,保证「同一个概念在所有地方译法一致」。
  * 两者互补,谁也替代不了谁。
  *
  * 校验对象:i18n/glossary.json 里登记的术语,对照 desktop + mobile 全部 locale JSON。
@@ -11,9 +11,8 @@
  * 三类规则:
  *  1. forbidden —— 术语在某语言下的禁用译法(如 Agent 在 zh-CN 禁「代理」)。
  *  2. case-form —— 保留英文的术语必须统一大小写形态(如 Worker 不写 worker)。
- *  3. punctuation —— 两条规则适用范围不同:半角标点(汉字后禁 , : ; ! ?)对 zh-CN /
- *     zh-TW 生效——日文 UI 惯例本就用半角冒号,实测 ja 半角 124:78 才是主流;省略号
- *     (… 而非三个半角点)覆盖 en / zh-CN / zh-TW / ja / ko。
+ *  3. punctuation —— 两条规则适用范围不同:半角标点(汉字后禁 , : ; ! ?)对 zh-CN 生效;
+ *     省略号(… 而非三个半角点)覆盖 en / zh-CN。
  *
  * 分级:
  *  - status=decided 的术语违规 → **阻断**(exit 1)。
@@ -31,7 +30,7 @@
  *   node scripts/check-i18n-glossary.mjs --update-baseline  # 剪枝 baseline(只删不增)
  *   node scripts/check-i18n-glossary.mjs --report        # 打印完整违规明细(不阻断)
  *
- * 已知覆盖缺口(有意为之,记录在案):mobile 存在 i18next 之外的手写四语 catalog
+ * 已知覆盖缺口(有意为之,记录在案):mobile 存在 i18next 之外的手写中英 catalog
  * (src/auth/loginMessages.ts 等 .ts 文件),本脚本只扫 locale JSON,不解析这些 TS。
  * 它们由各自的编译期 Record 类型 + parity 单测保证结构,但术语一致性目前是盲区。
  */

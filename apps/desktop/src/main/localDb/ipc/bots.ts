@@ -65,8 +65,8 @@ import { normalizeBotModelChain } from '../../../shared/botModelChain.js';
 import {
   activeOwnerScopeKey,
   isAppSessionBoundaryPending,
-  ownerScopedUserDataPath,
 } from '../../appSessionState.js';
+import { machineSharedUserDataPath } from '../../machineSharedStorage.js';
 import {
   isManagedBotAvatarUrl,
   isSupportedBotAvatarValue,
@@ -104,7 +104,7 @@ function queueBotInvitation(botId: string, retry = false): void {
 /** Bind async profile work to the account that initiated it. */
 function captureBotOperationOwner() {
   const scopeKey = activeOwnerScopeKey();
-  const userDataDir = ownerScopedUserDataPath();
+  const userDataDir = machineSharedUserDataPath();
   const assertCurrent = () => {
     if (isAppSessionBoundaryPending() || activeOwnerScopeKey() !== scopeKey) {
       throwIpcError('PRECONDITION_FAILED', '账号已切换，请在当前账号重试');
@@ -132,7 +132,7 @@ async function syncBotProfileFolder(
   botId: string,
   identitySource: string,
   config: Record<string, unknown>,
-  userDataDir = ownerScopedUserDataPath(),
+  userDataDir = machineSharedUserDataPath(),
 ): Promise<void> {
   const { userContextSource } = config;
   try {
@@ -253,7 +253,7 @@ async function reconcileCanonicalLink(
  * 这一轮还用旧身份,下一轮再收。
  */
 export async function reconcileBotProfileFolder(botId: string): Promise<void> {
-  const userDataDir = ownerScopedUserDataPath();
+  const userDataDir = machineSharedUserDataPath();
   const legacyUserDataDir = app.getPath('userData');
   const client = getDbClient();
   const db = client.drizzle;
@@ -851,7 +851,7 @@ export function broadcastBotProfileChanged(payload: {
 async function recoverBotTemplateSkills(botId: string): Promise<void> {
   if (isAppSessionBoundaryPending()) return;
   const ownerScopeKey = activeOwnerScopeKey();
-  const userDataDir = ownerScopedUserDataPath();
+  const userDataDir = machineSharedUserDataPath();
   const db = getDbClient().drizzle;
   try {
     const [profile] = await db
@@ -965,7 +965,7 @@ export async function createBotProfile(raw: unknown) {
   }
   const creationOwnerBoundary = {
     scopeKey: activeOwnerScopeKey(),
-    userDataDir: ownerScopedUserDataPath(),
+    userDataDir: machineSharedUserDataPath(),
   };
   const assertCreationOwnerStillCurrent = () => {
     if (

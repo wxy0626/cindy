@@ -104,10 +104,7 @@ function buildPredictionPrompt(
 ): { system: string; user: string } {
   const languageHints: Record<string, string> = {
     'zh-CN': "Match the user's language. The user types in Simplified Chinese.",
-    'zh-TW': "Match the user's language. The user types in Traditional Chinese.",
     en: "Match the user's language. The user types in English.",
-    ja: "Match the user's language. The user types in Japanese.",
-    ko: "Match the user's language. The user types in Korean.",
   };
   const wdLine = workingDir
     ? `Current working directory: ${escapeReferenceData(workingDir)}`

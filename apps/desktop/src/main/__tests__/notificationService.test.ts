@@ -449,41 +449,6 @@ describe('notificationService — channels 分发', () => {
     );
   });
 
-  it('zh-TW → 桌面与飞书使用繁中，空标题兜底也跟随当前语言', async () => {
-    const { initNotificationService, showDesktopSessionEvent } = await freshService();
-    const { setMainLocale } = await import('../i18n');
-    const feishuIm = makeFeishuIm('ou_owner');
-    initNotificationService(baseDeps(feishuIm));
-    setMainLocale('zh-TW');
-
-    await invokeHandler({
-      sessionId: 's1',
-      title: '整理報告',
-      kind: 'needs-reply',
-      channels: { desktop: true, feishu: true },
-    });
-
-    expect(notificationCtor).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Cindy · 整理報告',
-        body: '需要你回覆',
-      }),
-    );
-    expect(feishuIm.sendMarkdownText).toHaveBeenCalledWith(
-      'ou_owner',
-      'Cindy · 任務「整理報告」需要你回覆',
-    );
-
-    notificationCtor.mockClear();
-    showDesktopSessionEvent(() => null, { sessionId: '', title: '', kind: 'error' });
-    expect(notificationCtor).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Cindy · 未命名任務',
-        body: '執行失敗',
-      }),
-    );
-  });
-
   it('feishu:true 但 ownerOpenId === null → 不调 sendMarkdownText,warn 一次', async () => {
     const { initNotificationService } = await freshService();
     const feishuIm = makeFeishuIm(null);

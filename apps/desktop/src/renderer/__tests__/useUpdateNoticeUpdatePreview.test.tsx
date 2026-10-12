@@ -30,12 +30,14 @@ vi.mock('@/hooks/useLocale', () => ({
 }));
 
 const mocks = vi.hoisted(() => ({
+  fetchCurrentReleaseNotes: vi.fn(),
   fetchReleaseNotes: vi.fn(),
   fetchReleaseNotesIndex: vi.fn(),
   toastError: vi.fn(),
 }));
 
 vi.mock('@/release-notes', () => ({
+  fetchCurrentReleaseNotes: mocks.fetchCurrentReleaseNotes,
   fetchReleaseNotes: mocks.fetchReleaseNotes,
   fetchReleaseNotesIndex: mocks.fetchReleaseNotesIndex,
 }));
@@ -62,17 +64,24 @@ function deferred<T>() {
 
 /** 设定「已装版本」,并让自动弹窗路径静默(lastRead === appVersion 时 effect 直接 return)。 */
 function setInstalled(version: string) {
-  (window as unknown as { electronAPI: unknown }).electronAPI = { appVersion: version };
+  (window as unknown as { electronAPI: unknown }).electronAPI = {
+    appVersion: version,
+    appSemanticVersion: version,
+    appIsPackaged: true,
+  };
   localStorage.setItem(STORAGE_KEY, version);
 }
 
 beforeEach(() => {
   localeState.current = 'en';
   localStorage.clear();
+  mocks.fetchCurrentReleaseNotes.mockReset();
   mocks.fetchReleaseNotes.mockReset();
   mocks.fetchReleaseNotesIndex.mockReset();
   mocks.toastError.mockReset();
   mocks.fetchReleaseNotesIndex.mockResolvedValue(['1.3.9', '1.4.0', '1.4.1', '1.4.2']);
+  mocks.fetchCurrentReleaseNotes.mockImplementation(async (v: string, locale: string) =>
+    notesFor(v, locale));
   mocks.fetchReleaseNotes.mockImplementation(async (v: string, locale: string) =>
     notesFor(v, locale));
   setInstalled('1.4.1');
@@ -273,7 +282,7 @@ describe('useUpdateNotice onOpen — flame-icon history is unchanged', () => {
     expect(result.current.mode).toBe('manual');
     expect(result.current.releaseNotes?.map((n) => n.version)).toEqual(['1.4.1']);
     expect(result.current.allVersions).toEqual(['1.4.1', '1.4.0', '1.3.9']);
-    expect(mocks.fetchReleaseNotes).toHaveBeenCalledWith('1.4.1', 'en');
+    expect(mocks.fetchCurrentReleaseNotes).toHaveBeenCalledWith('1.4.1', 'en');
   });
 
   it('uses the current locale for manual history lazy loads', async () => {
@@ -284,13 +293,13 @@ describe('useUpdateNotice onOpen — flame-icon history is unchanged', () => {
     await waitFor(() => expect(result.current.open).toBe(true));
     await act(async () => { await result.current.loadVersion('1.4.0'); });
 
-    expect(mocks.fetchReleaseNotes).toHaveBeenCalledWith('1.4.1', 'ko');
+    expect(mocks.fetchCurrentReleaseNotes).toHaveBeenCalledWith('1.4.1', 'ko');
     expect(mocks.fetchReleaseNotes).toHaveBeenCalledWith('1.4.0', 'ko');
   });
 
   it('finishes opening manual history in the new locale when language changes in flight', async () => {
     const appEn = deferred<ReturnType<typeof notesFor>>();
-    mocks.fetchReleaseNotes.mockImplementation((version: string, locale: string) => {
+    mocks.fetchCurrentReleaseNotes.mockImplementation((version: string, locale: string) => {
       if (version === '1.4.1' && locale === 'en') return appEn.promise;
       return Promise.resolve(notesFor(version, locale));
     });
@@ -304,20 +313,61 @@ describe('useUpdateNotice onOpen — flame-icon history is unchanged', () => {
     await waitFor(() => expect(result.current.open).toBe(true));
     expect(result.current.mode).toBe('manual');
     expect(result.current.releaseNotes?.[0]?.topics[0]?.title).toBe('ko-1.4.1');
-    expect(mocks.fetchReleaseNotes).toHaveBeenCalledWith('1.4.1', 'ko');
+    expect(mocks.fetchCurrentReleaseNotes).toHaveBeenCalledWith('1.4.1', 'ko');
   });
 });
 
 describe('useUpdateNotice automatic popup', () => {
+  it('uses the development semantic version when Electron appVersion is 0.0.0', async () => {
+    (window as unknown as { electronAPI: unknown }).electronAPI = {
+      appVersion: '0.0.0',
+      appSemanticVersion: '0.1.80-beta',
+      appIsPackaged: false,
+    };
+    localStorage.removeItem(STORAGE_KEY);
+    // 模拟主进程把开发版本地语义版本对齐到 CDN 最新公告。
+    mocks.fetchCurrentReleaseNotes.mockImplementation(async (_version: string, locale: string) =>
+      notesFor('0.1.86', locale));
+
+    const { result } = renderHook(() => useUpdateNotice());
+
+    await waitFor(() => expect(result.current.open).toBe(true));
+    expect(result.current.releaseNotes?.map((n) => n.version)).toEqual(['0.1.86']);
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+    act(() => result.current.dismiss());
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('0.1.86');
+  });
+
+  it('dedupes the development popup by the actual upstream notice version', async () => {
+    (window as unknown as { electronAPI: unknown }).electronAPI = {
+      appVersion: '0.0.0',
+      appSemanticVersion: '0.1.86',
+      appIsPackaged: false,
+    };
+    localStorage.setItem(STORAGE_KEY, '0.1.95');
+    mocks.fetchCurrentReleaseNotes.mockImplementation(async (_version: string, locale: string) =>
+      notesFor('0.1.95', locale));
+
+    const { result } = renderHook(() => useUpdateNotice());
+
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.open).toBe(false);
+  });
+
   it('loads automatic notices with the effective locale', async () => {
-    (window as unknown as { electronAPI: unknown }).electronAPI = { appVersion: '1.4.2' };
+    (window as unknown as { electronAPI: unknown }).electronAPI = {
+      appVersion: '1.4.2',
+      appSemanticVersion: '1.4.2',
+      appIsPackaged: true,
+    };
     localStorage.setItem(STORAGE_KEY, '1.4.1');
     localeState.current = 'ja';
 
     const { result } = renderHook(() => useUpdateNotice());
 
     await waitFor(() => expect(result.current.open).toBe(true));
-    expect(mocks.fetchReleaseNotes).toHaveBeenCalledWith('1.4.2', 'ja');
+    expect(mocks.fetchCurrentReleaseNotes).toHaveBeenCalledWith('1.4.2', 'ja');
     expect(result.current.releaseNotes?.[0]?.topics[0]?.title).toBe('ja-1.4.2');
   });
 
@@ -325,7 +375,7 @@ describe('useUpdateNotice automatic popup', () => {
     (window as unknown as { electronAPI: unknown }).electronAPI = { appVersion: '1.4.2' };
     localStorage.setItem(STORAGE_KEY, '1.4.1');
     let currentFetch = 0;
-    mocks.fetchReleaseNotes.mockImplementation(async (version: string, locale: string) => {
+    mocks.fetchCurrentReleaseNotes.mockImplementation(async (version: string, locale: string) => {
       if (version === '1.4.2' && currentFetch++ === 0) return null;
       return notesFor(version, locale);
     });
@@ -354,7 +404,7 @@ describe('useUpdateNotice automatic popup', () => {
     (window as unknown as { electronAPI: unknown }).electronAPI = { appVersion: '1.4.2' };
     localStorage.setItem(STORAGE_KEY, '1.4.1');
     let currentFetch = 0;
-    mocks.fetchReleaseNotes.mockImplementation(async (version: string, locale: string) => {
+    mocks.fetchCurrentReleaseNotes.mockImplementation(async (version: string, locale: string) => {
       if (version === '1.4.2' && currentFetch++ === 0) return null;
       return notesFor(version, locale);
     });
@@ -401,6 +451,7 @@ describe('useUpdateNotice automatic popup', () => {
     await act(async () => { await Promise.resolve(); });
     expect(result.current.open).toBe(false);
     expect(localStorage.getItem(STORAGE_KEY)).toBe('1.4.2');
-    expect(mocks.fetchReleaseNotes).toHaveBeenCalledTimes(2);
+    expect(mocks.fetchCurrentReleaseNotes).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchReleaseNotes).toHaveBeenCalledTimes(1);
   });
 });

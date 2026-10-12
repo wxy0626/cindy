@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { botComposerPlaceholderKey, isLatinBotName } from '../botChatPresentation';
+import {
+  botComposerPlaceholderKey,
+  isLatinBotName,
+  resolveBotChatIdentity,
+  type BotChatBinding,
+} from '../botChatPresentation';
 
 describe('伙伴对话的输入框占位符', () => {
   it('西文名字两侧留空格,中文名不留', () => {
@@ -21,5 +26,24 @@ describe('伙伴对话的输入框占位符', () => {
     expect(isLatinBotName('小柴 Shiba')).toBe(false);
     expect(isLatinBotName('   ')).toBe(false);
     expect(isLatinBotName('')).toBe(false);
+  });
+});
+
+describe('伙伴身份绑定', () => {
+  const binding: BotChatBinding = {
+    id: 'bot-a',
+    name: '小柴',
+    avatar: null,
+    avatarColor: null,
+    sessionId: 'session-a',
+  };
+
+  it('当前会话首帧没有运行时快照时仍保留伙伴皮肤', () => {
+    expect(resolveBotChatIdentity(binding, 'session-a')).toEqual(binding);
+  });
+
+  it('切到另一会话时立即丢弃旧伙伴身份', () => {
+    expect(resolveBotChatIdentity(binding, 'session-b')).toBeNull();
+    expect(resolveBotChatIdentity(binding, undefined)).toBeNull();
   });
 });

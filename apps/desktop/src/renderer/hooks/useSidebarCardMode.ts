@@ -3,22 +3,19 @@
  * ---------------------------------------------------------------------------
  * 两份独立设置(docs/product-rules/sidebar-redesign-plan.md §3.4 / §4):
  *   - 置顶段:'text' | 'card' | 'list' 三态(卡片版仅置顶支持)。
- *   - 主列表:'text' | 'list' 两态,默认 'list'(定稿默认值)。
+ *   - 主列表:'text' | 'list' 两态,默认 'text'。
  *
  * localStorage keys:
  *   - 置顶段沿用 `sidebar.cardMode`(向后兼容):读取时兼容旧 boolean 字符串
  *     ('true'→'card','false'→'text')。
  *   - 主列表新增 `sidebar.mainListMode`。首次读取(无值)时从置顶段旧值粗略迁移:
- *     text→text,card/list→list(主列表无 card 档;定稿:迁移不追求完美)。
- *     两处都没有痕迹时按安装新旧给默认:新安装 'list',**老安装 'text'**——
- *     老用户升级后侧栏观感不变(2026-08-12 用户裁决,见 sidebarInstallVintage)。
+ *     text→text,card/list→list(主列表无 card 档;迁移不追求完美)。
+ *     两处都没有显式值时统一使用 'text'。
  *
  * 模块级内存值做跨实例 SoT;`storage` 事件做跨窗口同步(同 useNotificationSettings 模式)。
  */
 
 import { useCallback, useEffect, useState } from 'react';
-
-import { getSidebarInstallVintage } from '@/features/cc-agent/lib/sidebarInstallVintage';
 
 export type SidebarViewMode = 'text' | 'card' | 'list';
 /** 主列表显示模式:无 card 档(卡片版仅置顶区支持)。 */
@@ -27,7 +24,7 @@ export type SidebarMainViewMode = 'text' | 'list';
 const STORAGE_KEY = 'sidebar.cardMode';
 const MAIN_STORAGE_KEY = 'sidebar.mainListMode';
 const DEFAULT_MODE: SidebarViewMode = 'text';
-const DEFAULT_MAIN_MODE: SidebarMainViewMode = 'list';
+const DEFAULT_MAIN_MODE: SidebarMainViewMode = 'text';
 
 /** 解析存储值;兼容旧 boolean 字符串。无法识别返回 null(由调用方落默认)。 */
 function parseMode(raw: string | null): SidebarViewMode | null {
@@ -63,11 +60,7 @@ export function getSidebarViewMode(): SidebarViewMode {
 }
 
 /**
- * 同步读(主列表)。优先级:显式设置 > 从置顶段旧值迁移 > 按安装新旧给默认。
- *
- * 最后一档是兼容性要求(2026-08-12 用户裁决):新用户默认列表视图,**老用户升级
- * 后保持文字视图**——包括从没动过显示模式、localStorage 里没有 cardMode 的那批人
- * (他们靠 sidebarInstallVintage 的使用痕迹识别)。
+ * 同步读(主列表)。优先级:显式设置 > 从置顶段旧值迁移 > 文字默认。
  */
 export function getSidebarMainViewMode(): SidebarMainViewMode {
   if (mainMemoryValue !== null) return mainMemoryValue;
@@ -78,8 +71,6 @@ export function getSidebarMainViewMode(): SidebarMainViewMode {
     // 到主列表 list(宽行)。不回写 storage——迁移是纯读取推导,用户首次显式切换才落盘。
     const legacy = parseMode(localStorage.getItem(STORAGE_KEY));
     if (legacy) return (mainMemoryValue = legacy === 'text' ? 'text' : 'list');
-    // 没有任何显示模式痕迹:老安装沿用旧版观感(文字版),新安装用新默认(列表)。
-    if (getSidebarInstallVintage() === 'legacy') return (mainMemoryValue = 'text');
   } catch {
     // localStorage 不可用——退回默认(不落定内存,留待后续写入)。
   }

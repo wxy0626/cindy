@@ -202,6 +202,7 @@ import {
 } from '@cindy/maker-shared/session-title';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
+import * as messageService from '@/lib/messageService';
 import { InvisibleWindowDragStrip } from '@/components/layout/windowDrag';
 import {
   attachGhostMediaToSession,
@@ -286,6 +287,8 @@ import { closeAllTabs as closeRightSidebarTabs } from '@/features/right-sidebar/
 import { revealOrcaWorkersTab } from '@/features/right-sidebar/plugins/orca-workers/actions';
 import { normalizeProjectKey } from './lib/projectGrouping';
 import { requestSidebarProjectRestore } from './lib/sidebarProjectRestore';
+import { decideAgentForTask } from '@/lib/decisionModelClient';
+import { getDecisionModelSettings } from '@/state/decisionModelSettings';
 
 const log = createLogger('NewMakerDraftRoute');
 const IS_MAC_PLATFORM = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin';
@@ -370,6 +373,43 @@ export { NEW_MAKER_DRAFT_KEY };
 /** 草稿命名空间图片缓存 URL 前缀(浏览器页面评论截图等草稿期缓存落这里)。 */
 const DRAFT_IMAGE_URL_PREFIX = `xdt-image://${NEW_MAKER_DRAFT_KEY}/`;
 const DRAFT_INPUT_WIDTH_BREAKPOINTS = [560, 600, 700] as const;
+
+interface DecisionModelSwitchBoundary {
+  fromAgentKind: 'cc' | 'codex' | 'pi';
+  toAgentKind: 'cc' | 'codex' | 'pi';
+  fromModel: string | null;
+  toModel: string | null;
+  fromProviderId: string | null;
+  toProviderId: string | null;
+  probability: number;
+}
+
+/** 切换边界与历史 toast 使用同一套 Agent 展示名。 */
+function decisionModelAgentLabel(kind: 'cc' | 'codex' | 'pi'): string {
+  return kind === 'cc' ? 'Claude Code' : kind === 'codex' ? 'Codex' : 'Pi';
+}
+
+/** 把 Laya 路由结果持久化为会话内可见的切换边界，避免 toast 消失后无痕。 */
+async function persistDecisionModelSwitchBoundary(
+  sessionId: string,
+  boundary: DecisionModelSwitchBoundary,
+  handoff: string,
+): Promise<void> {
+  try {
+    await messageService.create(sessionId, {
+      clientId: `decision-model:${sessionId}`,
+      role: 'agent_switch',
+      content: {
+        ...boundary,
+        selectedBy: 'decision-model',
+        handoff,
+      },
+      agentMeta: null,
+    });
+  } catch (err) {
+    log.warn('[decision model] failed to persist switch boundary', err);
+  }
+}
 
 /**
  * 「创建即发送」路径的乐观标题 —— 让侧边栏 / 会话头 / tab 从第一帧就显示用户刚写下的
@@ -3389,7 +3429,18 @@ export function NewMakerDraftRoute() {
       // 草稿里选定的来源(供应商):ChatInput 在发送时把"仍连接的显式选择"经 opts 传上来
       // (未选 / 已断开 → null = 跟随默认路由)。透传给 createSession 落盘 sessions.provider_id,
       // 让新会话首个请求就走对来源,与"会话内切来源"行为一致。device-link 远程会话不支持(下方分支跳过)。
-      const providerId = opts?.providerId ?? null;
+      // Laya 只在本地新任务建 Session 前参与一次路由。后续消息已经属于
+      // 当前 Session，不再重新判断，也不会修改运行中的 Agent。
+      let dispatchPersistedAgentKind = persistedAgentKind;
+      let dispatchCapabilityAgentKind = capabilityAgentKind;
+      let dispatchAuthVendor = authVendor;
+      let dispatchModel = model;
+      let dispatchEffort = effort;
+      let dispatchPermissionMode = permissionMode;
+      let dispatchProviderId = opts?.providerId ?? null;
+      let dispatchFastMode = effectiveFastMode;
+      let dispatchPlanMode = effectivePlanMode;
+      let decisionSwitchBoundary: DecisionModelSwitchBoundary | null = null;
 
       // 本地导航命令(/jump-session)在进入 createSession 前同步短路:命中即直接
       // 跳转,新建界面不会先创建 session。这正是它和 /issue 的关键区别。
@@ -3403,6 +3454,39 @@ export function NewMakerDraftRoute() {
           }
         })();
         return false;
+      }
+
+      const decisionSettings = getDecisionModelSettings();
+      if (
+        decisionSettings.enabled &&
+        !isDeviceLinkDraft &&
+        !effectiveRemoteHostId &&
+        availableAgentsLoaded
+      ) {
+        const decision = await decideAgentForTask(message, decisionSettings);
+        if (decision && availableVendors.has(decision.vendor)) {
+          const targetPrefs = getDraft().lastByVendor[decision.vendor];
+          if (decision.vendor !== dispatchPersistedAgentKind) {
+            decisionSwitchBoundary = {
+              fromAgentKind: dispatchPersistedAgentKind,
+              toAgentKind: decision.vendor,
+              fromModel: dispatchModel,
+              toModel: targetPrefs.model,
+              fromProviderId: dispatchProviderId,
+              toProviderId: targetPrefs.providerId ?? null,
+              probability: decision.probability,
+            };
+            dispatchPersistedAgentKind = decision.vendor;
+            dispatchCapabilityAgentKind = dbToMakerAgentKind(decision.vendor);
+            dispatchAuthVendor = decision.vendor;
+            dispatchModel = targetPrefs.model;
+            dispatchEffort = targetPrefs.effort;
+            dispatchPermissionMode = targetPrefs.permissionMode;
+            dispatchProviderId = targetPrefs.providerId ?? null;
+            dispatchFastMode = getFastModeForModel(targetPrefs.model);
+            dispatchPlanMode = targetPrefs.planMode;
+          }
+        }
       }
 
       // workingDir 为空就是 standalone dialogue;main 端按 workspaceKind='dialogue'
@@ -3471,7 +3555,7 @@ export function NewMakerDraftRoute() {
           if (isDeviceLinkDraft && !isCurrentDataOwner()) return;
           // device-link:远程草稿就绪态以被控端为准(传 deviceId 走隧道查被控端 maker:agent:status);
           // 本地草稿 effectiveDeviceLinkDeviceId 为 undefined → 仍走控制端本机就绪检查(行为不变)。
-          const { proceed } = await vendorAuthGate.checkAndConfirm(authVendor, {
+          const { proceed } = await vendorAuthGate.checkAndConfirm(dispatchAuthVendor, {
             deviceId: effectiveDeviceLinkDeviceId,
           });
           if (isDeviceLinkDraft && !isCurrentDataOwner()) return;
@@ -3641,7 +3725,7 @@ export function NewMakerDraftRoute() {
             // 提出来存一份:交接收尾要按**实际提交的** model / effort / permission / workspaceKind
             // 组装临时会话行(见 commitRemoteSessionHandoff),不能再各自推一遍。
             const createArgs = resolveDeviceLinkSubmission({
-              agentKind: persistedAgentKind,
+              agentKind: dispatchPersistedAgentKind,
               // 远程 worktree:workingDir 换成刚建好的 worktree 路径(真实存在,被控端
               // remote-workdir-guard 按"存在的目录"放行);id 与 worktree 绑定同值。
               // 非 worktree 流程两者保持原值 / 缺省。
@@ -3653,14 +3737,14 @@ export function NewMakerDraftRoute() {
               // 组装都在 resolveDeviceLinkSubmission 里,与「新建目标」共用同一份规则 —— 那两条
               // 路径各自推导曾长出过只在其中一条上复现的缺陷(见该函数注释)。
               candidate: {
-                model,
-                effort,
-                permissionMode,
-                fastMode: effectiveFastMode,
-                providerId,
+                model: dispatchModel,
+                effort: dispatchEffort,
+                permissionMode: dispatchPermissionMode,
+                fastMode: dispatchFastMode,
+                providerId: dispatchProviderId,
               },
               deviceProviders,
-              capabilityAgentKind,
+              capabilityAgentKind: dispatchCapabilityAgentKind,
             });
             let created: { sessionId?: string; workDir?: string } | null = null;
             const remoteSessionId =
@@ -3730,7 +3814,7 @@ export function NewMakerDraftRoute() {
             // 用 createArgs 里**实际提交**的 model / providerId(远程分支会按被控端目录校准)。
             carryDraftFavoriteAnchorToSession(
               remoteSessionId,
-              persistedAgentKind,
+              dispatchPersistedAgentKind,
               createArgs.model,
               createArgs.providerId ?? null,
             );
@@ -3799,11 +3883,11 @@ export function NewMakerDraftRoute() {
             if (
               wd &&
               !isRemoteProjectDraft &&
-              (persistedAgentKind === 'cc' || persistedAgentKind === 'codex')
+              (dispatchPersistedAgentKind === 'cc' || dispatchPersistedAgentKind === 'codex')
             ) {
               const r = await crossAgentConvertService.detect(
                 wd,
-                persistedAgentKind === 'cc' ? 'claude-code' : 'codex',
+                dispatchPersistedAgentKind === 'cc' ? 'claude-code' : 'codex',
               );
               if (r.items.length > 0) {
                 // 阻塞等弹窗关闭（用户点不要 / 完成转换 / 失败）—— 都视为流程结束
@@ -3848,18 +3932,18 @@ export function NewMakerDraftRoute() {
             let branchName = getBranchName(name);
             const newSession = await createSession({
               id: sessionId,
-              agentKind: persistedAgentKind,
-              model,
-              effort,
-              permissionMode,
-              fastMode: effectiveFastMode,
-              planModeEnabled: effectivePlanMode,
+              agentKind: dispatchPersistedAgentKind,
+              model: dispatchModel,
+              effort: dispatchEffort,
+              permissionMode: dispatchPermissionMode,
+              fastMode: dispatchFastMode,
+              planModeEnabled: dispatchPlanMode,
               workingDir: baseRepo,
               workspaceKind: 'project',
               extraDirs: effectiveExtraDirs,
               writableDirs: effectiveWritableDirs,
               remoteHostId: effectiveRemoteHostId ?? undefined,
-              providerId,
+              providerId: dispatchProviderId,
             });
             if (!newSession) {
               if (optimisticTitleSessionId) emitAutoTitlePreviewCleared(optimisticTitleSessionId);
@@ -3867,10 +3951,27 @@ export function NewMakerDraftRoute() {
               return;
             }
             // 草稿里选中的那条收藏跟着会话走(见 carryDraftFavoriteAnchorToSession)。
-            carryDraftFavoriteAnchorToSession(newSession.id, persistedAgentKind, model, providerId);
+            carryDraftFavoriteAnchorToSession(
+              newSession.id,
+              dispatchPersistedAgentKind,
+              dispatchModel,
+              dispatchProviderId,
+            );
+            if (decisionSwitchBoundary) {
+              await persistDecisionModelSwitchBoundary(
+                newSession.id,
+                decisionSwitchBoundary,
+                t('ccAgent.draft.decisionModelSelected', {
+                  agent: decisionModelAgentLabel(decisionSwitchBoundary.toAgentKind),
+                  probability: Math.round(decisionSwitchBoundary.probability * 100),
+                }),
+              );
+            }
             // 计划模式是一次性选择:随本次发送被消耗,草稿勾选同步熄灭,
             // 下一次 New Maker 不延续。
-            if (effectivePlanMode) patchActivePrefs({ planMode: false });
+            if (dispatchPlanMode) {
+              patchVendorPrefs(dispatchPersistedAgentKind, { planMode: false });
+            }
 
             // 先把真实 session 收进项目列表，让用户可以切走、再开 New Maker。
             const sendAt = new Date();
@@ -3884,9 +3985,11 @@ export function NewMakerDraftRoute() {
               log.warn('[draft worktree send] touchUserSend failed', err);
             });
             makerChatStore.setSessionRuntime(newSession.id, {
-              agentKind: persistedAgentKind === 'cc' ? 'claude-code' : persistedAgentKind,
-              fastMode: effectiveFastMode,
-              planModeEnabled: effectivePlanMode,
+              agentKind: dispatchPersistedAgentKind === 'cc'
+                ? 'claude-code'
+                : dispatchPersistedAgentKind,
+              fastMode: dispatchFastMode,
+              planModeEnabled: dispatchPlanMode,
               remoteHostId: effectiveRemoteHostId ?? null,
             });
             worktreeCreationStore.set(newSession.id, {
@@ -4035,7 +4138,9 @@ export function NewMakerDraftRoute() {
                 }
 
                 const dispatchedMessage = await rewritePiSkillMessageForSend({
-                  agentKind: persistedAgentKind === 'cc' ? 'claude-code' : persistedAgentKind,
+                  agentKind: dispatchPersistedAgentKind === 'cc'
+                    ? 'claude-code'
+                    : dispatchPersistedAgentKind,
                   message,
                   workingDir: newDir,
                   sessionId: newSession.id,
@@ -4053,9 +4158,9 @@ export function NewMakerDraftRoute() {
                 const accepted = await makerChatStore.sendMessage(
                   newSession.id,
                   dispatchedMessage,
-                  model,
-                  effort,
-                  permissionMode,
+                  dispatchModel,
+                  dispatchEffort,
+                  dispatchPermissionMode,
                   newDir,
                   rehomedFiles,
                   mentions,
@@ -4104,12 +4209,12 @@ export function NewMakerDraftRoute() {
 
           const newSession = await createSession({
             id: sessionId,
-            agentKind: persistedAgentKind,
-            model,
-            effort,
-            permissionMode,
-            fastMode: effectiveFastMode,
-            planModeEnabled: effectivePlanMode,
+            agentKind: dispatchPersistedAgentKind,
+            model: dispatchModel,
+            effort: dispatchEffort,
+            permissionMode: dispatchPermissionMode,
+            fastMode: dispatchFastMode,
+            planModeEnabled: dispatchPlanMode,
             workingDir: workingDir ?? undefined,
             // 没选项目目录 = 创建 standalone dialogue;main 端会按 workspaceKind='dialogue'
             // 自动分配 <userData>/dialogues/<date>/<sid>/ 作为运行目录,不进入项目段。
@@ -4118,7 +4223,7 @@ export function NewMakerDraftRoute() {
             // extraDirs 是 vendor 无关字段；Claude 与 Codex 都按只读引用目录透传。
             extraDirs: effectiveExtraDirs,
             writableDirs: effectiveWritableDirs,
-            providerId,
+            providerId: dispatchProviderId,
           });
           if (!newSession) {
             if (optimisticTitleSessionId) emitAutoTitlePreviewCleared(optimisticTitleSessionId);
@@ -4126,17 +4231,34 @@ export function NewMakerDraftRoute() {
             return;
           }
           // 草稿里选中的那条收藏跟着会话走(见 carryDraftFavoriteAnchorToSession)。
-          carryDraftFavoriteAnchorToSession(newSession.id, persistedAgentKind, model, providerId);
+          carryDraftFavoriteAnchorToSession(
+            newSession.id,
+            dispatchPersistedAgentKind,
+            dispatchModel,
+            dispatchProviderId,
+          );
+          if (decisionSwitchBoundary) {
+            await persistDecisionModelSwitchBoundary(
+              newSession.id,
+              decisionSwitchBoundary,
+              t('ccAgent.draft.decisionModelSelected', {
+                agent: decisionModelAgentLabel(decisionSwitchBoundary.toAgentKind),
+                probability: Math.round(decisionSwitchBoundary.probability * 100),
+              }),
+            );
+          }
           // 计划模式是一次性选择:随本次发送被消耗,草稿勾选同步熄灭。
-          if (effectivePlanMode) patchActivePrefs({ planMode: false });
+          if (dispatchPlanMode) {
+            patchVendorPrefs(dispatchPersistedAgentKind, { planMode: false });
+          }
           // 本机/SSH 首条在下面直接 sendMessage,createOpts 读 chat store 的
           // planModeEnabled / remoteHostId —— ensureInitialMessages 的行水合是异步的,
           // 必须先确定性 seed store,否则勾了计划模式的首条可能以 planMode:false 发出,
           // SSH 首条会把远端路径当本机 workdir(worktree 路径同款 seed)。
           makerChatStore.setSessionRuntime(newSession.id, {
-            agentKind: capabilityAgentKind,
-            fastMode: effectiveFastMode,
-            planModeEnabled: effectivePlanMode,
+            agentKind: dispatchCapabilityAgentKind,
+            fastMode: dispatchFastMode,
+            planModeEnabled: dispatchPlanMode,
             remoteHostId: workingDir ? (effectiveRemoteHostId ?? null) : null,
           });
 
@@ -4241,7 +4363,7 @@ export function NewMakerDraftRoute() {
             // 列首 /cmd,以及 Pi 的空白前缀 /cmd;草稿路由只交接,不复制分派逻辑。
             const slashMatch = message.match(/^\/(\S+)(?:\s+(.*))?$/s);
             const leading =
-              !slashMatch && capabilityAgentKind === 'pi'
+              !slashMatch && dispatchCapabilityAgentKind === 'pi'
                 ? leadingSlashInvocation(message)
                 : undefined;
             if (slashMatch || leading) {
@@ -4265,7 +4387,7 @@ export function NewMakerDraftRoute() {
             }
 
             const dispatchedMessage = await rewritePiSkillMessageForSend({
-              agentKind: capabilityAgentKind,
+              agentKind: dispatchCapabilityAgentKind,
               message,
               workingDir: sendWorkingDir,
               sessionId: newSession.id,
@@ -4279,9 +4401,9 @@ export function NewMakerDraftRoute() {
             const sendPromise = makerChatStore.sendMessage(
               newSession.id,
               dispatchedMessage,
-              model,
-              effort,
-              permissionMode,
+              dispatchModel,
+              dispatchEffort,
+              dispatchPermissionMode,
               sendWorkingDir,
               rehydratedFiles,
               mentions,

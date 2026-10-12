@@ -18,13 +18,14 @@
  *
  *  1. **只认 LOCAL_PROFILE_DATA_OWNER_ID**。任何云 ownerId 一律原样返回区域
  *     目录，行为与引入本模块前逐字符相同——云账号隔离是安全属性，不是默认值。
- *  2. **只有正式区域目录参与共享**。userData 的目录名必须是三个品牌区域目录
- *     之一；`--isolated` 沙箱（`<区域目录>-dev2[-名字]`）与自定义 userData 一律
- *     退化为自身目录，保证隔离测试永远不会碰到用户的真实共享数据。`dev` 是
- *     2026-07-20 起的第三正式发布渠道（brandIdentity.ts），并非开发沙箱，故
- *     CindyDev 同样参与共享。
- *  3. **共享根目录名刻意不带区域后缀**。它不是"按区域派生的标识符"，因此不受
- *     region-and-editions.md §2.1「无限定词身份归 Global」约束。
+ *  2. **正式区域目录与标准开发沙箱参与本机共享**。正式区域目录是三个品牌目录；
+ *     标准开发沙箱（`<区域目录>-dev2[-名字]`）统一归一到该区域稳定的
+ *     `-dev2-dev` 目录。这样不同对话、不同 worktree 使用不同隔离名字时，仍然
+ *     读取同一份本机共享会话/伙伴/供应商数据，不会再因启动参数变化而显示空库。
+ *     真正自定义 userData（例如临时测试目录）仍退化为自身，避免测试污染用户数据。
+ *  3. **正式版共享根目录名刻意不带区域后缀**。它不是"按区域派生的标识符"，
+ *     因此不受 region-and-editions.md §2.1「无限定词身份归 Global」约束；开发
+ *     沙箱则使用稳定的 `-dev2-dev` 根，避免开发启动参数改变数据身份。
  *  4. **共享根由 userDataDir 的父目录推出**，不读 Electron、不读环境变量：
  *     本模块保持零 Electron 依赖（与 regionUserData.ts 同一纪律），纯函数可
  *     直接单测，调用方不需要为了测试去 mock `app`。
@@ -48,14 +49,30 @@ const PRODUCTION_REGION_DIR_NAMES: ReadonlySet<string> = new Set(
   ),
 );
 
+/** 标准开发沙箱的目录名：正式目录后追加 -dev2，后面可带一个隔离名称。 */
+const DEVELOPMENT_SANDBOX_RE = /^(Cindy|CindyGlobal|CindyDev)-dev2(?:-[A-Za-z0-9_-]+)?$/i;
+
 /**
- * userData 目录是否属于正式区域身份。
+ * userData 目录是否属于支持本机共享的区域身份。
  *
- * 目录名不匹配任何品牌区域目录时（隔离沙箱、自定义 userData、单测临时目录）
- * 一律 false——宁可不共享，也不能让测试或沙箱写脏用户的真数据。
+ * 标准开发沙箱也被视为本机共享身份；自定义目录和单测临时目录仍返回 false。
  */
 export function isProductionRegionUserDataDir(userDataDir: string): boolean {
-  return PRODUCTION_REGION_DIR_NAMES.has(path.basename(userDataDir));
+  const base = path.basename(userDataDir);
+  return PRODUCTION_REGION_DIR_NAMES.has(base) || DEVELOPMENT_SANDBOX_RE.test(base);
+}
+
+/**
+ * 把标准开发沙箱归一到稳定的 `-dev2-dev` 目录。
+ *
+ * `--isolated=@worktree` 和命名沙箱只改变 Electron 的缓存/凭证目录，
+ * 不应改变本机共享库的身份。非标准目录返回 null，由调用方保持原隔离语义。
+ */
+export function resolveDevelopmentSharedUserDataDir(userDataDir: string): string | null {
+  const base = path.basename(userDataDir);
+  const match = base.match(/^(Cindy|CindyGlobal|CindyDev)-dev2(?:-[A-Za-z0-9_-]+)?$/i);
+  if (!match) return null;
+  return path.join(path.dirname(userDataDir), `${match[1]}-dev2-dev`);
 }
 
 /**
@@ -69,6 +86,8 @@ export function resolveOwnerDataRootDir(
   regionUserDataDir: string,
 ): string {
   if (!ownerId || ownerId !== LOCAL_PROFILE_DATA_OWNER_ID) return regionUserDataDir;
+  const developmentShared = resolveDevelopmentSharedUserDataDir(regionUserDataDir);
+  if (developmentShared) return developmentShared;
   if (!isProductionRegionUserDataDir(regionUserDataDir)) return regionUserDataDir;
   return path.join(path.dirname(regionUserDataDir), LOCAL_PROFILE_SHARED_DIR_NAME);
 }
@@ -87,13 +106,15 @@ export function resolveOwnerDataRootDir(
  *     区域隔离——凭证（token、model-access-credentials 等）继续留在各自区域目录，
  *     绝不因会话共享而跨区域串号（authManager 安全红线）。
  *
- * 非正式区域目录（沙箱/自定义）退化为自身，测试与隔离实例永不碰真实共享数据。
+ * 真正自定义目录退化为自身；标准开发沙箱已经在上面归一到稳定 dev2 根。
  */
 export function resolveSessionDbRootDir(
   ownerId: string | null | undefined,
   regionUserDataDir: string,
 ): string {
   if (!ownerId) return regionUserDataDir;
+  const developmentShared = resolveDevelopmentSharedUserDataDir(regionUserDataDir);
+  if (developmentShared) return developmentShared;
   if (!isProductionRegionUserDataDir(regionUserDataDir)) return regionUserDataDir;
   return path.join(path.dirname(regionUserDataDir), LOCAL_PROFILE_SHARED_DIR_NAME);
 }

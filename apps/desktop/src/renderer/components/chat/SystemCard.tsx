@@ -10,6 +10,7 @@ import { useState, type ReactNode } from 'react';
 import {
   ArrowLeftRight,
   ArrowRight,
+  BrainCircuit,
   Check,
   ChevronDown,
   ChevronRight,
@@ -1127,6 +1128,12 @@ function AgentSwitchCard({ data }: { data?: Record<string, unknown> }) {
   const toLabel = engineLabel(data?.toAgentKind);
   const toModel = typeof data?.toModel === 'string' ? data.toModel : '';
   const handoff = typeof data?.handoff === 'string' ? data.handoff : '';
+  const decisionProbability =
+    data?.selectedBy === 'decision-model' &&
+    typeof data?.probability === 'number' &&
+    Number.isFinite(data.probability)
+      ? Math.round(data.probability * 100)
+      : null;
   const label = t('chat.systemCard.agentSwitch.label', { from: fromLabel, to: toLabel });
 
   return (
@@ -1153,6 +1160,15 @@ function AgentSwitchCard({ data }: { data?: Record<string, unknown> }) {
               <span className="opacity-50">·</span>
               <span title={toModel} className="min-w-0 truncate font-mono">
                 {toModel}
+              </span>
+            </>
+          )}
+          {decisionProbability !== null && (
+            <>
+              <span className="opacity-50">·</span>
+              <span className="inline-flex shrink-0 items-center gap-1">
+                <BrainCircuit size={11} aria-hidden="true" />
+                <span>Laya {decisionProbability}%</span>
               </span>
             </>
           )}

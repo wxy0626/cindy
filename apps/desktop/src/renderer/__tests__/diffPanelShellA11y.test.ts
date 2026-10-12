@@ -58,9 +58,6 @@ describe('DiffPanelShell — drawer accessibility contract', () => {
 
   it('resizeHandleAria remains translated in all supported locales while drawer references it', () => {
     expect(readLocale('zh-CN').diffPanel.shell.resizeHandleAria).toBe('调整面板宽度');
-    expect(readLocale('zh-TW').diffPanel.shell.resizeHandleAria).toBe('調整面板寬度');
     expect(readLocale('en').diffPanel.shell.resizeHandleAria).toBe('Resize panel width');
-    expect(readLocale('ja').diffPanel.shell.resizeHandleAria).toBe('パネル幅を調整');
-    expect(readLocale('ko').diffPanel.shell.resizeHandleAria).toBe('패널 너비 조정');
   });
 });

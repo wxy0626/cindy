@@ -27,7 +27,7 @@ describe('ghostInstallErrorKey', () => {
     expect(ghostInstallErrorKey('GHOST_FILE_INVALID')).toBe('settings.ghosts.errors.fileInvalid');
   });
 
-  it.each(['zh-CN', 'en', 'ja', 'ko', 'zh-TW'])(
+  it.each(['zh-CN', 'en'])(
     'keeps the local-install Broker authorization reason actionable in %s',
     (locale) => {
       const message = i18n
@@ -38,7 +38,7 @@ describe('ghostInstallErrorKey', () => {
     },
   );
 
-  it.each(['zh-CN', 'en', 'ja', 'ko', 'zh-TW'])(
+  it.each(['zh-CN', 'en'])(
     'keeps the missing redirectPort admission error distinct and actionable in %s',
     (locale) => {
       const message = i18n
@@ -49,7 +49,7 @@ describe('ghostInstallErrorKey', () => {
     },
   );
 
-  it.each(['zh-CN', 'en', 'ja', 'ko', 'zh-TW'])(
+  it.each(['zh-CN', 'en'])(
     'renders the complete reserved-prefix authority in the %s install error',
     (locale) => {
       const key = ghostInstallErrorKey('GHOST_ID_RESERVED');
@@ -65,7 +65,7 @@ describe('ghostInstallErrorKey', () => {
     },
   );
 
-  it.each(['zh-CN', 'en', 'ja', 'ko', 'zh-TW'])(
+  it.each(['zh-CN', 'en'])(
     'renders the complete reserved-prefix authority in the %s marketplace guide',
     (locale) => {
       const key = 'settings.ghosts.market.sources.guide.rulesBody';
@@ -91,18 +91,6 @@ describe('ghostInstallErrorKey', () => {
         'custom plugin marketplace',
       ],
     },
-    {
-      locale: 'ja',
-      fragments: ['ドラッグ', 'ファイル選択', 'カスタムプラグインマーケット'],
-    },
-    {
-      locale: 'ko',
-      fragments: ['끌어다 놓기', '파일 선택', '사용자 지정 플러그인 마켓'],
-    },
-    {
-      locale: 'zh-TW',
-      fragments: ['拖入', '選取檔案', '自訂插件市場'],
-    },
   ])('keeps all three user install channels in the $locale marketplace guide', ({ locale, fragments }) => {
     const rawMessage = i18n.getResource(
       locale,
@@ -120,10 +108,6 @@ describe('ghostInstallErrorKey', () => {
     {
       locale: 'zh-CN',
       fragment: 'id 使用官方保留前缀（{{reservedGhostIdPrefixes}}）',
-    },
-    {
-      locale: 'zh-TW',
-      fragment: 'id 使用官方保留字首（{{reservedGhostIdPrefixes}}）',
     },
   ])('puts the reserved-prefix category before its id list in $locale', ({ locale, fragment }) => {
     const rawMessage = i18n.getResource(

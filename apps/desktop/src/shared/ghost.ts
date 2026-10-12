@@ -3078,28 +3078,31 @@ function dropEmptyLegacyCapabilitySlots(
   });
 }
 
-/** 当前宿主语言在插件未提供时固定回退英文。 */
+/** 当前宿主语言归一为插件支持的中英语言；插件缺当前语言时优先回退中文，再回退英文。 */
 export function ghostLocalePathFor(
   manifest: GhostManifest,
   locale: string | undefined | null,
 ): string | null {
   if (!manifest.locales) return null;
   const manifestLocale = (GHOST_LOCALES as readonly string[]).includes(locale ?? '')
-    ? locale as GhostLocale
-    : null;
+    ? (locale as GhostLocale)
+    : DEFAULT_LOCALE;
   return (
-    (manifestLocale ? manifest.locales[manifestLocale] : undefined) ?? manifest.locales.en ?? null
+    manifest.locales[manifestLocale] ??
+    manifest.locales[DEFAULT_LOCALE] ??
+    manifest.locales.en ??
+    null
   );
 }
 
-/** 插件 app-context 只暴露协议旧四语；宿主新增语言固定回退英文以兼容存量插件。 */
+/** 插件 app-context 只暴露中英；历史值或未知值固定回退中文。 */
 export function ghostAppContextLocale(locale: string | undefined | null): GhostLocale {
   return (GHOST_LOCALES as readonly string[]).includes(locale ?? '')
     ? (locale as GhostLocale)
-    : 'en';
+    : DEFAULT_LOCALE;
 }
 
-/** 把当前宿主语言附到运行时清单视图；不支持的输入固定归一到英文。 */
+/** 把当前宿主语言附到运行时清单视图；不支持的输入固定归一到中文。 */
 export function withGhostResolvedLocale(
   manifest: GhostManifest,
   locale: string | undefined | null,
@@ -3787,7 +3790,7 @@ export function validateGhostManifest(value: unknown): ManifestValidation {
       };
     }
     if (raw.locales.en === undefined) {
-      return { ok: false, reason: 'locales 必须提供 en，作为所有不支持语言的固定回退' };
+      return { ok: false, reason: 'locales 必须提供 en，作为插件缺少当前语言时的最终回退' };
     }
     const normalized: Partial<Record<GhostLocale, string>> = {};
     const seenPaths = new Set<string>();

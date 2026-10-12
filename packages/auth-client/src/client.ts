@@ -559,7 +559,7 @@ export class CindyAuthClient {
   ): AuthApiError {
     const aborted = error instanceof Error && error.name === "AbortError";
     // 调用方主动取消复用既有的 USER_CANCELLED,而不是新造错误码:登录错误码是一份
-    // 跨端 inventory（fixtures/loginScenarios.ts、LoginPage 的具名码表、五语 i18n），
+    // 跨端 inventory（fixtures/loginScenarios.ts、LoginPage 的具名码表、中英 i18n），
     // 新增一个只在这里出现的码会让任何把它直接展示的调用方落到 fallback 文案。
     // USER_CANCELLED 语义完全吻合,且 renderer 已特意把它映射成「不展示错误」。
     const code = !aborted

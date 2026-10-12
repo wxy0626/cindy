@@ -41,7 +41,7 @@ const ALLOWED_LEGACY_OCCURRENCES = new Set([
 
 // ---------------------------------------------------------------------------
 // Locale 品牌名占位符检查:
-// 品牌展示名已收敛到 @cindy/maker-shared/branding 的 BRAND_NAME,四语言 locale
+// 品牌展示名已收敛到 @cindy/maker-shared/branding 的 BRAND_NAME,中英 locale
 // 文案统一用 {{appName}} 占位。这里拒绝在 locale JSON 里重新硬编码品牌名——
 // 硬编码在开发期无感知,未来改名时必漏。运行时插值的端到端断言在
 // apps/desktop/src/renderer/__tests__/i18nBrandPlaceholder.test.ts。

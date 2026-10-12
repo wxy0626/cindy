@@ -110,6 +110,9 @@ describe("Registry V4 local model contract", () => {
       c.models[0].descriptions.en = "";
     },
     (c: any) => {
+      c.models[0].descriptions["zh-TW"] = "legacy";
+    },
+    (c: any) => {
       c.featuredIds = ["missing"];
     },
     (c: any) => {

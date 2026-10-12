@@ -105,7 +105,7 @@ describe('homeSuggestions', () => {
     expect(reset.ids.some((id) => previous.ids.includes(id))).toBe(false);
   });
 
-  it.each(['zh-CN', 'zh-TW', 'en', 'ja', 'ko'])(
+  it.each(['zh-CN', 'en'])(
     'has a complete localized title and prompt for every topic in %s',
     (locale) => {
       const resource = JSON.parse(

@@ -18,11 +18,13 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { app } from 'electron';
 import { getAllSpendDays, localDayKey } from '../localDb/dailySpend';
 import { getModelUsageSince, type DailyModelUsageRow } from '../localDb/dailyModelUsage';
-import { getCurrentDbClientUserId } from '../localDb/client/current';
 import { createLogger } from '../logger';
+import {
+  machineSharedLegacyFileCandidates,
+  machineSharedUserDataPath,
+} from '../machineSharedStorage.js';
 import {
   getGatewayModelPricing,
   isModelPricingRefreshInFlight,
@@ -266,7 +268,7 @@ let refreshInFlightByOptsKey = new Map<string, Promise<UsageHistoryPayload | nul
 let refreshGenerationByOptsKey = new Map<string, number>();
 
 function diskCachePath(): string {
-  return path.join(app.getPath('userData'), 'cache', DISK_CACHE_FILE);
+  return machineSharedUserDataPath('cache', DISK_CACHE_FILE);
 }
 
 function normalizeWindowDays(value: number | 'all' | undefined, fallback: number): number | 'all' {
@@ -277,11 +279,10 @@ function normalizeWindowDays(value: number | 'all' | undefined, fallback: number
 function optsKey(opts?: UsageHistoryReadOptions): string {
   const days = normalizeWindowDays(opts?.days, 140);
   const modelDays = normalizeWindowDays(opts?.modelDays, MODEL_WINDOW_DAYS);
-  const userId = getCurrentDbClientUserId() ?? 'anonymous';
   // Keep the pre-window-split key for the default request so existing disk
   // snapshots remain readable. Non-default model windows get their own key.
   const modelSuffix = modelDays === MODEL_WINDOW_DAYS ? '' : `|modelDays=${modelDays}`;
-  return `user=${encodeURIComponent(userId)}|days=${days}${modelSuffix}`;
+  return `user=machine-shared|days=${days}${modelSuffix}`;
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -416,7 +417,22 @@ async function hydrateFromDisk(expectedOptsKey: string): Promise<UsageHistoryPay
   if (!hydrateInFlight) {
     hydrateInFlight = (async () => {
       try {
-        const raw = await fs.readFile(diskCachePath(), 'utf8');
+        const file = diskCachePath();
+        let raw: string;
+        try {
+          raw = await fs.readFile(file, 'utf8');
+        } catch (error) {
+          const code =
+            typeof error === 'object' && error && 'code' in error
+              ? String((error as { code?: unknown }).code)
+              : '';
+          if (code !== 'ENOENT') throw error;
+          const legacy = machineSharedLegacyFileCandidates('cache', DISK_CACHE_FILE)[0];
+          if (!legacy) throw error;
+          await fs.mkdir(path.dirname(file), { recursive: true });
+          await fs.copyFile(legacy, file);
+          raw = await fs.readFile(file, 'utf8');
+        }
         const parsed = JSON.parse(raw) as DiskCachePayload;
         if (parsed.version !== DISK_CACHE_VERSION || parsed.optsKey !== expectedOptsKey) return null;
         const payload = validateUsageHistoryPayload(parsed.payload);

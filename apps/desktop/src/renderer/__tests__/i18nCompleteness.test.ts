@@ -29,7 +29,7 @@ const PLURAL_SUFFIXES = ['_zero', '_one', '_two', '_few', '_many', '_other'] as 
  */
 const KNOWN_MISSING: ReadonlySet<string> = new Set([
   // 2026-09-15 登记：settings.providers 下 imagesKey / usage / xai 资产用量等键
-  // 在源码里有静态 t() 引用，但 5 个语言文件都没有对应文案（连 en 都没有），
+  // 在源码里有静态 t() 引用，但中英两个语言文件都没有对应文案，
   // 用户在界面上会看到裸 key。均非本次改动引入（属 providers 特性的遗漏），
   // 归该特性 owner 补齐后从这里删除。
   'settings.providers.imagesKey.clear',
@@ -125,7 +125,7 @@ describe('i18n completeness (static keys present in all locales)', () => {
   it('every static t() key (no inline default) exists in all supported locales', async () => {
     const locales = localeNames();
     const trees = loadLocales();
-    expect(locales.length).toBeGreaterThanOrEqual(5); // zh-CN / zh-TW / en / ja / ko
+    expect(locales.length).toBeGreaterThanOrEqual(2); // zh-CN / en
 
     const { used, withDefault, templateCount } = await scanSource();
 

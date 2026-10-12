@@ -1,5 +1,5 @@
 /**
- * 启动期「端点清单获取失败」系统弹框的四语文案与内容组装。
+ * 启动期「端点清单获取失败」系统弹框的中英双语文案与内容组装。
  *
  * 这个框弹在 createWindow 之前,renderer 与 i18next 都还不存在,所以文案只能手写在
  * main 侧。原实现把中英两段直接拼在同一个 detail 里(「无法获取服务器配置 … Failed to
@@ -78,23 +78,6 @@ export const ENDPOINT_MANIFEST_DIALOG_COPY: Record<
     offlineButton: '用上次配置启动',
     quitButton: '退出 Cindy',
   },
-  'zh-TW': {
-    networkTitle: 'Cindy 暫時無法連線',
-    configTitle: 'Cindy 暫時無法啟動',
-    networkBody:
-      '啟動時無法連線到 Cindy 服務。請確認裝置已連線網路，然後再次嘗試啟動。如果正在使用 Proxy 或公司網路，可以切換網路後再試。',
-    configBody: 'Cindy 暫時無法完成啟動。請稍後再試；如果問題持續發生，請聯絡技術支援。',
-    errorLine: '錯誤資訊：{{error}}',
-    diagnosticsHint: '需要協助時，可以複製診斷資訊並貼到支援訊息中。',
-    copyDiagnosticsButton: '複製診斷資訊',
-    copiedHint: '診斷資訊已複製。請貼到支援訊息中。',
-    copyFailedHint: '無法複製診斷資訊，請再試一次。',
-    noSavedConfigurationHint: '此裝置沒有可用的歷史設定，必須恢復連線後才能繼續啟動。',
-    offlineHint: '也可以使用上次成功取得的設定離線啟動（取得時間：{{savedAt}}），需要網路的功能將無法使用。',
-    retryButton: '再次嘗試啟動 Cindy',
-    offlineButton: '使用上次的設定',
-    quitButton: '結束 Cindy',
-  },
   en: {
     networkTitle: "Cindy Couldn't Connect",
     configTitle: "Cindy Couldn't Start",
@@ -114,46 +97,6 @@ export const ENDPOINT_MANIFEST_DIALOG_COPY: Record<
     retryButton: 'Try Starting Cindy Again',
     offlineButton: 'Use Last Configuration',
     quitButton: 'Quit Cindy',
-  },
-  ja: {
-    networkTitle: 'Cindy に一時的に接続できません',
-    configTitle: 'Cindy を一時的に起動できません',
-    networkBody:
-      '起動時に Cindy のサービスへ接続できませんでした。デバイスがネットワークに接続されていることを確認して、もう一度起動してください。プロキシや社内ネットワークを使用している場合は、ネットワークを切り替えてお試しください。',
-    configBody:
-      'Cindy の起動を完了できませんでした。時間をおいてもう一度お試しください。問題が続く場合は、サポートにお問い合わせください。',
-    errorLine: 'エラー情報: {{error}}',
-    diagnosticsHint: 'サポートが必要な場合は、診断情報をコピーしてメッセージに貼り付けてください。',
-    copyDiagnosticsButton: '診断情報をコピー',
-    copiedHint: '診断情報をコピーしました。サポートへのメッセージに貼り付けてください。',
-    copyFailedHint: '診断情報をコピーできませんでした。もう一度お試しください。',
-    noSavedConfigurationHint:
-      'このデバイスには利用できる保存済み設定がないため、接続が回復してから起動を続ける必要があります。',
-    offlineHint:
-      '前回取得できた設定でオフライン起動することもできます（取得日時: {{savedAt}}）。ネットワークが必要な機能は利用できません。',
-    retryButton: 'Cindy の起動を再試行',
-    offlineButton: '前回の設定で起動',
-    quitButton: 'Cindy を終了',
-  },
-  ko: {
-    networkTitle: 'Cindy에 일시적으로 연결할 수 없습니다',
-    configTitle: 'Cindy를 일시적으로 시작할 수 없습니다',
-    networkBody:
-      '시작하는 동안 Cindy 서비스에 연결하지 못했습니다. 기기가 네트워크에 연결되어 있는지 확인한 후 다시 시작해 보세요. 프록시나 회사 네트워크를 사용 중이라면 다른 네트워크로 전환해 보세요.',
-    configBody:
-      '지금은 Cindy 시작을 완료할 수 없습니다. 잠시 후 다시 시도해 주세요. 문제가 계속되면 지원팀에 문의해 주세요.',
-    errorLine: '오류 정보: {{error}}',
-    diagnosticsHint: '도움이 필요하면 진단 정보를 복사해 지원 메시지에 붙여 넣어 주세요.',
-    copyDiagnosticsButton: '진단 정보 복사',
-    copiedHint: '진단 정보를 복사했습니다. 지원 메시지에 붙여 넣어 주세요.',
-    copyFailedHint: '진단 정보를 복사하지 못했습니다. 다시 시도해 주세요.',
-    noSavedConfigurationHint:
-      '이 기기에는 사용할 수 있는 저장된 설정이 없어 연결이 복구된 후에 시작할 수 있습니다.',
-    offlineHint:
-      '마지막으로 가져온 설정으로 오프라인 시작할 수도 있습니다({{savedAt}} 기준). 네트워크가 필요한 기능은 사용할 수 없습니다.',
-    retryButton: 'Cindy 시작 다시 시도',
-    offlineButton: '지난 설정으로 시작',
-    quitButton: 'Cindy 종료',
   },
 };
 

@@ -160,6 +160,15 @@ async function loadReleases(force: boolean): Promise<UpstreamRelease[] | null> {
   return releases;
 }
 
+/**
+ * 公告版本上限：返回 GitHub Releases 中版本序最高的真实发布版本。
+ * 调用失败时返回 null，调用方应隐藏未确认的新版本，而不是信任 CDN 尾部。
+ */
+export async function fetchLatestUpstreamReleaseVersion(): Promise<string | null> {
+  const releases = await loadReleases(false);
+  return releases?.[0]?.version ?? null;
+}
+
 /** 供 IPC 使用：给出上游版本列表 + 当前版本 + 是否有更新。 */
 export async function fetchUpstreamReleases(options: {
   currentVersion: string | null;

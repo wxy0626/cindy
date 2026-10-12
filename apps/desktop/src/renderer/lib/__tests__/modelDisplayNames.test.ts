@@ -2,13 +2,12 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { createInstance } from 'i18next';
 import en from '../../i18n/locales/en/common.json';
 import cn from '../../i18n/locales/zh-CN/common.json';
-import tw from '../../i18n/locales/zh-TW/common.json';
 import { localizedModelName, localizedBrandName, matchesModelName, modelBrand } from '../modelDisplayNames';
 
 const i18n = createInstance();
 beforeAll(async () => {
   await i18n.init({ lng: 'zh-CN', fallbackLng: 'en', resources: {
-    en: { translation: en }, 'zh-CN': { translation: cn }, 'zh-TW': { translation: tw },
+    en: { translation: en }, 'zh-CN': { translation: cn },
   } });
 });
 
@@ -19,7 +18,6 @@ describe('localized model display names', () => {
     expect(localizedModelName('Hy4 preview', t)).toBe('混元 4 preview');
     expect(localizedModelName('Doubao Seed 2.1 Pro', t)).toBe('豆包 Seed 2.1 Pro');
     expect(localizedModelName('Qwen4.1-72B-Future', t)).toBe('千问 4.1-72B-Future');
-    expect(localizedModelName('Qwen3.8 Max', i18n.getFixedT('zh-TW'))).toBe('千問 3.8 Max');
   });
   it('leaves English, unknown models and custom labels intact', () => {
     for (const name of ['Hy4 preview', 'Hunyuan 4', 'Qwen3.8 Max', 'Doubao Seed 2.1 Pro']) {
@@ -37,9 +35,9 @@ describe('localized model display names', () => {
   });
   it('searches both languages, manufacturer and exact model ID without modifying model data', () => {
     const model = Object.freeze({ id: 'qwen/qwen3.8-max', name: 'Qwen3.8 Max' });
-    for (const locale of ['zh-CN', 'zh-TW', 'en']) {
+    for (const locale of ['zh-CN', 'en']) {
       const t = i18n.getFixedT(locale);
-      for (const q of ['千问', '千問', 'qwen', '阿里巴巴', 'Alibaba', model.id, '千问 Max', '千问3.8']) {
+      for (const q of ['千问', 'qwen', '阿里巴巴', 'Alibaba', model.id, '千问 Max', '千问3.8']) {
         expect(matchesModelName(model, q, t), `${locale}: ${q}`).toBe(true);
       }
       expect(matchesModelName(model, 'GPT', t)).toBe(false);

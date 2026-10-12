@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PiModelApi, ProviderPreset } from '@cindy/model-providers';
 
-const i18nState = vi.hoisted(() => ({ language: 'zh-TW' }));
+const i18nState = vi.hoisted(() => ({ language: 'zh-CN' }));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -66,7 +66,6 @@ const localizedPreset: ProviderPreset = {
   id: 'localized-provider',
   name: '简体供应商',
   nameEn: 'English Provider',
-  nameZhTW: '繁體供應商',
   authMethod: 'none',
   runtimes: {
     codex: {
@@ -192,7 +191,7 @@ afterEach(() => {
 
 describe('CustomProviderDialog preset locale ownership', () => {
   it.each([
-    ['zh-TW', '繁體供應商'],
+    ['zh-CN', '简体供应商'],
     ['en', 'English Provider'],
   ])(
     'uses presetDisplayName for menu, trigger, prefill, and saved name in %s',
@@ -230,7 +229,7 @@ describe('CustomProviderDialog preset locale ownership', () => {
   });
 
   it('dismisses only the topmost preset menu on Escape and preserves unsaved form edits', async () => {
-    i18nState.language = 'zh-TW';
+    i18nState.language = 'zh-CN';
     const { onClose } = renderDialog();
 
     const trigger = await findReadyPresetTrigger();
@@ -245,10 +244,10 @@ describe('CustomProviderDialog preset locale ownership', () => {
     );
     fireEvent.change(nameInput, { target: { value: 'Unsaved provider' } });
     fireEvent.click(trigger);
-    expect(await screen.findByRole('option', { name: '繁體供應商' })).not.toBeNull();
+    expect(await screen.findByRole('option', { name: '简体供应商' })).not.toBeNull();
 
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('option', { name: '繁體供應商' })).toBeNull();
+    expect(screen.queryByRole('option', { name: '简体供应商' })).toBeNull();
     expect(screen.getByDisplayValue('Unsaved provider')).not.toBeNull();
     expect(onClose).not.toHaveBeenCalled();
 
@@ -257,12 +256,12 @@ describe('CustomProviderDialog preset locale ownership', () => {
   });
 
   it('dismisses only the topmost preset menu on a scrim gesture', async () => {
-    i18nState.language = 'zh-TW';
+    i18nState.language = 'zh-CN';
     const { container, onClose } = renderDialog();
 
     const trigger = await findReadyPresetTrigger();
     fireEvent.click(trigger);
-    const option = await screen.findByRole('option', { name: '繁體供應商' });
+    const option = await screen.findByRole('option', { name: '简体供应商' });
     // 等 layout effect 把 childLayer 写进 childLayerRef。只等 option 出现不够:
     // Windows CI 上 rAF 也可能早于 useLayoutEffect, 第一个 pointerDown 会关整表。
     await waitFor(() => {
@@ -278,7 +277,7 @@ describe('CustomProviderDialog preset locale ownership', () => {
     const scrim = container.firstElementChild as Element;
     fireEvent.pointerDown(scrim);
     await waitFor(() => {
-      expect(screen.queryByRole('option', { name: '繁體供應商' })).toBeNull();
+      expect(screen.queryByRole('option', { name: '简体供应商' })).toBeNull();
     });
     expect(onClose).not.toHaveBeenCalled();
 
@@ -287,7 +286,7 @@ describe('CustomProviderDialog preset locale ownership', () => {
   });
 
   it('does not consume runtime tab or input pointerdowns while a child layer is open', async () => {
-    i18nState.language = 'zh-TW';
+    i18nState.language = 'zh-CN';
     const { onClose } = renderDialog();
 
     const trigger = await screen.findByRole('button', {
@@ -295,7 +294,7 @@ describe('CustomProviderDialog preset locale ownership', () => {
     });
     const openPresetMenu = async () => {
       fireEvent.click(trigger);
-      expect(await screen.findByRole('option', { name: '繁體供應商' })).not.toBeNull();
+      expect(await screen.findByRole('option', { name: '简体供应商' })).not.toBeNull();
     };
 
     await openPresetMenu();
@@ -321,7 +320,7 @@ describe('CustomProviderDialog preset locale ownership', () => {
   });
 
   it('keeps Cancel as a direct form dismissal without a duplicate top-right button', async () => {
-    i18nState.language = 'zh-TW';
+    i18nState.language = 'zh-CN';
     const { onClose } = renderDialog();
 
     await findReadyPresetTrigger();
@@ -330,10 +329,10 @@ describe('CustomProviderDialog preset locale ownership', () => {
   });
 
   it('saves an explicit media type through the existing model form', async () => {
-    i18nState.language = 'zh-TW';
+    i18nState.language = 'zh-CN';
     const { onClose } = renderDialog();
     fireEvent.click(await findReadyPresetTrigger());
-    fireEvent.click(await screen.findByRole('option', { name: '繁體供應商' }));
+    fireEvent.click(await screen.findByRole('option', { name: '简体供应商' }));
     fireEvent.click(screen.getByRole('tab', { name: 'settings.providers.custom.protocol.codex' }));
     fireEvent.pointerDown(
       screen.getByRole('button', { name: 'settings.providers.custom.fields.modelType' }),
@@ -353,12 +352,12 @@ describe('CustomProviderDialog preset locale ownership', () => {
   });
 
   it('keeps an existing model route through fetch picker confirmation and save', async () => {
-    i18nState.language = 'zh-TW';
+    i18nState.language = 'zh-CN';
     renderDialog();
 
     const trigger = await findReadyPresetTrigger();
     fireEvent.click(trigger);
-    fireEvent.click(await screen.findByRole('option', { name: '繁體供應商' }));
+    fireEvent.click(await screen.findByRole('option', { name: '简体供应商' }));
     fireEvent.click(screen.getByRole('tab', { name: 'settings.providers.custom.protocol.codex' }));
     fireEvent.click(screen.getByRole('button', { name: 'settings.providers.custom.fetch.button' }));
     await screen.findByRole('heading', {
@@ -513,28 +512,28 @@ describe('CustomProviderDialog preset locale ownership', () => {
     ['isComposing', { isComposing: true }],
     ['keyCode 229', { keyCode: 229 }],
   ])('keeps IME Escape inside composition for %s', async (_label, eventInit) => {
-    i18nState.language = 'zh-TW';
+    i18nState.language = 'zh-CN';
     const { onClose } = renderDialog();
 
     const trigger = await findReadyPresetTrigger();
     fireEvent.click(trigger);
-    expect(await screen.findByRole('option', { name: '繁體供應商' })).not.toBeNull();
+    expect(await screen.findByRole('option', { name: '简体供应商' })).not.toBeNull();
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => resolve());
     });
 
     dispatchEscape(document, eventInit);
-    expect(screen.getByRole('option', { name: '繁體供應商' })).not.toBeNull();
+    expect(screen.getByRole('option', { name: '简体供应商' })).not.toBeNull();
     expect(onClose).not.toHaveBeenCalled();
   });
 
   it('dismisses the model picker before the underlying form on Escape', async () => {
-    i18nState.language = 'zh-TW';
+    i18nState.language = 'zh-CN';
     const { onClose } = renderDialog();
 
     const trigger = await findReadyPresetTrigger();
     fireEvent.click(trigger);
-    fireEvent.click(await screen.findByRole('option', { name: '繁體供應商' }));
+    fireEvent.click(await screen.findByRole('option', { name: '简体供应商' }));
 
     fireEvent.click(screen.getByRole('tab', { name: 'settings.providers.custom.protocol.codex' }));
     fireEvent.click(screen.getByRole('button', { name: 'settings.providers.custom.fetch.button' }));
@@ -567,12 +566,12 @@ describe('CustomProviderDialog preset locale ownership', () => {
   });
 
   it('dismisses only the model picker on its scrim gesture', async () => {
-    i18nState.language = 'zh-TW';
+    i18nState.language = 'zh-CN';
     const { onClose } = renderDialog();
 
     const trigger = await findReadyPresetTrigger();
     fireEvent.click(trigger);
-    fireEvent.click(await screen.findByRole('option', { name: '繁體供應商' }));
+    fireEvent.click(await screen.findByRole('option', { name: '简体供应商' }));
     fireEvent.click(screen.getByRole('tab', { name: 'settings.providers.custom.protocol.codex' }));
     fireEvent.click(screen.getByRole('button', { name: 'settings.providers.custom.fetch.button' }));
 

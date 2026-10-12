@@ -514,8 +514,7 @@ export function AddProviderWizard({
       ? sortedPresets.filter(
           (p) =>
             p.name.toLowerCase().includes(q) ||
-            (p.nameEn?.toLowerCase().includes(q) ?? false) ||
-            (p.nameZhTW?.toLowerCase().includes(q) ?? false),
+            (p.nameEn?.toLowerCase().includes(q) ?? false),
         )
       : sortedPresets
   ).filter((p) => !isLocalPresetId(p.id));

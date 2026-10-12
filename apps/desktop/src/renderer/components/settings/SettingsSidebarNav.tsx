@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { LucideProps } from 'lucide-react';
 import {
   Boxes,
+  BrainCircuit,
   Hammer,
   ChartColumn,
   CircleDollarSign,
@@ -65,6 +66,7 @@ const TAB_ICON: Record<VisibleSettingsTab, SettingsNavIcon> = {
   usage: ChartColumn,
   personalization: Sparkles,
   providers: Boxes,
+  'decision-model': BrainCircuit,
   'voice-input': Mic,
   shortcuts: Keyboard,
   'agent-island': AgentIslandNavIcon,

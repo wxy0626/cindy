@@ -490,7 +490,7 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
 
   it('allMachinesLabel 孤儿 key 已从全部语言包删除(规则 18)', () => {
     // trigger 改回复用 allMachines 后,专用的 allMachinesLabel 不再被消费,不留孤儿 key。
-    for (const locale of ['zh-CN', 'zh-TW', 'en', 'ja', 'ko']) {
+    for (const locale of ['zh-CN', 'en']) {
       const json = JSON.parse(read('i18n', 'locales', locale, 'common.json')) as {
         ccAgent: { sidebar: { machineSwitcher: Record<string, string> } };
       };
@@ -557,7 +557,7 @@ describe('远程机器切换入口并入 SidebarTopNav(置顶段上方,固定不
   });
 
   it('multiSelect / deselect / menuTrigger 在全部语言包都存在,且不再叫远程机器', () => {
-    for (const locale of ['zh-CN', 'zh-TW', 'en', 'ja', 'ko']) {
+    for (const locale of ['zh-CN', 'en']) {
       const json = JSON.parse(read('i18n', 'locales', locale, 'common.json')) as {
         ccAgent: { sidebar: { machineSwitcher: Record<string, string> } };
       };

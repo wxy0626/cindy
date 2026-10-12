@@ -592,7 +592,7 @@ function BranchWorktreeChip({
           </svg>
         )}
       </span>
-      {/* 术语表裁决:worktree 四语一律保留英文小写原词,故 label 不走 locale 分叉。 */}
+      {/* 术语表裁决:worktree 中英一律保留英文小写原词,故 label 不走 locale 分叉。 */}
       <span>worktree</span>
     </button>
   );

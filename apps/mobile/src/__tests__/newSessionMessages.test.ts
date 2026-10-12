@@ -1,9 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
-const mockLanguageTag = { current: "en-US" };
-vi.mock("expo-localization", () => ({
-  getLocales: () => [{ languageTag: mockLanguageTag.current }],
-}));
+import { setManualLocaleOverride } from "@/i18n/appLanguage";
 
 import {
   newSessionMessages,
@@ -12,10 +9,14 @@ import {
   type NewSessionLocale,
 } from "@/session/newSessionMessages";
 
-const LOCALES: NewSessionLocale[] = ["zh-CN", "zh-TW", "en", "ja", "ko"];
+const LOCALES: NewSessionLocale[] = ["zh-CN", "en"];
 
 describe("newSessionMessages", () => {
-  it("keeps the 5 locale catalogs key-aligned and non-empty", () => {
+  beforeEach(() => {
+    setManualLocaleOverride(null);
+  });
+
+  it("keeps both locale catalogs key-aligned and non-empty", () => {
     const baseKeys = Object.keys(newSessionMessages["zh-CN"]).sort();
     expect(Object.keys(newSessionMessages).sort()).toEqual([...LOCALES].sort());
 
@@ -28,18 +29,19 @@ describe("newSessionMessages", () => {
     }
   });
 
-  it("maps supported system languages and falls back to English", () => {
-    expect(resolveNewSessionLocale("zh-Hant-TW")).toBe("zh-TW");
-    expect(resolveNewSessionLocale("ja-JP")).toBe("ja");
-    expect(resolveNewSessionLocale("ko-KR")).toBe("ko");
-    expect(resolveNewSessionLocale("fr-FR")).toBe("en");
+  it("maps supported system languages and falls back to Chinese", () => {
+    expect(resolveNewSessionLocale("zh-Hant-TW")).toBe("zh-CN");
+    expect(resolveNewSessionLocale("en-US")).toBe("en");
+    expect(resolveNewSessionLocale("ja-JP")).toBe("zh-CN");
+    expect(resolveNewSessionLocale("ko-KR")).toBe("zh-CN");
+    expect(resolveNewSessionLocale("fr-FR")).toBe("zh-CN");
   });
 
-  it("renders the current system language through the catalog", () => {
-    mockLanguageTag.current = "ja-JP";
-    expect(newSessionText("showHiddenDirectories")).toBe("隠しフォルダを表示");
+  it("defaults to Chinese and follows an explicit language override", () => {
+    expect(newSessionText("emptyDirectory")).toBe("没有可显示的子目录。");
 
-    mockLanguageTag.current = "en-US";
+    setManualLocaleOverride("en");
+    expect(newSessionText("showHiddenDirectories")).toBe("Show Hidden Folders");
     expect(newSessionText("emptyDirectory")).toBe("No folders to show.");
   });
 });

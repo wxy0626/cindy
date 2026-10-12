@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CircleAlert, RefreshCcw } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -9,6 +9,7 @@ import type { ComposerBotMention } from '@/lib/fileTypes';
 import { getBotLastReadAt, markBotRead } from './botReadState';
 import { getBotProfiles, getBotUnreadCounts } from './botStore';
 import type { BotChatIdentity } from './BotSessionContentHeader';
+import type { BotChatBinding } from './botChatPresentation';
 import { useBotIslandVisibleSession } from './useBotIslandVisibleSession';
 
 type BotSessionGate =
@@ -16,7 +17,7 @@ type BotSessionGate =
   | {
       kind: 'ready';
       mentions: ComposerBotMention[];
-      identity: BotChatIdentity;
+      identity: BotChatBinding;
       /** True only for the Bot's own canonical chat (not a mounted channel route). */
       isCanonical: boolean;
       /** Read position captured before opening advances it; null when entry had no unread replies. */
@@ -24,6 +25,18 @@ type BotSessionGate =
     }
   | { kind: 'unavailable' }
   | { kind: 'error'; message: string };
+
+interface BotRoutePresentation {
+  /** 切换期间暂时落后于地址栏的可见伙伴页面。 */
+  routeKey: string;
+  botId?: string;
+  sessionId?: string;
+  gate: BotSessionGate;
+}
+
+function botRouteKey(botId: string | undefined, sessionId: string | undefined): string {
+  return `${botId ?? ''}:${sessionId ?? ''}`;
+}
 
 function readBotChatIdentity(bot: unknown, botId: string): BotChatIdentity {
   const candidate = (bot ?? {}) as { name?: unknown; avatar?: unknown; avatarColor?: unknown };
@@ -89,7 +102,7 @@ function computeFastGate(
     isCanonical: projection.role === 'canonical',
     unreadBoundaryAt:
       projection.role === 'canonical' && unreadCount > 0 ? lastReadAt : null,
-    identity: readBotChatIdentity(bot, botId),
+    identity: { ...readBotChatIdentity(bot, botId), sessionId },
     mentions: profiles
       .map((candidate) => readBotMention(candidate, botId))
       .filter((candidate): candidate is ComposerBotMention => candidate !== null),
@@ -118,26 +131,51 @@ function isSameReadyGate(a: BotSessionGate, b: BotSessionGate): boolean {
  * Cindy task. Check the durable Bot link before mounting the writable chat.
  */
 export function BotSessionView() {
-  const { botId, sessionId } = useParams();
-  return <BotSessionGateView key={JSON.stringify([botId, sessionId])} />;
+  return <BotSessionGateView />;
 }
 
 function BotSessionGateView() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { botId, sessionId } = useParams();
+  const routeKey = botRouteKey(botId, sessionId);
   const [reloadVersion, setReloadVersion] = useState(0);
-  // 首帧即尝试快路径：内存投影确认可用时直接挂聊天视图，不进 loading。
-  // 投影缺失/不可信时回落到原 loading → IPC 权威确认链路。
-  const [gate, setGate] = useState<BotSessionGate>(
-    () => computeFastGate(botId, sessionId) ?? { kind: 'loading' },
+  // 切伙伴时先保留旧聊天，等新伙伴 gate 完成后一次性替换，避免空白帧。
+  const [presentation, setPresentation] = useState<BotRoutePresentation>(() => ({
+    routeKey,
+    botId,
+    sessionId,
+    gate: computeFastGate(botId, sessionId) ?? { kind: 'loading' },
+  }));
+  // 可信的内存投影可以立即切换；没有投影时继续显示旧页面等待 IPC。
+  const fastGate = useMemo(
+    () => computeFastGate(botId, sessionId),
+    [botId, sessionId],
   );
-  useBotIslandVisibleSession(gate.kind === 'ready' ? sessionId ?? null : null);
+  const visiblePresentation =
+    presentation.routeKey === routeKey
+      ? presentation
+      : fastGate
+        ? { routeKey, botId, sessionId, gate: fastGate }
+        : presentation;
+  const visibleBotId = visiblePresentation.botId;
+  const visibleSessionId = visiblePresentation.sessionId;
+  const visibleGate = visiblePresentation.gate;
+  const isVisibleRouteCurrent = visiblePresentation.routeKey === routeKey;
+
+  useBotIslandVisibleSession(
+    visibleGate.kind === 'ready' ? visibleSessionId ?? null : null,
+  );
 
   useEffect(() => {
     let cancelled = false;
     if (!botId || !sessionId) {
-      setGate({ kind: 'unavailable' });
+      setPresentation({
+        routeKey,
+        botId,
+        sessionId,
+        gate: { kind: 'unavailable' },
+      });
       return () => {
         cancelled = true;
       };
@@ -154,7 +192,12 @@ function BotSessionGateView() {
       .then(([bot, bots]) => {
         if (cancelled) return;
         if (!bot || typeof bot !== 'object') {
-          setGate({ kind: 'unavailable' });
+          setPresentation({
+            routeKey,
+            botId,
+            sessionId,
+            gate: { kind: 'unavailable' },
+          });
           return;
         }
         const sessions = (bot as { sessions?: unknown }).sessions;
@@ -171,7 +214,12 @@ function BotSessionGateView() {
             })
           : undefined;
         if (profileStatus !== 'active' || !activeProjection) {
-          setGate({ kind: 'unavailable' });
+          setPresentation({
+            routeKey,
+            botId,
+            sessionId,
+            gate: { kind: 'unavailable' },
+          });
           return;
         }
         const listedBot = Array.isArray(bots)
@@ -188,56 +236,68 @@ function BotSessionGateView() {
           typeof (listedBot as { unreadCount?: unknown }).unreadCount === 'number'
             ? (listedBot as { unreadCount: number }).unreadCount
             : 0;
-        setGate((prev) => {
-          const nextGate: BotSessionGate = {
+        setPresentation((prev) => {
+          const nextGate: Extract<BotSessionGate, { kind: 'ready' }> = {
             kind: 'ready',
             // 欢迎语只属于主任务:渠道路由任务是「别处的对话被接进来」,
             // 在那里冒出一句自我介绍是插话,不是打招呼。
             isCanonical: activeProjection?.role === 'canonical',
             unreadBoundaryAt:
               activeProjection?.role === 'canonical' && unreadCount > 0 ? lastReadAt : null,
-            identity: readBotChatIdentity(bot, botId),
+            identity: { ...readBotChatIdentity(bot, botId), sessionId },
             mentions: Array.isArray(bots)
               ? bots
                   .map((candidate) => readBotMention(candidate, botId))
                   .filter((candidate): candidate is ComposerBotMention => candidate !== null)
               : [],
           };
-          return isSameReadyGate(prev, nextGate) ? prev : nextGate;
+          if (
+            prev.routeKey === routeKey &&
+            prev.gate.kind === 'ready' &&
+            isSameReadyGate(prev.gate, nextGate)
+          ) {
+            return prev;
+          }
+          return { routeKey, botId, sessionId, gate: nextGate };
         });
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        setGate({
-          kind: 'error',
-          message: error instanceof Error ? error.message : String(error),
+        setPresentation({
+          routeKey,
+          botId,
+          sessionId,
+          gate: {
+            kind: 'error',
+            message: error instanceof Error ? error.message : String(error),
+          },
         });
       });
     return () => {
       cancelled = true;
     };
-  }, [botId, reloadVersion, sessionId]);
+  }, [botId, reloadVersion, routeKey, sessionId]);
 
   // Opening the conversation is what marks it read, and staying in it keeps it
   // read: while this view is mounted every row that lands in the task advances
   // the read position, so a reply the user is watching arrive never turns into
   // an unread badge behind their back.
   useEffect(() => {
-    if (gate.kind !== 'ready' || !botId || !sessionId) return;
-    markBotRead(botId);
+    if (visibleGate.kind !== 'ready' || !visibleBotId || !visibleSessionId) return;
+    markBotRead(visibleBotId);
     const subscribe = window.electronAPI?.localDb?.messages?.onCreated;
     if (typeof subscribe !== 'function') return;
     const unsubscribe = subscribe((payload: unknown) => {
       const incoming = (payload as { sessionId?: unknown } | null)?.sessionId;
-      if (incoming !== sessionId) return;
-      markBotRead(botId);
+      if (incoming !== visibleSessionId) return;
+      markBotRead(visibleBotId);
     });
     return () => {
       unsubscribe?.();
     };
-  }, [botId, gate.kind, sessionId]);
+  }, [visibleBotId, visibleGate.kind, visibleSessionId]);
 
-  if (gate.kind === 'loading') {
+  if (visibleGate.kind === 'loading') {
     return (
       <main className="flex h-full items-center justify-center bg-[var(--surface)]">
         <Spinner
@@ -249,10 +309,13 @@ function BotSessionGateView() {
       </main>
     );
   }
-  if (gate.kind !== 'ready' || !sessionId) {
-    const failed = gate.kind === 'error';
+  if (visibleGate.kind !== 'ready' || !visibleSessionId) {
+    const failed = visibleGate.kind === 'error';
     return (
-      <main className="flex h-full items-center justify-center bg-[var(--surface)] p-6">
+      <main
+        className="flex h-full items-center justify-center bg-[var(--surface)] p-6"
+        aria-busy={!isVisibleRouteCurrent}
+      >
         <section className="w-full max-w-md rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-5 text-center">
           <CircleAlert size={24} className="mx-auto text-[var(--text-danger)]" aria-hidden />
           <h1 className="mt-3 text-16 font-medium text-[var(--text-primary)]">
@@ -263,15 +326,15 @@ function BotSessionGateView() {
               ? t('bots.sessionLoadFailedDescription')
               : t('bots.sessionUnavailableDescription')}
           </p>
-          {failed && gate.message ? (
+          {failed && visibleGate.message ? (
             <p className="mt-3 max-h-24 overflow-y-auto whitespace-pre-wrap rounded-lg bg-[var(--surface)] px-3 py-2 text-left text-11 text-[var(--text-danger)] [overflow-wrap:anywhere]">
-              {gate.message}
+              {visibleGate.message}
             </p>
           ) : null}
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             <button
               type="button"
-              onClick={() => navigate(botId ? `/bots/${botId}` : '/bots')}
+              onClick={() => navigate(visibleBotId ? `/bots/${visibleBotId}` : '/bots')}
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--border-default)] px-3 text-12 text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
             >
               <ArrowLeft size={14} />
@@ -281,8 +344,13 @@ function BotSessionGateView() {
               <button
                 type="button"
                 onClick={() => {
-                  // 重试要重新过 gate：这里负责拨回 loading（effect 已不再无条件重置）。
-                  setGate({ kind: 'loading' });
+                  // 重试当前地址时显示 loading；正常切伙伴不会走这里。
+                  setPresentation({
+                    routeKey,
+                    botId,
+                    sessionId,
+                    gate: { kind: 'loading' },
+                  });
                   setReloadVersion((value) => value + 1);
                 }}
                 className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--accent-cta-bg)] px-3 text-12 font-medium text-[var(--accent-pure-cta-fg)]"
@@ -297,12 +365,22 @@ function BotSessionGateView() {
     );
   }
   return (
-    <main className="relative flex h-full min-w-0 overflow-hidden bg-[var(--surface)]">
+    <main
+      className={`relative flex h-full min-w-0 overflow-hidden bg-[var(--surface)] ${
+        isVisibleRouteCurrent ? '' : 'pointer-events-none'
+      }`}
+      aria-busy={!isVisibleRouteCurrent}
+    >
       <div className="min-w-0 flex-1">
         <CCAgentSessionView
-          botMentions={gate.mentions}
-          botIdentity={gate.identity}
-          botUnreadBoundaryAt={gate.unreadBoundaryAt}
+          key={visiblePresentation.routeKey}
+          sessionIdProp={visibleSessionId}
+          routeOwner
+          botMentions={visibleGate.kind === 'ready' ? visibleGate.mentions : undefined}
+          botIdentity={visibleGate.kind === 'ready' ? visibleGate.identity : undefined}
+          botUnreadBoundaryAt={
+            visibleGate.kind === 'ready' ? visibleGate.unreadBoundaryAt : null
+          }
         />
       </div>
     </main>

@@ -98,8 +98,8 @@ import { getReadyBinaryPath, getCachedBinaryStatus } from '../agent-binaries/ind
 import {
   activeOwnerScopeKey,
   isAppSessionBoundaryPending,
-  ownerScopedUserDataPath,
 } from '../appSessionState.js';
+import { machineSharedUserDataPath } from '../machineSharedStorage.js';
 import { getIOSSimulatorPluginAccessDecision } from '../cindy-brain/index.js';
 import {
   desktopClaudeAuthAdapter,
@@ -2513,7 +2513,7 @@ export function getMaker(): Maker {
       // 伙伴的家在哪(本机 userData),外加用户维护的 prompt overlay。身份与用户画像不走
       // 这里 —— 它们已经由对账收进冻结快照,运行时认快照。
       readProfileFolder: async ({ botId }) => {
-        const ownerRoot = ownerScopedUserDataPath();
+        const ownerRoot = machineSharedUserDataPath();
         const legacyUserDataDir = app.getPath('userData');
         await migrateLegacyBotProfileFolder(ownerRoot, legacyUserDataDir, botId);
         const folder = await readBotProfileFolder(ownerRoot, botId);

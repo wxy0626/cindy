@@ -78,7 +78,7 @@ describe('RolePillDropdown worker error indicator', () => {
 });
 
 describe('orca.rolePill error badge i18n', () => {
-  const LOCALES = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'] as const;
+  const LOCALES = ['zh-CN', 'en'] as const;
   it('errorBadge / errorBadgeAria 全部语言齐全且非空', () => {
     for (const locale of LOCALES) {
       const common = JSON.parse(

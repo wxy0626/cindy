@@ -3792,7 +3792,10 @@ interface ElectronAPI {
    * Returns null on 404 / network error / parse error — caller decides
    * whether to surface a toast or stay silent.
    */
-  fetchReleaseNotes: (version: string) => Promise<RawReleaseNotesPayload | null>;
+  fetchReleaseNotes: (
+    version: string,
+    resolveLatest?: boolean,
+  ) => Promise<RawReleaseNotesPayload | null>;
 
   /**
    * Sorted ascending list of every version with a notice on the CDN. Used by

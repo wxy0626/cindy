@@ -50,7 +50,7 @@ describe('selection context menu platform shape', () => {
     expect(template[0]?.label).toBe('复制');
   });
 
-  it('uses Traditional Chinese labels for zh-TW', () => {
+  it('falls back to Simplified Chinese labels for historical locales', () => {
     const template = buildSelectionContextMenuTemplate('win32', 'zh-TW', params, {
       addToChat: vi.fn(),
       lookUp: vi.fn(),
@@ -59,11 +59,11 @@ describe('selection context menu platform shape', () => {
 
     expect(template.map((item) => item.role ?? item.label ?? item.type)).toEqual([
       'copy',
-      '新增到對話',
+      '添加到对话',
       'separator',
-      '在網頁中搜尋「selected words」',
+      '在网页中搜索“selected words”',
     ]);
-    expect(template[0]?.label).toBe('拷貝');
+    expect(template[0]?.label).toBe('复制');
   });
 
   it('truncates long single-line labels', () => {
@@ -255,7 +255,7 @@ describe('editable context menu shape', () => {
       editableActions(),
     );
 
-    expect(selection[0]?.label).toBe('コピー');
-    expect(editable.find((item) => item.role === 'copy')?.label).toBe('コピー');
+    expect(selection[0]?.label).toBe('复制');
+    expect(editable.find((item) => item.role === 'copy')?.label).toBe('复制');
   });
 });

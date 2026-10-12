@@ -169,13 +169,11 @@ test('FULL_WIDTH_PUNCT: 覆盖全部受检半角标点', () => {
 });
 
 test('标点规则的 locale 适用范围有数据依据', () => {
-  // ja 实测半角冒号 124:78 才是主流(日文 UI 惯例),套用中文全角规则会制造大批假阳性。
+  // 现在只支持中英两语,半角标点规则只覆盖简体中文。
   assert.equal(HALFWIDTH_PUNCT_LOCALES.has('zh-CN'), true);
-  assert.equal(HALFWIDTH_PUNCT_LOCALES.has('zh-TW'), true);
-  assert.equal(HALFWIDTH_PUNCT_LOCALES.has('ja'), false);
-  assert.equal(HALFWIDTH_PUNCT_LOCALES.has('ko'), false);
-  // 省略号四语一致以「…」为主流。
-  for (const locale of ['zh-CN', 'zh-TW', 'ja', 'ko']) {
+  assert.equal(HALFWIDTH_PUNCT_LOCALES.has('en'), false);
+  // 省略号中英一致以「…」为主流。
+  for (const locale of ['zh-CN', 'en']) {
     assert.equal(ELLIPSIS_LOCALES.has(locale), true, `${locale} 应纳入省略号规则`);
   }
 });
@@ -664,7 +662,7 @@ test('ELLIPSIS_LOCALES 必须含 en', () => {
   // DESIGN.md §11 Voice & Content 明文要求英文也用「…」而非三个半角点。
   // 漏掉 en 等于让门禁替既有违规背书(实测当时 en 侧有 54 处)。
   assert.ok(ELLIPSIS_LOCALES.has('en'));
-  for (const l of ['zh-CN', 'zh-TW', 'ja', 'ko']) assert.ok(ELLIPSIS_LOCALES.has(l), l);
+  for (const l of ['zh-CN', 'en']) assert.ok(ELLIPSIS_LOCALES.has(l), l);
 });
 
 test('countOccurrences: 默认大小写敏感,与 occursIn 同口径', () => {
@@ -861,7 +859,7 @@ test('caseStandardFor: alsoAllowed 允许英文原词时同样要查大小写', 
   // 首选译法是中文,但既然允许保留英文,保留的就该是规范形态
   assert.equal(caseStandardFor(skill, 'zh-CN'), 'Skill');
   // 没有 alsoAllowed 的语言不查
-  assert.equal(caseStandardFor(skill, 'ja'), null);
+  assert.equal(caseStandardFor(skill, 'en'), null);
   // 故意小写的外部系统叫法(thread / credits)靠「恰好等于 term.en」天然排除
   const thread = {
     en: 'Thread',

@@ -8,24 +8,18 @@ export function elevenLabsLanguageCode(sourceLanguage: string): string | undefin
     case 'simplified chinese':
     case 'traditional chinese':
       return 'zho';
-    case 'cantonese':
-      return 'yue';
     case 'english':
       return 'en';
-    case 'japanese':
-      return 'ja';
-    case 'korean':
-      return 'ko';
   }
 
   const primary = normalized.split(/[-_]/)[0];
   switch (primary) {
     case 'zh':
       return 'zho';
-    case 'yue':
-      return 'yue';
+    case 'en':
+      return 'en';
     default:
-      return /^[a-z]{2,3}$/.test(primary) ? primary : undefined;
+      return undefined;
   }
 }
 
@@ -39,24 +33,18 @@ export function openAiLanguageCode(sourceLanguage: string): string | undefined {
     case 'simplified chinese':
     case 'traditional chinese':
       return 'zh';
-    case 'cantonese':
-      return 'yue';
     case 'english':
       return 'en';
-    case 'japanese':
-      return 'ja';
-    case 'korean':
-      return 'ko';
   }
 
   const primary = normalized.split(/[-_]/)[0];
-  return /^[a-z]{2,3}$/.test(primary) ? primary : undefined;
+  return primary === 'zh' ? 'zh' : primary === 'en' ? 'en' : undefined;
 }
 
 /**
- * The Volcengine bigmodel_async endpoint has no documented zh-TW wire value.
- * Normalize Chinese UI locales to its documented Mandarin hint instead of
- * sending the UI locale through as an unvalidated provider parameter.
+ * The Volcengine bigmodel_async endpoint expects its documented Mandarin hint.
+ * Normalize Chinese variants to that value instead of sending an unvalidated
+ * provider parameter.
  */
 export function volcengineSaucLanguageCode(sourceLanguage: string): string | undefined {
   const normalized = sourceLanguage.trim().toLowerCase();
@@ -67,5 +55,5 @@ export function volcengineSaucLanguageCode(sourceLanguage: string): string | und
   ) {
     return 'zh-CN';
   }
-  return sourceLanguage.trim();
+  return normalized === 'en' || normalized.startsWith('en-') ? 'en' : undefined;
 }

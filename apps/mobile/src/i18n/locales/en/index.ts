@@ -1,7 +1,7 @@
 /**
  * 本 locale 的 catalog 组装:每个区域一个 JSON 文件、一个顶级 key,
  * 组装成单一 'common' namespace 的资源对象。
- * 区域清单四语必须一致(与其余 locale 的 index.ts 逐行同构);新增区域时
+ * 区域清单中英必须一致(与其余 locale 的 index.ts 逐行同构);新增区域时
  * 四个 locales/<locale>/index.ts 一起加,平价测试会拦截漏改。
  */
 

@@ -6028,7 +6028,7 @@ export function handleStreamEvent(
         !new RegExp(`\\b${errorStatus}\\b`).test(safeErrMsgRaw)
           ? `${safeErrMsgRaw} (HTTP ${errorStatus})`
           : safeErrMsgRaw;
-      // 空响应/无详情失败 banner 文案走 i18n(四语言),不直接渲染 maker-core 发来的
+      // 空响应/无详情失败 banner 文案走 i18n(中英),不直接渲染 maker-core 发来的
       // 中文 message(规则 18:UI 文案必须 i18n)。maker-core 用稳定 reason 当 key
       // ('empty-response' / 'turn-failed'), message 仅作非 renderer 消费方(IM/orca)的兜底。
       const errMsg =
@@ -17403,6 +17403,11 @@ function mapServerMessages(serverMsgs: Message[]): ChatMessage[] {
           toModel: typeof c.toModel === 'string' ? c.toModel : null,
           handoff: typeof c.handoff === 'string' ? c.handoff : '',
           resumed: c.resumed === true,
+          probability:
+            typeof c.probability === 'number' && Number.isFinite(c.probability)
+              ? c.probability
+              : undefined,
+          selectedBy: c.selectedBy === 'decision-model' ? 'decision-model' : undefined,
         },
       };
     }

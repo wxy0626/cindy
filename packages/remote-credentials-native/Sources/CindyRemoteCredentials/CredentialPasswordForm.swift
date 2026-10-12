@@ -16,7 +16,8 @@ struct CredentialLabels {
     #endif
     guard let url = bundle.url(forResource: "credentials", withExtension: "json"),
       let catalog = try? JSONDecoder().decode([String: [String: String]].self, from: Data(contentsOf: url)),
-      let values = catalog[locale] ?? catalog["en"] else { throw CredentialError.unavailable }
+      let fallback = locale.hasPrefix("zh") ? catalog["zh-CN"] : catalog["en"],
+      let values = catalog[locale] ?? fallback else { throw CredentialError.unavailable }
     self.values = values
   }
   subscript(_ key: String) -> String { values[key] ?? key }

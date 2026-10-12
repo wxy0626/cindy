@@ -13,22 +13,22 @@ import {
   type OAuthResultPageLang,
 } from '../oauthResultPage';
 
-const ALL_OAUTH_LANGS: OAuthResultPageLang[] = ['zh', 'zh-TW', 'en', 'ja', 'ko'];
+const ALL_OAUTH_LANGS: OAuthResultPageLang[] = ['zh', 'en'];
 
 describe('OAuth result page language and copy', () => {
-  it('uses the first supported browser language and falls back to English', () => {
-    expect(pickOAuthResultPageLang('fr-FR,ja;q=0.8,en;q=0.7')).toBe('ja');
-    expect(pickOAuthResultPageLang('zh-TW,zh;q=0.9')).toBe('zh-TW');
-    expect(pickOAuthResultPageLang('de-DE')).toBe('en');
-    expect(pickOAuthResultPageLang(undefined)).toBe('en');
+  it('uses the first supported browser language and falls back to Chinese', () => {
+    expect(pickOAuthResultPageLang('fr-FR,ja;q=0.8,en;q=0.7')).toBe('en');
+    expect(pickOAuthResultPageLang('zh-TW,zh;q=0.9')).toBe('zh');
+    expect(pickOAuthResultPageLang('de-DE')).toBe('zh');
+    expect(pickOAuthResultPageLang(undefined)).toBe('zh');
   });
 
-  it('recognizes Traditional Chinese variants', () => {
-    expect(pickOAuthResultPageLang('zh-Hant')).toBe('zh-TW');
-    expect(pickOAuthResultPageLang('zh-HK')).toBe('zh-TW');
-    expect(pickOAuthResultPageLang('zh-MO')).toBe('zh-TW');
-    expect(pickOAuthResultPageLang('zh-Hant-TW,zh;q=0.8')).toBe('zh-TW');
-    expect(pickOAuthResultPageLang('ZH-HANT-HK')).toBe('zh-TW');
+  it('normalizes all Chinese variants to the only supported Chinese UI language', () => {
+    expect(pickOAuthResultPageLang('zh-Hant')).toBe('zh');
+    expect(pickOAuthResultPageLang('zh-HK')).toBe('zh');
+    expect(pickOAuthResultPageLang('zh-MO')).toBe('zh');
+    expect(pickOAuthResultPageLang('zh-Hant-TW,zh;q=0.8')).toBe('zh');
+    expect(pickOAuthResultPageLang('ZH-HANT-HK')).toBe('zh');
   });
 
   it('keeps Simplified Chinese for zh / zh-CN / explicit Hans script tags', () => {
@@ -39,9 +39,9 @@ describe('OAuth result page language and copy', () => {
     expect(pickOAuthResultPageLang('zh-Hans-HK')).toBe('zh');
   });
 
-  it('honors browser preference order over Traditional Chinese recognition', () => {
-    expect(pickOAuthResultPageLang('ja,zh-TW;q=0.9')).toBe('ja');
-    expect(pickOAuthResultPageLang('fr-FR,zh-Hant;q=0.8,en;q=0.5')).toBe('zh-TW');
+  it('honors browser preference order across the two supported languages', () => {
+    expect(pickOAuthResultPageLang('ja,zh-TW;q=0.9')).toBe('zh');
+    expect(pickOAuthResultPageLang('fr-FR,zh-Hant;q=0.8,en;q=0.5')).toBe('zh');
   });
 
   it('maps every callback language to a BCP 47 html lang value', () => {
@@ -49,7 +49,7 @@ describe('OAuth result page language and copy', () => {
       expect(OAUTH_RESULT_HTML_LANG[lang]).toBeTruthy();
     }
     expect(OAUTH_RESULT_HTML_LANG.zh).toBe('zh-CN');
-    expect(OAUTH_RESULT_HTML_LANG['zh-TW']).toBe('zh-TW');
+    expect(OAUTH_RESULT_HTML_LANG.en).toBe('en');
   });
 
   it('builds a localized return-to-Cindy deep link', () => {
@@ -104,21 +104,9 @@ describe('neutral callback copy (demo CALLBACK.neutral verbatim)', () => {
       title: '需要继续操作',
       body: '请返回 Cindy，完成当前工作区的安装后继续。',
     });
-    expect(getOAuthNeutralResultCopy('zh-TW', 'Cindy')).toEqual({
-      title: '需要繼續操作',
-      body: '請返回 Cindy，完成目前工作區的安裝後繼續。',
-    });
     expect(getOAuthNeutralResultCopy('en', 'Cindy')).toEqual({
       title: 'Action required',
       body: 'Return to Cindy and finish installing in the current workspace.',
-    });
-    expect(getOAuthNeutralResultCopy('ja', 'Cindy')).toEqual({
-      title: '操作が必要です',
-      body: 'Cindy に戻り、現在のワークスペースへのインストールを完了してください。',
-    });
-    expect(getOAuthNeutralResultCopy('ko', 'Cindy')).toEqual({
-      title: '추가 작업 필요',
-      body: 'Cindy로 돌아가 현재 워크스페이스 설치를 완료하세요.',
     });
   });
 

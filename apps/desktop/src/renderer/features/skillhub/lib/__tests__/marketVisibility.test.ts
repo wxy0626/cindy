@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 
 import { marketVisibilityLabelKey, marketVisibilitySubtitleKey } from '../marketVisibility';
 
-const SKILLHUB_LOCALES = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'] as const;
+const SKILLHUB_LOCALES = ['zh-CN', 'en'] as const;
 
 describe('marketVisibilityLabelKey', () => {
   it('does not expose legacy XD branding in SkillHub copy', () => {

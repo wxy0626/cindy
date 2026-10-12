@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useSignInToCindy } from '@/hooks/useSignInToCindy';
 
-/** 首页零模型单行动卡:未登录走 states.html B,已登录无来源走开通官方服务。 */
+/** 首页零模型单行动卡:本机档案先接来源,云账号无来源走开通官方服务。 */
 export function HomeZeroModelAction({
   authMode,
   narrow,
@@ -17,6 +17,7 @@ export function HomeZeroModelAction({
   const navigate = useNavigate();
   const signInToCindy = useSignInToCindy();
   const cloud = authMode === 'cloud';
+  const local = authMode === 'local';
 
   return (
     <div data-testid="home-zero-model" className="mt-4 w-full">
@@ -28,10 +29,22 @@ export function HomeZeroModelAction({
       >
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <p className="text-15 font-medium leading-snug text-[var(--text-primary)]">
-            {t(cloud ? 'onboarding.homeZeroModel.cloudTitle' : 'onboarding.homeZeroModel.title')}
+            {t(
+              cloud
+                ? 'onboarding.homeZeroModel.cloudTitle'
+                : local
+                  ? 'onboarding.connectProvider.title'
+                  : 'onboarding.homeZeroModel.title',
+            )}
           </p>
           <p className="text-13 leading-relaxed text-[var(--text-secondary)]">
-            {t(cloud ? 'onboarding.homeZeroModel.cloudDesc' : 'onboarding.homeZeroModel.desc')}
+            {t(
+              cloud
+                ? 'onboarding.homeZeroModel.cloudDesc'
+                : local
+                  ? 'onboarding.connectProvider.desc'
+                  : 'onboarding.homeZeroModel.desc',
+            )}
           </p>
         </div>
         <button
@@ -40,6 +53,10 @@ export function HomeZeroModelAction({
           onClick={() => {
             if (cloud) {
               navigate('/settings?tab=providers&connect=xd');
+              return;
+            }
+            if (local) {
+              navigate('/settings?tab=providers&wizard=1');
               return;
             }
             void signInToCindy();
@@ -51,16 +68,28 @@ export function HomeZeroModelAction({
             narrow && 'self-end',
           )}
         >
-          {t(cloud ? 'onboarding.homeZeroModel.cloudCta' : 'onboarding.homeZeroModel.cta')}
+          {t(
+            cloud
+              ? 'onboarding.homeZeroModel.cloudCta'
+              : local
+                ? 'onboarding.connectProvider.banner.connectCta'
+                : 'onboarding.homeZeroModel.cta',
+          )}
         </button>
       </div>
       <button
         type="button"
         data-testid="home-zero-model-own-api"
-        onClick={() => navigate('/settings?tab=providers&wizard=1')}
+        onClick={() => {
+          if (local) {
+            void signInToCindy();
+            return;
+          }
+          navigate('/settings?tab=providers&wizard=1');
+        }}
         className="mt-2 ml-2 inline-flex items-center gap-0.5 rounded-lg px-2 py-1 text-12 font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
       >
-        {t('onboarding.homeZeroModel.ownApi')}
+        {t(local ? 'onboarding.homeZeroModel.cta' : 'onboarding.homeZeroModel.ownApi')}
         <ChevronRight size={13} strokeWidth={2} />
       </button>
     </div>

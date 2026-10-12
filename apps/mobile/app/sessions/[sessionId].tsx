@@ -8581,8 +8581,8 @@ export default function SessionScreen() {
 
   const forkAtMessage = useCallback((clientId: string, draft?: MobileMessageDraft) => {
     if (!deviceId || messageActionBusy) return;
-    // 文案走 i18n(与本页其它 Alert 同规):mobile 支持 en / ja / ko,硬编码中文会让
-    // 非中文环境看到中文弹窗。四语措辞与 desktop 的 chat.messageActionBar.fork* 对齐。
+    // 文案走 i18n(与本页其它 Alert 同规):mobile 支持中文和 English,硬编码中文会让
+    // 英文环境看到中文弹窗。中英措辞与 desktop 的 chat.messageActionBar.fork* 对齐。
     Alert.alert(
       t('session.screen.forkConfirmTitle'),
       t('session.screen.forkConfirmDescription'),

@@ -27,8 +27,8 @@ import { broadcastBotRemoteResourceChanged } from './botRemoteResourceInvalidati
 import {
   activeOwnerScopeKey,
   isAppSessionBoundaryPending,
-  ownerScopedUserDataPath,
 } from '../appSessionState.js';
+import { machineSharedUserDataPath } from '../machineSharedStorage.js';
 
 const log = createLogger('maker-ipc:bot-lifecycle');
 
@@ -298,7 +298,7 @@ export function createBotLifecycleService(deps: BotLifecycleServiceDeps) {
     request: BotLifecycleActionRequest,
   ): Promise<BotLifecycleActionResult> => {
     const ownerScopeAtEntry = activeOwnerScopeKey();
-    const ownerRootAtEntry = ownerScopedUserDataPath();
+    const ownerRootAtEntry = machineSharedUserDataPath();
     const assertOwnerUnchanged = (): void => {
       if (isAppSessionBoundaryPending() || activeOwnerScopeKey() !== ownerScopeAtEntry) {
         throwIpcError('PRECONDITION_FAILED', '账号已切换，请重新发起删除');

@@ -105,4 +105,24 @@ describe('ModelPickerOverlay', () => {
     const firstModel = screen.getAllByRole('checkbox')[0];
     await waitFor(() => expect(document.activeElement).toBe(firstModel));
   });
+
+  it('允许空选确认,以便用上游清单清空已设置模型', async () => {
+    const onConfirm = vi.fn();
+    render(
+      <ModelPickerOverlay
+        picker={{ agent: 'codex', models: models.slice(0, 2), selected: new Set(), query: '' }}
+        onChange={() => {}}
+        onConfirm={onConfirm}
+        onClose={() => {}}
+        returnFocusRef={{ current: null }}
+      />,
+    );
+
+    const confirm = screen.getByRole('button', {
+      name: 'settings.providers.custom.fetch.confirm',
+    }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(false);
+    fireEvent.click(confirm);
+    expect(onConfirm).toHaveBeenCalledOnce();
+  });
 });

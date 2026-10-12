@@ -1,23 +1,20 @@
 /**
  * 移动端 locale 常量与解析纯函数(与 desktop shared/locale.ts 保持一致)。
  *
- * 本模块保持零依赖(不 import expo / RN):偏好存储及其测试直接消费,
- * 读系统语言的 detectSystemLocale 在 systemLocale.ts。
- * 解析规则与 loginMessages.resolveLoginLocale 保持一致:zh-Hans/CN/SG → zh-CN，
- * zh-Hant/TW/HK/MO → zh-TW，ja / ko 前缀直取,其余兜底 en。
+ * 本模块保持零依赖(不 import expo / RN):偏好存储及其测试直接消费。
+ * 只区分中文和英文；其它系统语言统一回退默认中文。
  * 刻意用字符串前缀而非 Intl.Locale——Hermes 的 Intl 子集在各版本间能力不齐,
  * 前缀匹配对当前支持的语言足够且行为可预期。
  */
 
-/** UI 支持的具体语言。 */
-export const SUPPORTED_LOCALES = ["zh-CN", "zh-TW", "en", "ja", "ko"] as const;
+/** 应用支持的显示语言。只保留中文和英文，不保留历史语言。 */
+export const SUPPORTED_LOCALES = ["zh-CN", "en"] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
-/** 用户偏好:'system' = 跟随系统语言,由本模块在运行时解析。 */
-export type LocalePreference = SupportedLocale | "system";
+export type LocalePreference = SupportedLocale;
 
-/** 缺 key / 无法解析系统语言时的回退语言(与 desktop 一致)。 */
-export const DEFAULT_LOCALE: SupportedLocale = "en";
+/** 缺 key / 未设置偏好 / 历史非法值时的默认语言(与 desktop 一致)。 */
+export const DEFAULT_LOCALE = "zh-CN" satisfies SupportedLocale;
 
 export function isSupportedLocale(value: unknown): value is SupportedLocale {
   return (
@@ -27,21 +24,18 @@ export function isSupportedLocale(value: unknown): value is SupportedLocale {
 }
 
 export function isLocalePreference(value: unknown): value is LocalePreference {
-  return value === "system" || isSupportedLocale(value);
+  return (
+    typeof value === "string" &&
+    (SUPPORTED_LOCALES as readonly string[]).includes(value)
+  );
 }
 
-/** BCP 47 languageTag → 支持的 locale。大小写不敏感,null/undefined 兜底 en。 */
+/** BCP 47 languageTag → 支持的 locale。大小写不敏感,null/undefined 兜底中文。 */
 export function resolveSystemLocale(
   languageTag: string | null | undefined,
 ): SupportedLocale {
   const tag = languageTag?.trim().toLowerCase().replace(/_/g, "-") ?? "";
-  if (tag.startsWith("zh")) {
-    if (tag.includes("hans")) return "zh-CN";
-    if (tag.includes("hant") || /(?:-|^)(?:tw|hk|mo)(?:-|$)/.test(tag))
-      return "zh-TW";
-    return "zh-CN";
-  }
-  if (tag.startsWith("ja")) return "ja";
-  if (tag.startsWith("ko")) return "ko";
+  if (tag.startsWith("zh")) return "zh-CN";
+  if (tag.startsWith("en")) return "en";
   return DEFAULT_LOCALE;
 }

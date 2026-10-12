@@ -17,8 +17,18 @@ vi.mock('react-router-dom', () => ({
   useParams: () => mocks.params,
 }));
 vi.mock('@/features/cc-agent/CCAgentSessionView', () => ({
-  CCAgentSessionView: ({ botUnreadBoundaryAt }: { botUnreadBoundaryAt?: number | null }) => (
-    <div data-testid="chat" data-unread-boundary={botUnreadBoundaryAt ?? ''} />
+  CCAgentSessionView: ({
+    botUnreadBoundaryAt,
+    sessionIdProp,
+  }: {
+    botUnreadBoundaryAt?: number | null;
+    sessionIdProp?: string;
+  }) => (
+    <div
+      data-testid="chat"
+      data-session={sessionIdProp ?? ''}
+      data-unread-boundary={botUnreadBoundaryAt ?? ''}
+    />
   ),
 }));
 
@@ -181,5 +191,20 @@ describe('Bot conversation fast gate (botStore projection)', () => {
     const view = render(<BotSessionView />);
     expect(view.getByTestId('chat')).toBeTruthy();
     await waitFor(() => expect(view.getByText('bots.sessionUnavailableTitle')).toBeTruthy());
+  });
+
+  it('keeps the previous chat mounted while a newly selected Bot is still loading', async () => {
+    installElectronApi(readyBot);
+    refreshBotProfiles();
+    await waitFor(() => expect(getBotProfiles()).toHaveLength(1));
+    installHangingElectronApi();
+
+    const view = render(<BotSessionView />);
+    expect(view.getByTestId('chat').dataset.session).toBe('session-1');
+
+    mocks.params = { botId: 'bot-2', sessionId: 'session-2' };
+    view.rerender(<BotSessionView />);
+
+    expect(view.getByTestId('chat').dataset.session).toBe('session-1');
   });
 });

@@ -96,7 +96,7 @@ if (hasError) process.exit(1);
 
 // ---- 复数家族归一 ----
 // i18next 复数 key 形如 `base_one` / `base_other`。判定为复数家族的依据:任一
-// locale 存在任意复数后缀变体(不只 `_other`——只看 `_other` 会放过"四语都只写
+// locale 存在任意复数后缀变体(不只 `_other`——只看 `_other` 会放过"中英都只写
 // 了 `_one`、漏了 `_other`"的情况,而 i18next 在 count≠1 及中日韩全部 count 都
 // 查 `_other`,运行时会渲染裸 key)。家族内按 locale 自身语言的复数类别
 // (Intl.PluralRules)要求变体:所有语言的类别都含 other,故 `_other` 对每个

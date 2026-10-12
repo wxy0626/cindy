@@ -72,17 +72,13 @@ async function withLanguage<T>(language: string, run: () => T | Promise<T>): Pro
 }
 
 /**
- * fileChange 多文件短语必须整句取词:ja 语序是「N ファイルを更新」、ko 是
- * 「파일 N개 업데이트」,按「动词 + 文件数」拼接会拼出不成句的
- * 「更新 2 ファイル」/「업데이트 파일 2개」。
+ * fileChange 多文件短语必须整句取词,按「动词 + 文件数」拼接在其它语序下
+ * 会拼出不成句的短语。
  */
 describe('多文件 fileChange 短语按语言整句取词', () => {
   const expected: Record<string, string> = {
     en: 'Updated 2 files',
     'zh-CN': '更新 2 个文件',
-    'zh-TW': '更新 2 個檔案',
-    ja: '2 ファイルを更新',
-    ko: '파일 2개 업데이트',
   };
 
   for (const [locale, label] of Object.entries(expected)) {

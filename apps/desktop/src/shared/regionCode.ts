@@ -18,7 +18,7 @@
  *     漏附加。新增区域时要么给代号,要么明确复用这条默认语义,别让第二个区域也
  *     落进 null——那样两个区域就又分不清了。
  *
- * 代号本身四语同文、不翻译(术语表 region-code-cn / region-code-dev)。但**界面上
+ * 代号本身中英同文、不翻译(术语表 region-code-cn / region-code-dev)。但**界面上
  * 的展示文案仍走 i18n**(`issueAgent.confirm.regionCode*`、`sidebar.user.regionCode*`,
  * 同 login.regionPill.* 的做法),以便日后改判为「中国大陆版」这类可译文案时不必回改
  * 组件——本常量因此只负责「标不标 + 写进非界面文本(如 issue 正文)时用什么」,不直接
@@ -26,7 +26,7 @@
  * `renderer/__tests__/regionCode.consistency.test.ts` 逐链路逐区域逐语言断言。
  *
  * Record<CindyRegion, …> 是 exhaustiveness 哨兵:`CindyRegion` 新增取值时本对象
- * 会编译报错,提醒一并决定新区域标不标、补齐各链路的四语 key。
+ * 会编译报错,提醒一并决定新区域标不标、补齐各链路的中英 key。
  */
 
 import type { CindyRegion } from '@cindy/maker-shared/brand-identity';

@@ -70,9 +70,9 @@ const rawCache = new Map<string, RawReleaseNotes>();
 const rawInFlight = new Map<string, Promise<RawReleaseNotes | null>>();
 const localizedCache = new Map<string, ReleaseNotes>();
 
-// Version-index cache — one shot per session; the app version is immutable
-// while the process lives, so a successful fetch never needs to repeat.
-let indexCache: string[] | null = null;
+/** 开发进程可能在同一次运行中看到新公告，索引只短暂缓存。 */
+const INDEX_CACHE_TTL_MS = 60_000;
+let indexCache: { at: number; versions: string[] } | null = null;
 
 /** Return the legacy/root content in the same shape as a localized block. */
 function legacyContentFromRoot(raw: RawReleaseNotes): RawLocalizedContent {
@@ -96,7 +96,7 @@ export function selectLocalizedContent(
   locale: NoticeLocale,
 ): RawLocalizedContent | null {
   const localized = raw.contentByLocale;
-  if (locale === 'zh-CN' || locale === 'zh-TW') {
+  if (locale === 'zh-CN') {
     for (const candidate of [locale, 'zh-CN'] as const) {
       const content = localized?.[candidate];
       if (hasUsableContent(content)) return content;
@@ -156,26 +156,34 @@ function normalizeReleaseNotes(
   return hasContent ? notes : null;
 }
 
-async function fetchRawReleaseNotes(version: string): Promise<RawReleaseNotes | null> {
-  const hit = rawCache.get(version);
-  if (hit) return hit;
-
-  const pending = rawInFlight.get(version);
+async function requestRawReleaseNotes(
+  version: string,
+  resolveLatest: boolean,
+): Promise<RawReleaseNotes | null> {
+  const requestKey = `${resolveLatest ? 'latest' : 'exact'}:${version}`;
+  const pending = rawInFlight.get(requestKey);
   if (pending) return pending;
 
   const request = (async () => {
-    const raw = await window.electronAPI.fetchReleaseNotes(version);
+    const raw = await window.electronAPI.fetchReleaseNotes(version, resolveLatest);
     if (!raw || !hasRenderableContent(raw)) return null;
-    rawCache.set(version, raw);
+    // 主进程可能把旧开发版当前版本对齐到最新公告，缓存键必须使用实际版本。
+    rawCache.set(raw.version, raw);
     return raw;
   })();
-  rawInFlight.set(version, request);
+  rawInFlight.set(requestKey, request);
 
   try {
     return await request;
   } finally {
-    if (rawInFlight.get(version) === request) rawInFlight.delete(version);
+    if (rawInFlight.get(requestKey) === request) rawInFlight.delete(requestKey);
   }
+}
+
+async function fetchRawReleaseNotes(version: string): Promise<RawReleaseNotes | null> {
+  const hit = rawCache.get(version);
+  if (hit) return hit;
+  return requestRawReleaseNotes(version, false);
 }
 
 /**
@@ -183,11 +191,22 @@ async function fetchRawReleaseNotes(version: string): Promise<RawReleaseNotes | 
  * intermediate versions to pull when the user upgrades across releases.
  */
 export async function fetchReleaseNotesIndex(): Promise<string[] | null> {
-  if (indexCache) return indexCache;
+  if (indexCache && Date.now() - indexCache.at < INDEX_CACHE_TTL_MS) {
+    return indexCache.versions;
+  }
   const raw = await window.electronAPI.fetchReleaseNotesIndex();
   if (!raw) return null;
-  indexCache = raw;
+  indexCache = { at: Date.now(), versions: raw };
   return raw;
+}
+
+function normalizeRawReleaseNotes(
+  raw: RawReleaseNotes,
+  locale: NoticeLocale,
+): ReleaseNotes | null {
+  const content = selectLocalizedContent(raw, locale);
+  if (!content) return null;
+  return normalizeReleaseNotes(raw, content);
 }
 
 /**
@@ -199,18 +218,45 @@ export async function fetchReleaseNotes(
   version: string,
   locale: NoticeLocale = DEFAULT_LOCALE,
 ): Promise<ReleaseNotes | null> {
-  const cacheKey = `${version}:${locale}`;
-  const hit = localizedCache.get(cacheKey);
+  const requestedKey = `${version}:${locale}`;
+  const hit = localizedCache.get(requestedKey);
   if (hit) return hit;
 
   const raw = await fetchRawReleaseNotes(version);
   if (!raw) return null;
 
-  const content = selectLocalizedContent(raw, locale);
-  if (!content) return null;
-  const notes = normalizeReleaseNotes(raw, content);
+  const actualKey = `${raw.version}:${locale}`;
+  const actualHit = localizedCache.get(actualKey);
+  if (actualHit) {
+    localizedCache.set(requestedKey, actualHit);
+    return actualHit;
+  }
+
+  const notes = normalizeRawReleaseNotes(raw, locale);
   if (!notes) return null;
 
+  localizedCache.set(actualKey, notes);
+  localizedCache.set(requestedKey, notes);
+  return notes;
+}
+
+/**
+ * 当前版本公告：开发版由主进程自动对齐 CDN 最新版，已打包版仍读取自身版本。
+ * 供自动弹窗、火焰入口和历史首块使用，不能用于用户显式选择的历史版本。
+ */
+export async function fetchCurrentReleaseNotes(
+  version: string,
+  locale: NoticeLocale = DEFAULT_LOCALE,
+): Promise<ReleaseNotes | null> {
+  const raw = await requestRawReleaseNotes(version, true);
+  if (!raw) return null;
+
+  const cacheKey = `${raw.version}:${locale}`;
+  const hit = localizedCache.get(cacheKey);
+  if (hit) return hit;
+
+  const notes = normalizeRawReleaseNotes(raw, locale);
+  if (!notes) return null;
   localizedCache.set(cacheKey, notes);
   return notes;
 }

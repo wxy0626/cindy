@@ -424,6 +424,10 @@ export interface AgentSwitchContent {
   handoff: string;
   /** Phase 2:true = 目标引擎续接(resume)了自己的停泊原生会话,交接为增量模式。 */
   resumed?: boolean;
+  /** Laya 判断模型概率(0~1)；普通 Agent 切换不写该字段。 */
+  probability?: number;
+  /** 标记边界来自本地判断模型路由。 */
+  selectedBy?: 'decision-model';
 }
 
 export interface Message {

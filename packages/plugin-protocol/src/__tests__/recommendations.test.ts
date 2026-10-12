@@ -81,10 +81,10 @@ describe("optional recommendation contract", () => {
       ...item,
       locales: {
         en: { label: "English", prompt: "English prompt" },
-        "zh-TW": { label: "郵件", prompt: "檢查郵件" },
+        "zh-CN": { label: "邮件", prompt: "检查邮件" },
       },
     };
-    expect(localizeGhostRecommendation(translated, "zh-TW").label).toBe("郵件");
-    expect(localizeGhostRecommendation(translated, "ko").label).toBe("English");
+    expect(localizeGhostRecommendation(translated, "zh-CN").label).toBe("邮件");
+    expect(localizeGhostRecommendation(translated, "ja").label).toBe("English");
   });
 });

@@ -46,7 +46,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { pipeline } from 'node:stream/promises';
-import { execFile, execFileSync, spawn } from 'node:child_process';
+import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
 import { machineIdSync } from 'node-machine-id';
 import windowStateKeeper from 'electron-window-state';
 import { BRAND_NAME } from '@cindy/maker-shared/branding';
@@ -277,6 +277,15 @@ function readGitText(args: string[]): string | null {
   }
 }
 
+function readGitLines(args: string[]): string[] {
+  return (
+    readGitText(args)
+      ?.split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean) ?? []
+  );
+}
+
 interface AppDisplayVersionInfo {
   /** 纯语义版本号，例如 0.1.0；侧栏开发版第一行单独使用它。 */
   version: string;
@@ -298,16 +307,19 @@ function getAppDisplayVersionInfo(): AppDisplayVersionInfo {
   }
 
   // 开发版跟随上游主线最近标签；origin/main 由同步流程维护，离线时继续使用本地标签。
+  const upstreamTag = readGitText([
+    'describe',
+    '--tags',
+    '--abbrev=0',
+    '--match',
+    'v[0-9]*',
+    'origin/main',
+  ]);
   const version = resolveDevelopmentAppVersion({
     packagedVersion,
-    upstreamTag: readGitText([
-      'describe',
-      '--tags',
-      '--abbrev=0',
-      '--match',
-      'v[0-9]*',
-      'origin/main',
-    ]),
+    upstreamTag,
+    // git describe 按提交距离选最近 tag；同一发布线里应按语义版本选最高 tag。
+    upstreamTags: readGitLines(['tag', '--merged', 'origin/main', '--list', 'v[0-9]*']),
     // git 不在 PATH 时用纯文件系统解析本地标签兜底，避免开发版显示 0.0.0。
     headTag:
       readGitText(['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', 'HEAD']) ??
@@ -471,6 +483,7 @@ import {
   fetchReleaseNotes,
   fetchReleaseNotesIndex,
   resolveAvailableReleaseNotesVersion,
+  resolveLatestAvailableReleaseNotesVersion,
 } from './releaseNotesService';
 import { fetchUpstreamReleases as fetchUpstreamReleasesFromService } from './upstreamReleaseService';
 import { resolveWorkspacePathCached, resolveWorkspacePathBatchCached } from './pathResolver';
@@ -1024,7 +1037,7 @@ import {
 } from '../shared/windowBehavior.js';
 import { getDesktopCommandRegistry, registerBuiltinDesktopCommands } from './commands/index.js';
 import { registerRemoteCmdIpc } from './commands/remoteCmdIpc.js';
-import { resolvePreferredSystemLocale, resolveSystemLocale } from '../shared/locale.js';
+import { DEFAULT_LOCALE, resolveSystemLocale } from '../shared/locale.js';
 import {
   isImDefaultSettingsChannel,
   type ImDefaultSettingsChannel,
@@ -2836,15 +2849,14 @@ if (started) {
 const SYSTEM_PATH_BLOCKLIST: string[] = buildSystemPathBlocklist();
 
 // ApplicationMenuCommand 从 ../shared/applicationMenuCommands 单点导入。
-// 应用菜单四语标签抽到 ./applicationMenuLabels,使术语门禁能直接 import 扫描(见该文件注释)。
+// 应用菜单中英标签抽到 ./applicationMenuLabels,使术语门禁能直接 import 扫描(见该文件注释)。
 
 function resolveApplicationMenuLocale(raw: string | null | undefined): ApplicationMenuLocale {
   return resolveSystemLocale(raw);
 }
 
 function getPreferredApplicationLocale(): ApplicationMenuLocale {
-  const langs = app.getPreferredSystemLanguages();
-  return resolvePreferredSystemLocale(langs.length > 0 ? langs : [app.getLocale()]);
+  return DEFAULT_LOCALE;
 }
 
 function dispatchApplicationMenuCommand(
@@ -3271,6 +3283,36 @@ const windowsTrayLog = createLogger('windows-tray');
 const CLOSE_BEHAVIOR_PROMPT_FALLBACK_DELAY_MS = 2_000;
 
 /**
+ * 解析托盘重启要用的 Node 可执行文件。
+ *
+ * 必须用真正的 Node，不能用 process.execPath(electron.exe)：
+ *  - electron.exe <script> 是「Electron 应用入口」，脚本跑完进程不会退出（Chromium
+ *    消息循环常驻），协调器会永远卡在第一步的 spawnSync，表现为“应用关了但不再重启”；
+ *  - 即使加 ELECTRON_RUN_AS_NODE，process.versions.modules 仍是 Electron ABI，
+ *    ensure-deps 会把 root better-sqlite3 误判为 ABI 不匹配并重建失败。
+ *
+ * 优先用 npm/pnpm 注入的 npm_node_execpath（dev 启动链必经 pnpm），其次用
+ * start-dev-cmd.cmd 声明的 NODE_EXE，最后回落到 PATH 上的 node——与 dev 脚本里
+ * 直接写 `node scripts/...` 的解析方式一致。每个候选都先跑 --version 验证。
+ */
+function resolveDevNodeExecutable(): string | null {
+  const candidates = [process.env.npm_node_execpath, process.env.NODE_EXE].filter(
+    (value): value is string => Boolean(value && path.isAbsolute(value)),
+  );
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+    } catch {
+      continue;
+    }
+    const probe = spawnSync(candidate, ['--version'], { windowsHide: true, timeout: 10_000 });
+    if (probe.status === 0) return candidate;
+  }
+  const pathProbe = spawnSync('node', ['--version'], { windowsHide: true, timeout: 10_000 });
+  return pathProbe.status === 0 ? 'node' : null;
+}
+
+/**
  * 开发版托盘「重启程序」（2026-09-15 用户要求）：以与快捷方式一致的参数拉起重启
  * 协调器（scripts/desktop-restart-runner.mjs --wait-ready --isolated=dev --isolated-auth），
  * 协调器先清掉本 checkout 的旧 dev 进程再拉起新会话；随后本实例主动退出。
@@ -3280,7 +3322,13 @@ function restartDevelopmentApp(): void {
   if (app.isPackaged) return;
   const repoRootDir = path.resolve(app.getAppPath(), '..', '..');
   const restartRunner = path.join(repoRootDir, 'scripts', 'desktop-restart-runner.mjs');
-  windowsTrayLog.info('tray restart requested (dev)', { restartRunner });
+  const nodeExecutable = resolveDevNodeExecutable();
+  windowsTrayLog.info('tray restart requested (dev)', { restartRunner, nodeExecutable });
+  if (!nodeExecutable) {
+    // 找不到 Node 就不退出应用：宁可重启没发生，也不能“关了但起不来”。
+    windowsTrayLog.error('tray restart aborted: no usable node executable for the restart runner');
+    return;
+  }
   try {
     // 协调器输出写到日志文件而不是丢弃:之前 stdio:'ignore' 让"重启没起来"
     // 这类问题完全无法排查(进程无声消失)。追加写,便于事后看本次重启的过程。
@@ -3289,7 +3337,7 @@ function restartDevelopmentApp(): void {
     const restartLogPath = path.join(restartLogDir, 'tray-restart-runner.log');
     const restartLogFd = fs.openSync(restartLogPath, 'a');
     const child = spawn(
-      process.execPath,
+      nodeExecutable,
       [restartRunner, '--wait-ready', '--isolated=dev', '--isolated-auth'],
       // 无窗口重启 + 隐藏本进程控制台：XDT_DEV_LAUNCH_HEADLESS 让启动器不再新建
       // 控制台窗口（否则点 N 次重启就累计 N 个窗口），dev 输出改写到
@@ -3300,7 +3348,14 @@ function restartDevelopmentApp(): void {
         // stdin 忽略；stdout/stderr 归档到日志，便于诊断重启失败。
         stdio: ['ignore', restartLogFd, restartLogFd],
         windowsHide: true,
-        env: { ...process.env, XDT_DEV_LAUNCH_HEADLESS: '1' },
+        // 该协调器是由当前 Electron 主进程主动拉起的，允许它穿过
+        // restart-desktop-remote 的“禁止从当前 dev 进程树自杀”保护；
+        // 普通终端启动仍保持原有防误杀行为。
+        env: {
+          ...process.env,
+          XDT_DEV_LAUNCH_HEADLESS: '1',
+          XDT_DEV_RESTART_FROM_APP: '1',
+        },
       },
     );
     child.unref();
@@ -5728,14 +5783,19 @@ const registerIpcHandlers = () => {
 
   // Release notes (per-version, fetched from CDN). Platform is resolved
   // inside the service so renderer never needs to pass it.
-  ipcMain.handle('release-notes:fetch', async (_event, version: string) => {
-    // 开发版版号（0.0.0 或自打的 X.Y.Z-beta）在 CDN 上没有对应公告，直接请求必然
-    // 404 —— 回落到 CDN 上最新的上游发布版本，让"查看版本日志"在开发版也能用。
-    const requested = app.isPackaged
-      ? version
-      : await resolveAvailableReleaseNotesVersion(version);
-    return fetchReleaseNotes(requested);
-  });
+  ipcMain.handle(
+    'release-notes:fetch',
+    async (_event, version: string, resolveLatest?: boolean) => {
+      // 开发版版号（0.0.0 或自打的 X.Y.Z-beta）在 CDN 上没有对应公告，直接请求必然
+      // 404 —— 回落到 CDN 上最新的上游发布版本，让"查看版本日志"在开发版也能用。
+      const requested = app.isPackaged
+        ? version
+        : resolveLatest === true
+          ? await resolveLatestAvailableReleaseNotesVersion(version)
+          : await resolveAvailableReleaseNotesVersion(version);
+      return fetchReleaseNotes(requested);
+    },
+  );
 
   // Release notes index — sorted list of every version with a notice on the
   // CDN. Used by the renderer to compute the unread range on cross-version

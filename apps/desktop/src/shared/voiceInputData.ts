@@ -28,7 +28,12 @@ export type VoiceInputSyncErrorResult = {
   message: string;
 };
 
-export type VoiceInputLanguage = 'auto' | SupportedLocale;
+/** 语音识别语言与应用界面语言保持同一套中英选项。 */
+export const VOICE_INPUT_LANGUAGE_CODES = [
+  'zh-CN',
+  'en',
+] as const satisfies readonly SupportedLocale[];
+export type VoiceInputLanguage = 'auto' | (typeof VOICE_INPUT_LANGUAGE_CODES)[number];
 export type VoiceInputDictionaryEntrySource = 'manual' | 'automatic';
 export type VoiceInputShortcutTrigger = 'keyboard' | 'modifier';
 export type VoiceInputModifierShortcutCode =
@@ -930,7 +935,10 @@ function legacyDictionarySyncOverride(value: unknown): boolean | undefined {
 
 function isVoiceInputLanguage(value: unknown): value is VoiceInputLanguage {
   if (value === 'auto') return true;
-  return typeof value === 'string' && (SUPPORTED_LOCALES as readonly string[]).includes(value);
+  return (
+    typeof value === 'string' &&
+    (VOICE_INPUT_LANGUAGE_CODES as readonly string[]).includes(value)
+  );
 }
 
 function hasMacNativeModifierGroup(keySet: ReadonlySet<string>, left: string, right: string): boolean {

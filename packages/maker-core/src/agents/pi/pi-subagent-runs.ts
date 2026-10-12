@@ -46,7 +46,9 @@ function containedParentSessionId(sessionId: string): string {
   if (!id || id === '.' || id === '..' || /[\\/\0]/.test(id)) {
     throw new Error('unsafe PI Subagent parent session id');
   }
-  return id;
+  // Windows treats "shared:<hash>" as an NTFS alternate data stream, so the
+  // directory and tombstone names must stay out of the colon namespace.
+  return id.replaceAll(':', '%3A');
 }
 
 export function piSubagentRunRoot(agentHome: string, sessionId: string): string {

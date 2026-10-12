@@ -257,14 +257,14 @@ describe("loginSkin 42s 重发倒计时纯函数(Step 3a 契约)", () => {
     expect(resendCountdownRemaining(first, now + 41_500)).toBe(1);
   });
 
-  it("模板渲染:{n} 占位替换,5 语 catalog resendCountdown 均带 {n}", () => {
+  it("模板渲染:{n} 占位替换,中英双语 catalog resendCountdown 均带 {n}", () => {
     expect(formatResendCountdown("{n} 秒后可重新发送", 42)).toBe(
       "42 秒后可重新发送",
     );
     expect(formatResendCountdown("Resend available in {n}s", 7)).toBe(
       "Resend available in 7s",
     );
-    for (const locale of ["zh-CN", "zh-TW", "en", "ja", "ko"] as const) {
+    for (const locale of ["zh-CN", "en"] as const) {
       const template = loginMessages[locale].resendCountdown;
       expect(template, locale).toContain("{n}");
       expect(formatResendCountdown(template, 42), locale).toContain("42");

@@ -40,14 +40,17 @@ export async function refreshLocalCatalogSnapshot(): Promise<boolean> {
       && isLocalCapabilitiesRefreshCurrent(capabilitiesGeneration);
     if (!isCurrent()) return false;
     const initialized = await migrateModelVisibilityDefaults(providers.dataOwnerId, providers.ownerGeneration, providers.providers, isCurrent);
-    // Failed persistence/locking must reach preload's retry loop. Waiting for another
-    // renderer's preference write must not publish a stale catalog either.
-    if (!initialized || !isCurrent()) return false;
+    if (!isCurrent()) return false;
+    if (!initialized) {
+      // 偏好迁移/落盘失败只影响可见性策略，不能阻断供应商目录提交。返回值仍保留
+      // false，让启动预热继续重试迁移，但当前目录可以立即结束页面 loading。
+      log.warn('model visibility initialization pending; publishing local catalog snapshot');
+    }
 
     // 两次提交均为同步通知；React 会把同一事件循环内的 hook 更新批处理到同一帧。
     commitLocalCapabilitiesSnapshot(capabilitiesGeneration, capabilities);
     commitProvidersSnapshot(providersGeneration, providers);
-    return true;
+    return initialized;
   } catch (error) {
     if (refreshGeneration === generation) {
       log.warn('local catalog snapshot refresh failed; keeping last valid snapshot', error);

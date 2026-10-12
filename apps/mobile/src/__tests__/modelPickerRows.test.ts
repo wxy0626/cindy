@@ -287,10 +287,6 @@ describe('compactEffortLabelFor —— 英文列表紧凑标签', () => {
 
       await i18n.changeLanguage('zh-CN');
       expect(compactEffortLabelFor({}, 'high', null)).toBe('高');
-      await i18n.changeLanguage('ja');
-      expect(compactEffortLabelFor({}, 'ultra', null)).toBe('究極');
-      await i18n.changeLanguage('ko');
-      expect(compactEffortLabelFor({}, 'medium', null)).toBe('보통');
     } finally {
       await i18n.changeLanguage(previousLanguage);
     }
@@ -305,9 +301,6 @@ describe('modelRowAccessibilityLabel —— 父行保留完整元信息', () => 
   it.each([
     ['en', 'Select Luna from OpenAI', 'Subscription', 'Reasoning effort Extra High', 'Fast Mode'],
     ['zh-CN', '选择来源 OpenAI 的模型 Luna', '订阅', '推理强度 超高', '快速模式'],
-    ['zh-TW', '選擇來源 OpenAI 的模型 Luna', '訂閱', '推理強度 超高', '快速模式'],
-    ['ja', 'OpenAI のモデル Luna を選択', 'サブスク', '推論強度 超高', '高速モード'],
-    ['ko', 'OpenAI의 모델 Luna 선택', '구독', '추론 강도 초고', '빠른 모드'],
   ])('在 %s 下把订阅、完整 effort 和 Fast 纳入行级名称', async (
     language,
     expectedBase,

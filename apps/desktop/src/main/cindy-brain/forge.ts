@@ -1564,10 +1564,8 @@ my-ghost/
 ├── assets/
 │   └── icon.png  ← 建议:插件图标(声明 icon 字段时必须存在;scaffold 会生成占位图,请替换成自己的)
 ├── locales/      ← 可选:宿主驱动的清单文案翻译(声明 locales 时英文必须存在)
-│   ├── en.json
 │   ├── zh-CN.json
-│   ├── ja.json
-│   └── ko.json
+│   └── en.json
 ├── node/
 │   └── worker.cjs ← 可选:随包 Node/stdio MCP 入口(声明 node 时必须,见 §4.12)
 ├── panel.html    ← 面板界面(声明了 panel.html 时必须)
@@ -1598,11 +1596,9 @@ my-ghost/
   "description": "一句话说清这段意识是干嘛的(给人看:插件详情页)",  // 1–${GHOST_MANIFEST_SUMMARY_MAX_CHARS} 字
   "whenToUse": "需要生成图片、插画、配图、修图、P 图、改图时找我",  // 1–${GHOST_MANIFEST_SUMMARY_MAX_CHARS} 字,给模型看:进 agent 会话的意识花名册,是"用户不点名时 AI 能不能想起你"的关键。写成场景枚举,可反复调优;花名册会折叠连续空白,异常数据会截断;缺省时花名册回落用 description
   "icon": "assets/icon.png",   // 建议:插件图标(包内相对路径;扩展名限 png/jpg/jpeg/webp/gif,不收 svg——svg 可携带脚本,虽经 <img> 渲染不执行,仍不给这个面)。不配则面板与消息身份头显示默认拼图占位符;官方插件仓惯例放 assets/icon.png
-  "locales": {                 // 可选:插件只跟随宿主语言;不支持/缺失语言固定回退 en
-    "en": "locales/en.json",
+  "locales": {                 // 可选:插件只跟随宿主语言;只支持 zh-CN / en
     "zh-CN": "locales/zh-CN.json",
-    "ja": "locales/ja.json",
-    "ko": "locales/ko.json"
+    "en": "locales/en.json"
   },
   "version": "1.0.0",
   "minCindyVersion": "1.2.3", // 示例；v3 必填:本插件实际依赖的首个 Cindy 正式版本(SemVer)
@@ -1678,9 +1674,8 @@ Desktop 信任来源已经完成的版本选择，不再按 \`minCindyVersion\` 
 ### 2.1 本地化资源(locales)
 
 插件语言**只跟随 Cindy 宿主当前语言**。不要读取 \`navigator.language\`、操作系统语言或
-浏览器偏好，也不要在插件内保存另一份语言选择。宿主当前支持
-\`zh-CN / en / ja / ko\`；插件没提供宿主当前语言时固定使用英文，因此只要声明
-\`locales\` 就必须提供 \`en\`。
+浏览器偏好，也不要在插件内保存另一份语言选择。宿主当前只支持 \`zh-CN / en\`；
+插件没提供宿主当前语言时先回退中文，再回退英文，因此只要声明 \`locales\` 就必须提供 \`en\`。
 
 locale JSON 覆盖清单中已有的可本地化字段。**翻译是可选项**：提供的条目必须合法，
 未提供的条目在运行时回退原 manifest 文案(通常是英文)；完整翻译(含每个工具参数
@@ -2512,12 +2507,12 @@ Host 不理解“画廊”或其它插件业务，也不会因为一次 \`media\
 ## 4.1 宿主公开上下文(request,无需额外能力声明)
 
 电子脑需要按宿主构建身份或当前语言选择公开配置/界面文案时,走只读 request。当前只暴露
-\`region: 'cn' | 'global'\` 与 \`locale: 'zh-CN' | 'en' | 'ja' | 'ko'\`,
+\`region: 'cn' | 'global'\` 与 \`locale: 'zh-CN' | 'en'\`,
 不含登录态、路径、设备信息或凭证:
 
 \`\`\`js
 const r = await cindy.request({ kind: 'app-context' });
-// → { ok:true, context:{ region:'cn'|'global', locale:'zh-CN'|'en'|'ja'|'ko' } }
+// → { ok:true, context:{ region:'cn'|'global', locale:'zh-CN'|'en' } }
 \`\`\`
 
 \`settingsHtml\` / panel 没有 preload 桥,读取同一份上下文走同源只读端点:
@@ -2538,8 +2533,7 @@ region 只适合选择**已在 manifest 声明过**的公开配置。例如 brok
 \`{ type:'host-context-changed', ok:true, context:{ region, locale } }\`，可用
 \`BroadcastChannel\` 通知同插件的设置页/panel 重新读取 \`/app-context\` 并换文案。
 未运行的插件会在下次启动或页面重新装载时直接读到新语言。插件协议之外的宿主语言
-(当前为 \`zh-TW\`)会在插件边界固定映射为 \`en\`，保证按旧四语契约编写的存量插件
-无需改代码；插件自身不支持该 locale 时也必须选英文资源。
+会在插件边界固定映射为 \`zh-CN\`；插件自身不支持当前 locale 时也必须按中文、英文顺序回退。
 
 ## 4.2 Agent 在途网络与 workdir 操作
 
@@ -4345,8 +4339,8 @@ const opened = await cindy.iosSimulator.request({
 在 v3 ghost.json 顶层添加 \`recommendations\` 数组，每条包含稳定 \`id\`、短标题
 \`label\` 和完整 \`prompt\`。最多 24 条，id 为 1–64 位小写字母、数字或连字符，
 label 为 1–120 字符，prompt 为 1–8000 字符；整份列表 UTF-8 不超过 64 KiB。
-可选 \`locales\` 按 en / zh-CN / zh-TW / ja / ko 提供 \`{label,prompt}\`，
-缺当前语言时使用 en，再回退条目自身。不要放秘密或其它账号的内容。
+可选 \`locales\` 按 zh-CN / en 提供 \`{label,prompt}\`，缺当前语言时使用 en，
+再回退条目自身。不要放秘密或其它账号的内容。
 宿主在生成首页候选时校验此列表，不合格的列表不展示，但不影响插件安装、批准和运行。
 v2 清单继续忽略此扩展字段；运行时更新始终严格校验，不合格的更新不会替换原列表。
 
@@ -4557,8 +4551,8 @@ Cindy 统一归类、随机选择与排序，同批每个场景和每个插件�
 插件市场)。要提交到该仓的插件,除本手册的打包/装入
 校验外还有仓级 CI 硬门禁,过不了整次发布被拦:
 
-- **四语言 locale 缺一不可**:\`locales\` 必须**恰好**包含 \`zh-CN\` / \`en\` / \`ja\` /
-  \`ko\` 四份,且每份都完整覆盖 \`name\` / \`description\` / \`whenToUse\` 与**全部**
+- **中英双语 locale 缺一不可**:\`locales\` 必须**恰好**包含 \`zh-CN\` / \`en\` 两份,
+  且每份都完整覆盖 \`name\` / \`description\` / \`whenToUse\` 与**全部**
   \`tools[].description\`(工具键集合与清单逐一对齐)。注意这比 §2.1 的本地门槛
   (「声明 locales 时英文必须存在、翻译可部分提供」)严格得多;
 - **图标**:惯例统一放 \`assets/icon.png\` 并在清单声明 \`icon\` 字段,不要散落在

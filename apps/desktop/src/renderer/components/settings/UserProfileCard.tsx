@@ -77,7 +77,7 @@ export function UserProfileCard() {
         )}
       >
         {/* 未登录态没有身份可展示:用中性人形图标,不取文案首字(会渲染成「未」/「N」
-            这类无意义字符,且四语各不相同)。 */}
+            这类无意义字符,且中英各不相同)。 */}
         <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full border border-[var(--settings-profile-card-border)] bg-[var(--settings-profile-avatar-bg)] text-[var(--settings-profile-avatar-text)]">
           <UserRound aria-hidden="true" size={22} strokeWidth={1.75} />
         </div>

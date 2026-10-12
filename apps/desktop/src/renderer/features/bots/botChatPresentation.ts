@@ -1,3 +1,5 @@
+import type { BotChatIdentity } from './BotSessionContentHeader';
+
 /**
  * Pure presentation rules for a teammate's chat, kept out of the 5k-line session
  * view so they are cheap to test.
@@ -20,4 +22,18 @@ export function botComposerPlaceholderKey(name: string): string {
   return isLatinBotName(name)
     ? 'bots.chat.composerPlaceholderLatin'
     : 'bots.chat.composerPlaceholder';
+}
+
+/** 路由 gate 在确认伙伴与会话归属后提供的稳定身份绑定。 */
+export type BotChatBinding = BotChatIdentity & { sessionId: string };
+
+/**
+ * 运行时会话快照可能在首帧或重连期间暂时为空，但伙伴归属不会因此改变。
+ * 只有绑定到当前 session 的身份才能驱动伙伴皮肤，避免普通任务与伙伴布局来回切换。
+ */
+export function resolveBotChatIdentity(
+  binding: BotChatBinding | undefined,
+  sessionId: string | undefined,
+): BotChatIdentity | null {
+  return binding && binding.sessionId === sessionId ? binding : null;
 }

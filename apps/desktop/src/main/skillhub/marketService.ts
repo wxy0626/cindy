@@ -69,7 +69,7 @@ export interface UpdatePublishedFields {
   summary?: string;
   description?: string;
   tags?: string[];
-  contentLocale?: 'zh-CN' | 'zh-TW' | 'en' | 'ja' | 'ko';
+  contentLocale?: 'zh-CN' | 'en';
   visibility?: 'private' | 'shared' | 'public';
   /** 归属统一参数:团队 slug / od- 部门 id;null = 收回到个人 */
   teamSlug?: string | null;

@@ -1,4 +1,10 @@
-import { activeOwnerScopeKey, ownerScopedUserDataPath } from '../appSessionState.js';
+import { activeOwnerScopeKey } from '../appSessionState.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  machineSharedLegacyFileCandidates,
+  machineSharedUserDataPath,
+} from '../machineSharedStorage.js';
 import { desktopMakerLogger } from './logger-adapter.js';
 import { createOverrideSettingsFile } from './override-settings-file.js';
 
@@ -20,9 +26,10 @@ function normalizePresentation(raw: unknown): ProviderPresentation {
   };
 }
 const log = desktopMakerLogger.child('provider-presentation');
+let legacySeedChecked = false;
 const store = createOverrideSettingsFile<PresentationFile>({
   // Preserve the original OpenAI preferences without a migration or duplicate source of truth.
-  filePath: () => ownerScopedUserDataPath('local-codex-provider-prefs.json'),
+  filePath: () => machineSharedUserDataPath('local-codex-provider-prefs.json'),
   scopeKey: activeOwnerScopeKey,
   defaults: {},
   normalize: (raw) => {
@@ -41,7 +48,24 @@ const store = createOverrideSettingsFile<PresentationFile>({
   log,
   label: 'provider-presentation',
 });
+
+function seedLegacyProviderPresentation(): void {
+  if (legacySeedChecked) return;
+  legacySeedChecked = true;
+  const target = machineSharedUserDataPath('local-codex-provider-prefs.json');
+  if (fs.existsSync(target)) return;
+  const source = machineSharedLegacyFileCandidates('local-codex-provider-prefs.json')[0];
+  if (!source) return;
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(source, target);
+  } catch (error) {
+    log.warn('failed to seed legacy provider presentation', { source, error: String(error) });
+  }
+}
+
 export function readProviderPresentation(providerId: string): ProviderPresentation {
+  seedLegacyProviderPresentation();
   store.invalidateIfChanged();
   const { name, removed, providers } = store.read();
   return providerId === 'openai'

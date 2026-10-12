@@ -3254,7 +3254,7 @@ async function openLoopbackBrowserAuthorization(
   return new Promise((resolve) => {
     let settled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
-    // 回调页语言跟随 app 当前 UI 语言(main 迷你 i18n 复用 renderer 五语文案,
+    // 回调页语言跟随 app 当前 UI 语言(main 迷你 i18n 复用 renderer 中英文案,
     // {{appName}} 由 t() 注入品牌名);成功 / 失败分别渲染,失败附原始错误码。
     // 抽成局部渲染器供真实 HTTP 回调与 dev bridge 触发路径共用(同一 HTML)。
     const renderCallbackPage = (result: { code: string } | { error: string }): string => {

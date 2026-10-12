@@ -21,7 +21,7 @@ import {
 
 import { SELECTION_CONTEXT_MENU_ADD_TO_CHAT_CHANNEL } from '../shared/selectionContextMenu.js';
 import {
-  resolvePreferredSystemLocale,
+  DEFAULT_LOCALE,
   resolveSystemLocale,
   type SupportedLocale,
 } from '../shared/locale.js';
@@ -59,7 +59,7 @@ function compactSelectionLabel(text: string): string {
     : compact;
 }
 
-/** 宽松 locale 串（'en-US'、'zh-TW' 等）落到 catalog 支持的四种语言。 */
+/** 宽松 locale 串（'en-US'、'zh-CN' 等）落到双语 catalog。 */
 function editableMenuLabels(locale: string): EditableContextMenuLabels {
   return EDITABLE_CONTEXT_MENU_LABELS[resolveSystemLocale(locale)];
 }
@@ -73,24 +73,15 @@ function localizedActionLabel(
   const resolvedLocale = resolveSystemLocale(locale);
   if (action === 'addToChat') {
     if (resolvedLocale === 'zh-CN') return '添加到对话';
-    if (resolvedLocale === 'zh-TW') return '新增到對話';
-    if (resolvedLocale === 'ja') return 'チャットに追加';
-    if (resolvedLocale === 'ko') return '대화에 추가';
     return 'Add to chat';
   }
   // Copy 是两套菜单共用的同一条命令,标签只保留 catalog 一处正本。
   if (action === 'copy') return editableMenuLabels(locale).copy;
   if (action === 'lookUp') {
     if (resolvedLocale === 'zh-CN') return `查询“${preview}”`;
-    if (resolvedLocale === 'zh-TW') return `查詢「${preview}」`;
-    if (resolvedLocale === 'ja') return `「${preview}」を調べる`;
-    if (resolvedLocale === 'ko') return `“${preview}” 찾아보기`;
     return `Look Up “${preview}”`;
   }
   if (resolvedLocale === 'zh-CN') return `在网页中搜索“${preview}”`;
-  if (resolvedLocale === 'zh-TW') return `在網頁中搜尋「${preview}」`;
-  if (resolvedLocale === 'ja') return `「${preview}」をウェブで検索`;
-  if (resolvedLocale === 'ko') return `웹에서 “${preview}” 검색`;
   return `Search the web for “${preview}”`;
 }
 
@@ -205,8 +196,7 @@ export function setSelectionContextMenuLocale(locale: SupportedLocale): void {
 
 function getSelectionContextMenuLocale(): SupportedLocale {
   if (currentLocale) return currentLocale;
-  const preferred = app.getPreferredSystemLanguages();
-  return resolvePreferredSystemLocale(preferred.length > 0 ? preferred : [app.getLocale()]);
+  return DEFAULT_LOCALE;
 }
 
 /** Ask the invoking renderer frame whether its selection belongs to chat/file quote UI. */

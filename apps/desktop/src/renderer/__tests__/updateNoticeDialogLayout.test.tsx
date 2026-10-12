@@ -14,7 +14,7 @@
  *   4. a version that is merely queued (idle) does not claim to be loading.
  */
 
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import '@/i18n';
@@ -155,6 +155,21 @@ describe('UpdateNoticeDialog 单栏版式', () => {
     expect(screen.getAllByText('v0.1.21')).toHaveLength(2);
     // 标题栏右侧不再显示版本计数。
     expect(screen.queryByText(i18n.t('update.notice.versionsSpan', { count: 1 }))).toBeNull();
+  });
+
+  it('底部左侧提供 GitHub Releases 外链', () => {
+    const openExternal = vi.fn().mockResolvedValue({ success: true });
+    vi.stubGlobal('electronAPI', { openExternal });
+    renderDialog([topicNotes('0.1.21', ['Kafeifei'])]);
+
+    const button = screen.getByRole('button', {
+      name: i18n.t('update.notice.viewGitHubReleases'),
+    });
+    expect(button.className).toContain('col-start-1');
+    expect(button.className).toContain('justify-self-start');
+
+    fireEvent.click(button);
+    expect(openExternal).toHaveBeenCalledWith('https://github.com/makecindy/cindy/releases');
   });
 
   it('手动历史在切换语言后原地刷新所有已加载版本,不重置滚动位置', async () => {

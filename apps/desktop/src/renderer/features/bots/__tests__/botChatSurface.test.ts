@@ -4,7 +4,7 @@
  * 这三处判定都长在超大组件里(CCAgentSessionView 5k 行 / MessageStream 5.8k 行 /
  * ChatInput 8k 行),在 jsdom 里整棵挂起来既慢又脆。真正要锁死的是**判定条件本身**:
  * 头像与收控件只能对 Bot 会话生效,普通任务的渲染必须一字不改。所以这里锁源码契约,
- * 纯逻辑部分(占位符选词、欢迎语幂等)另有真实单测。
+ * 归属与状态稳定性由 botChatPresentation 的行为测试覆盖。
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -20,10 +20,8 @@ const chatInput = read('components/new-chat/ChatInput.tsx');
 const botSettings = read('features/bots/BotsHomeView.tsx');
 
 describe('Bot 对话的判定条件', () => {
-  it('「这是跟伙伴的对话」需要路由身份与 session.source 同时成立', () => {
-    // URL 只是导航投影。少了 source 这一半,任何 /bots/... 链接都能把普通任务
-    // 伪装成伙伴对话。
-    expect(sessionView).toContain("botIdentity && session?.source === 'bot' ? botIdentity : null");
+  it('伙伴皮肤绑定当前会话,不随异步快照来回切换', () => {
+    expect(sessionView).toContain('resolveBotChatIdentity(botIdentity, sessionId)');
   });
 
   it('气泡头像只在 Bot 对话下传给消息流', () => {

@@ -8,7 +8,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch';
 import { Tip } from '@/components/ui/tooltip';
 import { useAuth } from '@/contexts/AuthContext';
-import { SUPPORTED_LOCALES } from '@/i18n';
 import { createLogger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 import { extractIpcError } from '@/utils/ipcError';
@@ -16,6 +15,7 @@ import { dictionaryTermKey } from '@cindy/voice-input-core';
 import {
   MAX_VOICE_INPUT_REFINEMENT_INSTRUCTIONS_CHARS,
   MAX_VOICE_INPUT_DICTIONARY_CSV_BYTES,
+  VOICE_INPUT_LANGUAGE_CODES,
   getVoiceInputSettings,
   mergeVoiceInputDictionaryCsvTerms,
   normalizeVoiceInputDictionaryEntryText,
@@ -73,7 +73,10 @@ import {
 import type { VoiceInputConnectionTestFailureReason } from '../../../shared/voiceInputConnectionTest';
 
 const log = createLogger('VoiceInputSection');
-const LANGUAGE_OPTIONS: ReadonlyArray<VoiceInputLanguage> = ['auto', ...SUPPORTED_LOCALES];
+const LANGUAGE_OPTIONS: ReadonlyArray<VoiceInputLanguage> = [
+  'auto',
+  ...VOICE_INPUT_LANGUAGE_CODES,
+];
 const AUTO_MICROPHONE_VALUE = '__auto__';
 const DICTIONARY_FILTERS = ['all', 'automatic', 'manual'] as const;
 
@@ -1725,7 +1728,7 @@ export function VoiceInputSection() {
         label:
           language === 'auto'
             ? t('settings.voiceInput.language.options.auto')
-            : t(`settings.language.options.${language}`),
+            : t(`settings.voiceInput.language.options.${language}`),
         description: t(`settings.voiceInput.language.optionDescriptions.${language}`),
       })),
     [t],

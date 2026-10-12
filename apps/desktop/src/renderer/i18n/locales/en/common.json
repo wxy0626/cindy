@@ -191,6 +191,7 @@
       "import": "Session Import",
       "connections": "Third-Party Platforms",
       "providers": "Providers",
+      "decisionModel": "Decision model",
       "remoteControl": "Remote Connection",
       "tina": "Tina",
       "remote": "Remote machines",
@@ -242,7 +243,24 @@
       "windowBehavior": "App Behavior",
       "shortcuts": "Keyboard Shortcuts",
       "mcpServers": "Custom MCP",
-      "bots": "Teammates"
+      "bots": "Teammates",
+      "decisionModel": "Decision model"
+    },
+    "decisionModel": {
+      "title": "Decision model",
+      "description": "Use local Laya to recommend Codex, Claude Code, or Pi before a new task starts. The Agent will not switch after the task is created.",
+      "enabled": "Auto-select Agent for new tasks",
+      "enabledHint": "Run once before the first ordinary message of a local new task.",
+      "endpoint": "Laya endpoint",
+      "endpointHint": "Uses the local /predict endpoint by default.",
+      "confidence": "Minimum confidence",
+      "confidenceHint": "Keep your current Agent when the probability is below this value.",
+      "scope": "If the service is unavailable or uncertain, the current selection is kept.",
+      "testConnection": "Test connection",
+      "testing": "Testing…",
+      "connected": "Laya is reachable",
+      "connectionFailed": "Cannot connect to Laya",
+      "invalidEndpoint": "The Laya endpoint is invalid"
     },
     "remote": {
       "title": "Remote machines",
@@ -754,12 +772,8 @@
       "hint": "Affects the app UI only. Agent replies follow the agent's own language settings.",
       "ariaLabel": "Display language selection",
       "options": {
-        "system": "Auto (follow system)",
         "zh-CN": "简体中文",
-        "zh-TW": "Traditional Chinese",
-        "en": "English",
-        "ja": "日本語",
-        "ko": "한국어"
+        "en": "English"
       }
     },
     "userProfile": {
@@ -1164,15 +1178,14 @@
         "hint": "Auto detects the spoken language. Choose one to reduce multilingual mix-ups.",
         "ariaLabel": "Language selection",
         "options": {
-          "auto": "Auto"
+          "auto": "Auto",
+          "zh-CN": "简体中文",
+          "en": "English"
         },
         "optionDescriptions": {
           "auto": "Let the recognition service detect it",
           "zh-CN": "Simplified Chinese (Mainland China)",
-          "zh-TW": "Traditional Chinese (Taiwan)",
-          "en": "English",
-          "ja": "Japanese",
-          "ko": "Korean"
+          "en": "English"
         }
       },
       "shortcut": {
@@ -1741,7 +1754,7 @@
           "selectAll": "Select all",
           "clearAll": "Clear",
           "empty": "No matching models",
-          "confirm": "Add selected models ({{count}})"
+          "confirm": "Add selected models ({{count}}, 0 clears)"
         },
         "authMode": {
           "label": "Authentication",
@@ -1827,7 +1840,7 @@
           "nothingToFill": "Fill in reusable fields for the current runtime first",
           "alreadySame": "The fillable fields already match in the other runtimes",
           "loadingKeys": "Wait for saved API keys to finish loading before filling other runtimes",
-          "keysUnavailable": "Saved API keys could not be loaded, so filling other runtimes is unavailable",
+          "keysUnavailable": "Saved API keys could not be loaded. Re-enter the current runtime key and try again",
           "modelsBusy": "Finish fetching or selecting models before filling other runtimes",
           "noCompatibleFields": "The other runtimes do not support the reusable fields in the current runtime",
           "filledToast": "Filled {{targets}}; each runtime remains independent"
@@ -7107,6 +7120,7 @@
       "bugFixes": "Bug Fixes",
       "thanksTo": "Thanks to",
       "gotIt": "Got it",
+      "viewGitHubReleases": "View GitHub Releases",
       "ariaDescription": "Release notes for version {{version}}",
       "ariaDescriptionSpan": "Release notes for {{count}} versions since v{{from}}",
       "versionsSpan": "{{count}} versions",
@@ -8082,6 +8096,9 @@
       "defaultPlaceholder": "What shall we work on today~",
       "createAgentPlaceholder": "Hi {{appName}}!",
       "recommendationShortcut": "Tab",
+      "decisionSettings": "Decision settings",
+      "decisionSettingsHint": "Open decision model settings",
+      "decisionSettingsOpen": "Open full settings",
       "voiceInput": {
         "start": "Start voice input",
         "stop": "Stop voice input",
@@ -9406,6 +9423,7 @@
     },
     "draft": {
       "createSessionFailed": "Failed to create session, please retry",
+      "decisionModelSelected": "Laya selected {{agent}} ({{probability}}%); this task will keep using that Agent",
       "piRemoteUnsupported": "Pi runs locally only and can't use SSH remote hosts. Switch to Claude or Codex to use this host.",
       "localWorktreeCleanupPending": "The previous local worktree session is still awaiting cleanup. Try again after cleanup finishes.",
       "remoteWorktreeCleanupPending": "The previous remote worktree is still awaiting cleanup. Reconnect the device and try again.",

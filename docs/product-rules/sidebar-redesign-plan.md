@@ -114,13 +114,10 @@
 | 任务信息 | 固定只显示时间 | 只显示时间 | 无变化 |
 | 按设备分组 | 无此功能 | 开 | **老新一致**(用户裁决:分组不分老新) |
 | 对话归为一组 | 对话是固定独立段 | 开 | **老新一致**(同上) |
-| 显示模式 | 整侧栏一份 `sidebar.cardMode`,默认文字版 | 列表版 | **按安装新旧分叉**:老装文字版,新装列表版 |
+| 显示模式 | 整侧栏一份 `sidebar.cardMode`,默认文字版 | 文字版 | **老新一致**:文字版 |
 
-显示模式是唯一分叉项。判定顺序:显式设过主列表模式 → 从 `cardMode` 迁移
-(text→文字,card/list→列表)→ 都没有时看安装新旧。最后一档解决「从没动过显示
-模式的老用户」——他们 `cardMode` 为空,与全新安装在 localStorage 上无法直接区分,
-由 `sidebarInstallVintage` 按一组**旧版使用痕迹**(打开过会话、折叠过分组、置顶
-拖拽等 key)判定,并把结论一次性固化,避免新用户用一阵后默认值悄悄漂移。
+显示模式判定顺序:显式设过主列表模式 → 从 `cardMode` 迁移
+(text→文字,card/list→列表)→ 都没有时统一使用文字版。新老安装不再分叉。
 
 对话段的形态变化(固定独立段 → 混排/可归组)靠配置回不去:旧的 `DialogueSection`
 固定段与 `DateGroupedSessionsSection` 已删除,这是本次重设计的核心,不提供回退。
@@ -213,7 +210,7 @@
 
 ### 3.4 显示 —— 主列表形态 + 任务信息
 
-- **文字版 / 列表版** 二选一,默认**列表版**(定稿)。卡片版仅置顶区支持。
+- **文字版 / 列表版** 二选一,默认**文字版**。卡片版仅置顶区支持。
 - **任务信息**(一行入口,二级复选菜单):决定任务行标题右侧显示哪些信息,
   **顺序 = 用户勾选先后**(2026-08-12 用户裁决,推翻原「固定 PR · token · 费用 ·
   时间」),以「·」分隔——先勾时间再勾费用就显示「时间 · 费用」,反过来即相反。
@@ -264,7 +261,7 @@ More/Archive,复用 `TimeActionsSlot`),行 2 = 固定 1 行预览;整行恒两�
 | 期 | 内容 | 关键改动点 | 状态 |
 |---|---|---|---|
 | A | 整理菜单重构 | `SidebarFilterPopover.tsx`:筛选收一行二级、砍 alphabetic、加任务信息段 | ✅ |
-| B | 显示模式拆分 | `useSidebarCardMode` 拆成置顶(text/card/list)与主列表(text/list,默认 list);旧值迁移:text→text,card/list→list(纯读取推导,不回写) | ✅ |
+| B | 显示模式拆分 | `useSidebarCardMode` 拆成置顶(text/card/list)与主列表(text/list,默认 text);旧值迁移:text→text,card/list→list(纯读取推导,不回写) | ✅ |
 | C | 任务信息:时间/token/费用 | 新组件 `SessionInfoMeta` + `useTaskInfoFields` 共享状态;数据读 sessions 表,无数据不显示(远程会话自然留空,§9.6) | ✅ |
 | C' | 任务信息:PR 状态 | `#号` 徽标复用 `PR_STATUS_COLOR` 与 `fetchStatusesForSession`(徽标挂载才查,等价可见行);DESIGN.md §2 已登记消费场景 | ✅ |
 | D | 混排列表模型 | 新纯函数模型 `mainListModel.ts`(单测覆盖);砍 date 分组段;Dialogue 固定段 → 「对话归为一组」开关;优先级排序 | ✅ |

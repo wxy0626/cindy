@@ -602,7 +602,7 @@ async function runGhostOauthFlow(
     };
     const corsAllowlist = ghostCallbackCorsAllowlist(config);
     server.on('request', (req, res) => {
-      // 页面语言按浏览器 Accept-Language 就近命中(zh/ja/ko, 缺省英文)
+      // 页面语言按浏览器 Accept-Language 只命中中英(缺省中文)
       const lang = pickOAuthResultPageLang(
         typeof req.headers['accept-language'] === 'string'
           ? req.headers['accept-language']

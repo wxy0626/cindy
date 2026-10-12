@@ -5,7 +5,7 @@ export interface GhostRecommendation {
   prompt: string;
   locales?: Partial<
     Record<
-      "en" | "zh-CN" | "zh-TW" | "ja" | "ko",
+      "zh-CN" | "en",
       { label: string; prompt: string }
     >
   >;
@@ -51,7 +51,7 @@ export function validateGhostRecommendations(
       if (!object(raw.locales)) return fail;
       for (const [locale, entry] of Object.entries(raw.locales)) {
         if (
-          !["en", "zh-CN", "zh-TW", "ja", "ko"].includes(locale) ||
+          !["zh-CN", "en"].includes(locale) ||
           !object(entry) ||
           Object.keys(entry).some((k) => k !== "label" && k !== "prompt") ||
           !text(entry.label, 120) ||

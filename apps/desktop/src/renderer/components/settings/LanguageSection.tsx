@@ -10,14 +10,10 @@ import * as Select from '@radix-ui/react-select';
 
 import { cn } from '@/lib/utils';
 import { useLocale } from '@/hooks/useLocale';
-import type { LocalePreference } from '@/i18n';
+import { SUPPORTED_LOCALES, type LocalePreference } from '@/i18n';
 
-// 「跟随系统」优先,英语作为第一个显式语言,其余语言按支持列表顺序排列。
-const LANGUAGE_OPTIONS: ReadonlyArray<LocalePreference> = [
-  'system',
-  'zh-CN',
-  'en',
-];
+// 设置页只提供中文和 English。
+const LANGUAGE_OPTIONS: ReadonlyArray<LocalePreference> = SUPPORTED_LOCALES;
 
 export function LanguageSection() {
   const { t } = useTranslation();
@@ -48,7 +44,10 @@ export function LanguageSection() {
           </p>
         </div>
 
-        <Select.Root value={locale} onValueChange={(value) => setLocale(value as LocalePreference)}>
+        <Select.Root
+          value={locale}
+          onValueChange={(value) => setLocale(value as LocalePreference)}
+        >
           <Select.Trigger
             aria-label={t('settings.language.ariaLabel')}
             className={cn(

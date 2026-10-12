@@ -53,14 +53,9 @@ describe('assessGhostHostSetupRequirements', () => {
   it.each([
     ['zh-CN', 'AI 模型服务', '使用插件声明的图片或视频能力前，需要先连接可用的模型服务'],
     [
-      'ja',
-      'AIモデルサービス',
-      'プラグインが宣言した画像または動画機能を使用する前に、利用可能なモデルサービスへ接続してください。',
-    ],
-    [
-      'ko',
-      'AI 모델 서비스',
-      '플러그인에서 선언한 이미지 또는 동영상 기능을 사용하기 전에 사용 가능한 모델 서비스에 연결하세요.',
+      'en',
+      'AI Model Service',
+      'Connect an available model service before using the image or video capabilities declared by this plugin.',
     ],
   ] as const)('localizes Host-owned capability copy for %s', (locale, label, description) => {
     setMainLocale(locale);

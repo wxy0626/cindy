@@ -317,7 +317,7 @@ describe('interactionModel', () => {
   it('keeps every plugin setup phase, error code and action kind translated in all locales', async () => {
     const previous = i18n.language;
     try {
-      for (const locale of ['zh-CN', 'zh-TW', 'en', 'ja', 'ko']) {
+      for (const locale of ['zh-CN', 'en']) {
         await i18n.changeLanguage(locale);
         for (const phase of REMOTE_PLUGIN_SETUP_PHASES) {
           const key = `interaction.pluginSetup.phase.${phase}`;
@@ -355,7 +355,7 @@ describe('interactionModel', () => {
     const interactionPanelSource = readFileSync(resolve(process.cwd(), 'src/session/InteractionPanel.tsx'), 'utf8');
 
     // 共享层的 title / label 是中文直出;控制端必须按 locale 翻译后再渲染,否则
-    // 队列头在 en / ja / ko 下仍是中文。
+    // 队列头在 en 下仍是中文。
     // kind 来自远端、可为任意字符串:必须先经白名单归一再拼 i18next key,
     // 否则带 `.` / `__proto__` 的值会参与路径解析。
     expect(interactionPanelSource).toContain('interaction.kinds.${localizedInteractionKindKey(itemKind)}.${field}');
@@ -367,7 +367,7 @@ describe('interactionModel', () => {
     expect(interactionPanelSource).toContain("t('interaction.panel.queuePositionCurrent')");
     expect(interactionPanelSource).toContain("t('interaction.panel.queuePositionNth', { index: index + 1 })");
 
-    for (const lang of ['zh-CN', 'zh-TW', 'en', 'ja', 'ko']) {
+    for (const lang of ['zh-CN', 'en']) {
       const bundle = JSON.parse(readFileSync(resolve(process.cwd(), `src/i18n/locales/${lang}/interaction.json`), 'utf8'));
       for (const kind of ['permission', 'ask_user_question', 'plan_review', 'issue_confirm', 'plugin_setup', 'fallback']) {
         expect(bundle.kinds?.[kind]?.title, `${lang}/${kind}.title`).toBeTruthy();
@@ -744,7 +744,7 @@ describe('interactionModel', () => {
   it('translates the collapse affordances in every locale', async () => {
     const previous = i18n.language;
     try {
-      for (const locale of ['zh-CN', 'zh-TW', 'en', 'ja', 'ko']) {
+      for (const locale of ['zh-CN', 'en']) {
         await i18n.changeLanguage(locale);
         for (const key of [
           'interaction.panel.collapse',
@@ -760,7 +760,7 @@ describe('interactionModel', () => {
       await i18n.changeLanguage(previous);
     }
 
-    for (const lang of ['zh-CN', 'zh-TW', 'en', 'ja', 'ko']) {
+    for (const lang of ['zh-CN', 'en']) {
       const bundle = JSON.parse(readFileSync(resolve(process.cwd(), `src/i18n/locales/${lang}/interaction.json`), 'utf8'));
       expect(bundle.panel?.expandPendingCard, `${lang}/panel.expandPendingCard`).toContain('{{title}}');
       // 旧的问题卡专属文案随卡内收起一起下线,不留悬空 key。

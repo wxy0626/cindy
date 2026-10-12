@@ -112,8 +112,8 @@ describe("consent 双态色板(figma wave5 SVG 源码核对值,与桌面 --login
   });
 });
 
-describe("consent 文案(5 语 catalog 全给标记链接段)", () => {
-  it.each(["zh-CN", "zh-TW", "en", "ja", "ko"] as const)(
+describe("consent 文案(中英双语 catalog 全给标记链接段)", () => {
+  it.each(["zh-CN", "en"] as const)(
     "%s:statement 与 body 均含 terms/privacy 标记",
     (locale) => {
       const messages = loginMessages[locale];
@@ -131,7 +131,7 @@ describe("consent 文案(5 语 catalog 全给标记链接段)", () => {
   // parser 对坏标记 fail-open(嵌套/未闭合时原样显示)——法律文案不许依赖这种降级,
   // 全部 catalog 必须过严校验:恰一 terms + 恰一 privacy,链接文本非空,
   // 纯文本段无残留尖括号(codex 审查 P2:翻译误改标记时在 CI 就地拦截)
-  it.each(["zh-CN", "zh-TW", "en", "ja", "ko"] as const)(
+  it.each(["zh-CN", "en"] as const)(
     "%s:catalog 过 parser 严校验",
     (locale) => {
       const messages = loginMessages[locale];
@@ -261,7 +261,7 @@ describe("consent radio 无障碍(codex P1 双修:读屏标签 + 44pt 触摸区)
     expect(controlsSource).toContain('accessibilityRole="checkbox"');
     expect(controlsSource).toContain("accessibilityState={{ checked }}");
     // 剥标记结果对全部 catalog 均为非空、无残留标记的完整句子
-    for (const locale of ["zh-CN", "zh-TW", "en", "ja", "ko"] as const) {
+    for (const locale of ["zh-CN", "en"] as const) {
       const label = parseLegalSegments(loginMessages[locale].consentStatement)
         .map((segment) => segment.text)
         .join("");

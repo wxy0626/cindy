@@ -81,8 +81,13 @@ function BotHistorySessionGateView() {
       </main>
     );
   }
-  if (!allowed || !sessionId) {
+  if (!allowed || !botId || !sessionId) {
     return <Navigate to={botId ? `/bots/${botId}?settings=1` : '/bots'} replace />;
   }
-  return <CCAgentSessionView readOnly {...(identity ? { botIdentity: identity } : {})} />;
+  return (
+    <CCAgentSessionView
+      readOnly
+      botIdentity={{ ...(identity ?? { id: botId, name: '' }), sessionId }}
+    />
+  );
 }

@@ -29,7 +29,7 @@ describe('prompt recommendation shortcut badge', () => {
 
   it('uses the complete locale catalog for the visible key label', () => {
     expect(chatInputSource).toContain("t('newChat.chatInput.recommendationShortcut')");
-    for (const locale of ['en', 'ja', 'ko', 'zh-CN', 'zh-TW']) {
+    for (const locale of ['zh-CN', 'en']) {
       const catalog = JSON.parse(
         readFileSync(resolve(rendererRoot, 'i18n', 'locales', locale, 'common.json'), 'utf8'),
       ) as { newChat?: { chatInput?: { recommendationShortcut?: string } } };

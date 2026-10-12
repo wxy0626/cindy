@@ -157,10 +157,14 @@ export function identifyDesktopProcesses(processes, worktrees) {
   const byPid = new Map(processes.map((item) => [item.pid, item]));
   const result = [];
   for (const worktree of worktrees) {
-    const electronRoot = path.join(worktree.rootDir, 'node_modules', 'electron');
+    // 开发环境可能使用 .xdt-electron-native 缓存中的 Electron，不只检查标准 electron 目录。
+    const electronRoots = [
+      path.join(worktree.rootDir, 'node_modules', 'electron'),
+      path.join(worktree.rootDir, 'node_modules', '.xdt-electron-native'),
+    ];
     for (const proc of processes) {
       if (
-        !commandContainsPath(proc.command, electronRoot) ||
+        !electronRoots.some((electronRoot) => commandContainsPath(proc.command, electronRoot)) ||
         proc.command.includes('--type=') ||
         proc.command.includes('crashpad_handler')
       ) continue;
@@ -214,6 +218,16 @@ function isProcessAlive(pid) {
   }
 }
 
+/** 校验 pid 当前进程镜像是否为 Electron 主程序,过滤 Windows PID 重用造成的"伪装活"记录。 */
+function isElectronProcessAlive(pid) {
+  if (!isProcessAlive(pid)) return false;
+  if (process.platform !== 'win32') return true;
+  const result = run('tasklist', ['/FI', `PID eq ${pid}`, '/NH', '/FO', 'CSV']);
+  if (result.status !== 0 || !result.stdout?.trim()) return false;
+  const firstCell = String(result.stdout.trim().split(/\r?\n/)[0] || '').split(',')[0] ?? '';
+  return firstCell.replaceAll('"', '').trim().toLowerCase() === 'electron.exe';
+}
+
 function readJson(filePath) {
   try {
     const value = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -241,7 +255,8 @@ function readInstanceRecords(userDataDirs, worktrees) {
         record?.schemaVersion !== 1 ||
         !Number.isInteger(record.pid) ||
         !['starting', 'ready', 'failed'].includes(record.state) ||
-        !isProcessAlive(record.pid)
+        // 除基本探活外,还确认镜像名是 electron.exe,避免 PID 被无关进程重用后误判为活实例。
+        !isElectronProcessAlive(record.pid)
       ) {
         continue;
       }

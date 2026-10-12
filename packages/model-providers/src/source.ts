@@ -289,8 +289,7 @@ function backfillPresetMetadata(
   bundled: ProviderPreset,
   allowLegacyPiBackfill: boolean,
 ): ProviderPreset {
-  let changed =
-    primary.nameZhTW === undefined && bundled.nameZhTW !== undefined;
+  let changed = false;
   const runtimes: ProviderPreset["runtimes"] = { ...primary.runtimes };
   for (const [agent, runtime] of Object.entries(primary.runtimes) as [
     AgentKind,
@@ -329,15 +328,7 @@ function backfillPresetMetadata(
     runtimes.pi = bundled.runtimes.pi;
     changed = true;
   }
-  return changed
-    ? {
-        ...primary,
-        ...(primary.nameZhTW === undefined && bundled.nameZhTW !== undefined
-          ? { nameZhTW: bundled.nameZhTW }
-          : {}),
-        runtimes,
-      }
-    : primary;
+  return changed ? { ...primary, runtimes } : primary;
 }
 
 /**

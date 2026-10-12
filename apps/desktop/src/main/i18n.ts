@@ -3,8 +3,8 @@
  *
  * Used for dialogs that fire before any renderer window exists (e.g. the
  * macOS App Translocation prompt at app-ready). The renderer's localStorage
- * language preference is not reachable at that moment, so we fall back to
- * the OS preferred language list via resolvePreferredSystemLocale.
+ * language preference is not reachable at that moment, so we use the product
+ * default until the renderer syncs its stored preference.
  *
  * Locale JSONs are imported from the renderer's i18n bundle to avoid
  * duplicating string tables. They are pure data, so the cross-layer import
@@ -12,27 +12,16 @@
  * strings ever grow beyond a couple of dialogs, move the locales to
  * shared/i18n/locales/ and update both call sites.
  */
-import { app } from 'electron';
 import { BRAND_NAME } from '@cindy/maker-shared/branding';
 
-import {
-  DEFAULT_LOCALE,
-  resolvePreferredSystemLocale,
-  type SupportedLocale,
-} from '../shared/locale.js';
+import { DEFAULT_LOCALE, type SupportedLocale } from '../shared/locale.js';
 
 import enCommon from '../renderer/i18n/locales/en/common.json';
 import zhCNCommon from '../renderer/i18n/locales/zh-CN/common.json';
-import zhTWCommon from '../renderer/i18n/locales/zh-TW/common.json';
-import jaCommon from '../renderer/i18n/locales/ja/common.json';
-import koCommon from '../renderer/i18n/locales/ko/common.json';
 
 const resources: Record<SupportedLocale, Record<string, unknown>> = {
   en: enCommon as Record<string, unknown>,
   'zh-CN': zhCNCommon as Record<string, unknown>,
-  'zh-TW': zhTWCommon as Record<string, unknown>,
-  ja: jaCommon as Record<string, unknown>,
-  ko: koCommon as Record<string, unknown>,
 };
 
 /**
@@ -41,38 +30,14 @@ const resources: Record<SupportedLocale, Record<string, unknown>> = {
  */
 const FALLBACK_CHAIN: Record<SupportedLocale, readonly SupportedLocale[]> = {
   'zh-CN': ['zh-CN', 'en'],
-  'zh-TW': ['zh-TW', 'zh-CN', 'en'],
   en: ['en'],
-  ja: ['ja', 'en'],
-  ko: ['ko', 'en'],
 };
 
 let cachedLocale: SupportedLocale | null = null;
 
-function resolveOsLocale(): SupportedLocale {
-  // app.getPreferredSystemLanguages() returns [] before app-ready. All
-  // current callers fire after ready, but defend anyway so a stray early
-  // t() call cannot throw.
-  let langs: string[] = [];
-  try {
-    langs = app.getPreferredSystemLanguages();
-  } catch {
-    /* not ready */
-  }
-  if (langs.length === 0) {
-    try {
-      langs = [app.getLocale()];
-    } catch {
-      /* not ready */
-    }
-  }
-  if (langs.length === 0) return DEFAULT_LOCALE;
-  return resolvePreferredSystemLocale(langs);
-}
-
 function getMainLocale(): SupportedLocale {
   if (cachedLocale) return cachedLocale;
-  cachedLocale = resolveOsLocale();
+  cachedLocale = DEFAULT_LOCALE;
   return cachedLocale;
 }
 
@@ -85,8 +50,8 @@ export function setMainLocale(locale: SupportedLocale): void {
 }
 
 /**
- * Resolved main-side locale (renderer preference after sync, OS fallback
- * before). learn-host 用它决定蒸馏自述的语言(跟随系统语言配置,规则 9:
+ * Resolved main-side locale (renderer preference after sync, product default
+ * before). learn-host 用它决定蒸馏自述的语言(规则 9:
  * 用代码注入确定性语言,不靠模型从请求里猜)。
  */
 export function getResolvedMainLocale(): SupportedLocale {
@@ -104,8 +69,8 @@ function lookup(bundle: Record<string, unknown>, key: string): string | null {
 
 /**
  * Translate a dot-path key (e.g. 'update.moveToApplications.title') using
- * the OS-resolved main-side locale, walking the locale's FALLBACK_CHAIN
- * (zh-TW → zh-CN → en; others → en), then falling back to the key itself.
+ * the active main-side locale, walking the locale's FALLBACK_CHAIN, then
+ * falling back to the key itself.
  *
  * 与 renderer i18next 的 interpolation.defaultVariables 对齐:locale 文案里的
  * {{appName}} 由品牌常量注入(本迷你 i18n 不支持其它变量,main 消费的 key 若
@@ -124,7 +89,7 @@ export function t(key: string): string {
 
 /**
  * 测试专用:用注入的资源表跑同一条 fallback 链(i18nFallback.test.ts 用人为
- * 删 key 的隔离负 fixture 验证 zh-TW → zh-CN → en → key,不污染真实资源)。
+ * 删 key 的隔离负 fixture 验证 zh-CN → en → key,不污染真实资源)。
  */
 export function lookupWithFallbackForTest(
   bundles: Partial<Record<SupportedLocale, Record<string, unknown>>>,

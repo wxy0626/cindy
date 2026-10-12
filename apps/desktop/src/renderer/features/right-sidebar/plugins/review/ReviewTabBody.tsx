@@ -139,7 +139,7 @@ type LoadMarkdownPreview = (diff: FileDiff) => Promise<ReviewMarkdownPreviewData
 const SECTION_ACTION_REVEAL_CLASS =
   'invisible opacity-0 transition-opacity group-hover/section:visible group-hover/section:opacity-100 group-focus-within/section:visible group-focus-within/section:opacity-100';
 
-// 断点按四语言最长文案(ja/ko 明显长于 zh/en)和 A/B 后 900px 窗口的
+// 断点按中英最长文案和 A/B 后 900px 窗口的
 // 240px 实际 RSB 宽校准:240px 只能容纳 source + 统计 + 主操作 / 跳转 / More
 // 三个图标;420px 起可放回次级图标;560px 起恢复分支信息、文本主按钮和独立 Push 文案。
 export const REVIEW_TOOLBAR_MINIMAL_MAX_WIDTH_PX = 419;

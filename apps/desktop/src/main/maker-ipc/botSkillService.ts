@@ -29,8 +29,8 @@ import { botProfiles, botSessionLinks, sessions } from '../localDb/schema.js';
 import {
   activeOwnerScopeKey,
   isAppSessionBoundaryPending,
-  ownerScopedUserDataPath,
 } from '../appSessionState.js';
+import { machineSharedUserDataPath } from '../machineSharedStorage.js';
 
 export type BotSkillResult<T extends Record<string, unknown>> =
   | ({ ok: true } & T)
@@ -76,7 +76,7 @@ function captureOwnerBoundary(deps: BotSkillServiceDeps): BotSkillOwnerBoundary 
   if ((deps.ownerBoundaryPending ?? isAppSessionBoundaryPending)()) {
     throw new BotSkillStoreError('OWNER_SCOPE_CHANGED', '账号正在切换，请稍后重试');
   }
-  return { userDataDir: deps.userDataDir ?? ownerScopedUserDataPath(), scopeKey };
+  return { userDataDir: deps.userDataDir ?? machineSharedUserDataPath(), scopeKey };
 }
 
 function assertOwnerBoundary(deps: BotSkillServiceDeps, boundary: BotSkillOwnerBoundary): void {

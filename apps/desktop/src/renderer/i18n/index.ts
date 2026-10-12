@@ -4,9 +4,8 @@
  * 设计要点：
  * - 资源同步 import (零网络/零 IO)，i18n.init 同步完成 → React 首屏不闪。
  * - 默认 namespace 为 'common'；体积较小、边界清晰的功能文案可独立拆分。
- * - fallbackLng：缺 key 时不显示 key 本身,直接回退英文。
+ * - fallbackLng：缺 key 时不显示 key 本身,直接回退默认语言。
  * - 不接 LanguageDetector backend，用户偏好全部在 useLocale 里走 localStorage。
- *   'system' 的实际语言由 main 侧读取 OS 首选语言后传入 renderer。
  */
 
 import i18n from 'i18next';
@@ -17,24 +16,19 @@ import enCommon from './locales/en/common.json';
 import enAiRename from './locales/en/aiRename.json';
 import zhCNCommon from './locales/zh-CN/common.json';
 import zhCNAiRename from './locales/zh-CN/aiRename.json';
-import zhTWCommon from './locales/zh-TW/common.json';
-import zhTWAIName from './locales/zh-TW/aiRename.json';
-import jaCommon from './locales/ja/common.json';
-import jaAiRename from './locales/ja/aiRename.json';
-import koCommon from './locales/ko/common.json';
-import koAiRename from './locales/ko/aiRename.json';
 import { GHOST_OFFICIAL_ID_PREFIXES } from '../../shared/ghost';
 import { DEFAULT_LOCALE } from '../../shared/locale';
 
 export {
   DEFAULT_LOCALE,
+  isLocalePreference,
   resolvePreferredSystemLocale,
   resolveSystemLocale,
   SUPPORTED_LOCALES,
 } from '../../shared/locale';
 export type { LocalePreference, SupportedLocale } from '../../shared/locale';
 
-// 凭证写入逃生口必须在五语里共用同一条安全命令；集中覆盖防止某个 locale 又退回
+// 凭证写入逃生口必须在所有支持语言里共用同一条安全命令；集中覆盖防止某个 locale 又退回
 // “手动设置环境变量”的危险指引。对应跨 locale 契约由 devOAuthWritePolicy.test 锁住。
 const resources = {
   en: {
@@ -57,9 +51,6 @@ const resources = {
     },
     aiRename: zhCNAiRename,
   },
-  'zh-TW': { common: zhTWCommon, aiRename: zhTWAIName },
-  ja: { common: jaCommon, aiRename: jaAiRename },
-  ko: { common: koCommon, aiRename: koAiRename },
 } as const;
 
 // 同步 init —— 没有 backend / detector / suspense，i18n.init 立即返回。

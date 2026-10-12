@@ -123,9 +123,6 @@ describe('AskUserQuestionPrompt action labels', () => {
     const expected = {
       en: ['Next', 'Submit'],
       'zh-CN': ['下一题', '提交'],
-      'zh-TW': ['下一題', '提交'],
-      ja: ['次へ', '送信'],
-      ko: ['다음', '제출'],
     } as const;
 
     for (const [locale, labels] of Object.entries(expected)) {

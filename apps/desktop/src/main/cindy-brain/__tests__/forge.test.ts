@@ -1044,7 +1044,7 @@ describe('packGhostDir', () => {
       description: 'Base description',
       locales: {
         en: 'locales/en.json',
-        ja: 'locales/ja.json',
+        'zh-CN': 'locales/zh-CN.json',
       },
     };
     const locale = (name: string, description: string, tool: string) =>
@@ -1057,21 +1057,21 @@ describe('packGhostDir', () => {
       'ghost.json': JSON.stringify(manifest),
       'main.js': '// brain',
       'locales/en.json': locale('Demo', 'English description', 'English tool'),
-      'locales/ja.json': locale('デモ', '日本語の説明', '日本語のツール'),
+      'locales/zh-CN.json': locale('演示', '中文说明', '中文工具'),
     });
     const packed = await packGhostDir(dir);
     expect(packed.ok, JSON.stringify(packed)).toBe(true);
     if (!packed.ok) return;
     const manager = new GhostManager({
       getRootDir: () => path.join(workDir, 'ghosts'),
-      getLocale: () => 'ja',
+      getLocale: () => 'zh-CN',
     });
     expect(await manager.inspect(packed.cindyPath)).toMatchObject({
       manifest: {
-        name: 'デモ',
-        description: '日本語の説明',
-        resolvedLocale: 'ja',
-        tools: [{ name: 'do_thing', description: '日本語のツール' }],
+        name: '演示',
+        description: '中文说明',
+        resolvedLocale: 'zh-CN',
+        tools: [{ name: 'do_thing', description: '中文工具' }],
       },
     });
   });
@@ -1672,10 +1672,10 @@ describe('FORGE_GUIDE', () => {
     );
   });
 
-  it('app-context 保持插件协议旧四语并说明新增宿主语言的兼容回退', () => {
-    expect(FORGE_GUIDE).toContain("locale: 'zh-CN' | 'en' | 'ja' | 'ko'");
-    expect(FORGE_GUIDE).not.toContain("locale: 'zh-CN' | 'zh-TW' | 'en' | 'ja' | 'ko'");
-    expect(FORGE_GUIDE).toContain('会在插件边界固定映射为 `en`');
+  it('app-context 只暴露中英并说明历史宿主语言的兼容回退', () => {
+    expect(FORGE_GUIDE).toContain("locale: 'zh-CN' | 'en'");
+    expect(FORGE_GUIDE).not.toContain("locale: 'zh-CN' | 'en' | 'ja' | 'ko'");
+    expect(FORGE_GUIDE).toContain('会在插件边界固定映射为 `zh-CN`');
   });
 
   it('settingsHtml / panel 普通 HTTPS 外链契约与宿主安全闸一致', () => {
@@ -1838,7 +1838,7 @@ describe('FORGE_GUIDE', () => {
       'navigator.language',
       'host-context-changed',
       'locales/en.json',
-      '固定使用英文',
+      '先回退中文，再回退英文',
       // 2026-07-25 locale 可选化:缺译回退原文,翻译错位仍拒;§2.1 同步。
       '翻译是可选项',
       '翻译错位仍是硬错误',
@@ -1954,12 +1954,12 @@ describe('FORGE_GUIDE', () => {
       '`puzzle`、`globe`、`code`、`folder`、`database`、`chart-column`',
       '只控制主视图的侧边栏入口',
       // 2026-07-28 图标与官方仓门禁(#809):§1/§2 的 icon 字段说明、
-      // §8.1 官方插件仓的四语言 locale 与 assets/icon.png 惯例。
+      // §8.1 官方插件仓的双语 locale 与 assets/icon.png 惯例。
       '"icon": "assets/icon.png"',
       '不收 svg',
       '发布到官方插件仓的额外门禁',
       'makecindy/cindy-official-plugins',
-      '四语言 locale 缺一不可',
+      '中英双语 locale 缺一不可',
       // 2026-08-19 范例与源码指引:§1 补官方插件仓 URL(真实完整范例)与
       // 主仓地址(插件基座,apps/desktop/src/main/cindy-brain/),并写死边界
       // ——API 契约一律以手册为准,main 分支可能与用户安装版本不一致。

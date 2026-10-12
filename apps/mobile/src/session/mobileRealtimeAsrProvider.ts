@@ -1269,18 +1269,12 @@ function openAiLanguageCode(sourceLanguage: string): string | undefined {
     case 'simplified chinese':
     case 'traditional chinese':
       return 'zh';
-    case 'cantonese':
-      return 'yue';
     case 'english':
       return 'en';
-    case 'japanese':
-      return 'ja';
-    case 'korean':
-      return 'ko';
   }
 
   const primary = normalized.split(/[-_]/)[0];
-  return /^[a-z]{2,3}$/.test(primary) ? primary : undefined;
+  return primary === 'zh' ? 'zh' : primary === 'en' ? 'en' : undefined;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {

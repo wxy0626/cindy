@@ -740,9 +740,9 @@ export function sanitizePresets(input: unknown): ProviderPreset[] {
       const { nameEn: _drop, ...rest } = preset as ProviderPreset & { nameEn: unknown };
       preset = rest as ProviderPreset;
     }
-    // 繁中展示名非法时只剥掉该字段，保留预设本体并回落到 name。
-    if (preset.nameZhTW !== undefined && (typeof preset.nameZhTW !== 'string' || preset.nameZhTW.trim().length === 0)) {
-      const { nameZhTW: _drop, ...rest } = preset as ProviderPreset & { nameZhTW: unknown };
+    // 旧目录可能仍带已删除的繁中展示名；任何值都剥掉，避免历史语言字段继续流通。
+    if (Object.hasOwn(preset, 'nameZhTW')) {
+      const { nameZhTW: _legacy, ...rest } = preset as ProviderPreset & { nameZhTW: unknown };
       preset = rest as ProviderPreset;
     }
     out.push(normalizePresetRuntimeOptions(preset));
@@ -751,17 +751,14 @@ export function sanitizePresets(input: unknown): ProviderPreset[] {
 }
 
 /**
- * 预设展示名:中文 UI 用目录 `name`(国内厂商为中文原名),其它语言优先 `nameEn`
+ * 预设展示名:中文 UI 用目录 `name`(国内厂商为中文原名),英文 UI 优先 `nameEn`
  * (缺省回落 `name`)。纯呈现选择,不影响预设 id / 创建后的供应商命名语义。
  */
 export function presetDisplayName(
-  preset: Pick<ProviderPreset, 'name' | 'nameEn' | 'nameZhTW'>,
+  preset: Pick<ProviderPreset, 'name' | 'nameEn'>,
   locale: string,
 ): string {
   const normalizedLocale = locale.toLowerCase().replaceAll('_', '-');
-  if (normalizedLocale === 'zh-tw' || normalizedLocale.startsWith('zh-hant')) {
-    return preset.nameZhTW ?? preset.name;
-  }
   return normalizedLocale.startsWith('zh') ? preset.name : (preset.nameEn ?? preset.name);
 }
 

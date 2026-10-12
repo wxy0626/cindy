@@ -84,7 +84,7 @@ import {
 } from './endpointManifestDialogCopy';
 import { createLogger, getLogDir } from './logger';
 import { ENDPOINT_MANIFEST_BASE_URL, ENDPOINT_MANIFEST_PEER_BASE_URL } from '../shared/endpoints';
-import { resolvePreferredSystemLocale } from '../shared/locale';
+import { DEFAULT_LOCALE } from '../shared/locale';
 import { CURRENT_CINDY_REGION } from '../shared/brandRegion';
 
 const log = createLogger('clientEndpoints');
@@ -560,7 +560,7 @@ export async function resolveClientEndpointsBlocking(
 }
 
 /**
- * 弹框宿主实现:按系统语言取四语文案(不再中英混排),返回用户选择的语义。
+ * 弹框宿主实现:按系统语言取中英文案,返回用户选择的语义。
  *
  * context 里的简短错误信息直接展示；完整来源、诊断结果和日志路径只在用户主动
  * 点击复制时交给剪贴板，避免把普通提示变成一屏技术现场。
@@ -627,10 +627,9 @@ const BUILD_SCOPED_ENDPOINT_KEYS = new Set<ClientEndpointKey>([
   'mobileUpdateBaseUrl',
 ]);
 
-/** 弹框语言:跟随系统语言偏好列表,与原生菜单栏同一套解析。 */
+/** 弹框语言:启动期使用产品默认语言,renderer 同步偏好后再刷新。 */
 function resolveDialogLocale(): EndpointManifestDialogLocale {
-  const langs = app.getPreferredSystemLanguages();
-  return resolvePreferredSystemLocale(langs.length > 0 ? langs : [app.getLocale()]);
+  return DEFAULT_LOCALE;
 }
 
 /**

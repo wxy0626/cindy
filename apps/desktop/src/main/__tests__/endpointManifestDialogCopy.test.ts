@@ -17,7 +17,7 @@ import {
   type EndpointManifestDialogLocale,
 } from '../endpointManifestDialogCopy';
 
-const LOCALES: EndpointManifestDialogLocale[] = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'];
+const LOCALES: EndpointManifestDialogLocale[] = ['zh-CN', 'en'];
 
 /** CJK 与拉丁字母混排检测用:排除产品名、已裁决术语与占位符后仍有英文单词即视为混排。 */
 function stripAllowedLatin(text: string): string {
@@ -45,7 +45,7 @@ describe('端点清单弹框文案', () => {
   });
 
   it('CJK 语言的文案不夹带英文句子(不再中英混排)', () => {
-    for (const locale of ['zh-CN', 'zh-TW', 'ja', 'ko'] as const) {
+    for (const locale of ['zh-CN'] as const) {
       for (const [key, value] of Object.entries(ENDPOINT_MANIFEST_DIALOG_COPY[locale])) {
         const leftover = stripAllowedLatin(value);
         expect(/[A-Za-z]{3,}/.test(leftover), `${locale}.${key} 夹带英文:${value}`).toBe(false);

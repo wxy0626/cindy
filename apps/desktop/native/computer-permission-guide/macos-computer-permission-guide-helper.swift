@@ -11,10 +11,7 @@ private let trackingInterval: TimeInterval = 0.16
 
 private enum GuideLocale: String {
     case zhCN = "zh-CN"
-    case zhTW = "zh-TW"
     case en
-    case ja
-    case ko
 }
 
 /** Localized native copy selected from the renderer-synchronized app locale. */
@@ -52,51 +49,6 @@ private struct GuideCopy {
                 waiting: "等待你开启",
                 dragTitle: "将 CuaDriver 拖入「{{permission}}」",
                 dragHint: "拖拽"
-            )
-        case .zhTW:
-            return GuideCopy(
-                close: "關閉",
-                turnThisOn: "開啟此項目",
-                pointsToSwitch: "指向切換開關",
-                accessibility: "輔助使用",
-                screenRecording: "螢幕錄製",
-                completeEyebrow: "權限設定完成",
-                readyTitle: "Computer Use 已準備就緒",
-                step: "開啟電腦自動操作",
-                turnOnAppTitle: "在「{{permission}}」中開啟 CuaDriver",
-                waiting: "等待你開啟",
-                dragTitle: "將 CuaDriver 拖曳至「{{permission}}」",
-                dragHint: "拖曳"
-            )
-        case .ja:
-            return GuideCopy(
-                close: "閉じる",
-                turnThisOn: "この項目をオンにする",
-                pointsToSwitch: "スイッチを指す",
-                accessibility: "アクセシビリティ",
-                screenRecording: "画面収録",
-                completeEyebrow: "権限の設定完了",
-                readyTitle: "Computer Use の準備ができました",
-                step: "コンピュータ操作を有効にする",
-                turnOnAppTitle: "「{{permission}}」で CuaDriver をオンにする",
-                waiting: "操作待ち",
-                dragTitle: "CuaDriver を「{{permission}}」にドラッグ",
-                dragHint: "ドラッグ"
-            )
-        case .ko:
-            return GuideCopy(
-                close: "닫기",
-                turnThisOn: "이 항목 켜기",
-                pointsToSwitch: "스위치를 가리킴",
-                accessibility: "손쉬운 사용",
-                screenRecording: "화면 기록",
-                completeEyebrow: "권한 설정 완료",
-                readyTitle: "Computer Use 준비 완료",
-                step: "컴퓨터 자동화 켜기",
-                turnOnAppTitle: "{{permission}}에서 CuaDriver 켜기",
-                waiting: "켜기 대기",
-                dragTitle: "CuaDriver를 {{permission}}으로 드래그",
-                dragHint: "드래그"
             )
         case .en:
             return GuideCopy(

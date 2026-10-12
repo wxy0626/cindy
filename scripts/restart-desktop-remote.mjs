@@ -388,6 +388,21 @@ function hasDesktopDevSignature(command) {
   );
 }
 
+/**
+ * 重启流水线自身不是 desktop dev 实例。托盘「重启程序」由运行中的主进程拉起
+ * 协调器(desktop-restart-runner.mjs)，协调器再用 process.execPath 拉起清理阶段
+ * (restart-desktop-remote.mjs --kill-only)；两条命令行都带
+ * `<checkout>/node_modules/electron`，会被 dev 进程特征误判成清理目标。
+ * 清理阶段一旦把自己的父进程(协调器)杀掉，流水线就停在清理步骤，
+ * 表现为「应用关了但不再重启」。
+ */
+export function isRestartPipelineProcess(command) {
+  return (
+    command.includes('/scripts/desktop-restart-runner.mjs') ||
+    command.includes('/scripts/restart-desktop-remote.mjs')
+  );
+}
+
 export function isRepositoryDesktopDevProcess(proc, checkoutPaths, currentPid = process.pid) {
   if (!proc.pid || proc.pid === currentPid) return false;
   const command = normalize(proc.command);
@@ -402,13 +417,19 @@ export function isRepositoryDesktopDevProcess(proc, checkoutPaths, currentPid = 
     command.includes('/runtime/pi-subagent-runs/')
     && command.includes('/runner.cjs')
   ) return false;
+  // 只排除协调器/清理阶段自身：旧实例的 dev 启动链(desktop-dev-runner / forge /
+  // vite / Electron 主进程)仍必须留在清理范围内。
+  if (isRestartPipelineProcess(command)) return false;
 
   return hasRepositoryCheckoutPath(command, checkoutPaths) && hasDesktopDevSignature(command);
 }
 
-function killProcess(pid) {
+function killProcess(pid, { tree = true } = {}) {
   if (process.platform === 'win32') {
-    return run('taskkill.exe', ['/F', '/T', '/PID', String(pid)]).status === 0;
+    return run(
+      'taskkill.exe',
+      ['/F', ...(tree ? ['/T'] : []), '/PID', String(pid)],
+    ).status === 0;
   }
 
   try {
@@ -419,9 +440,9 @@ function killProcess(pid) {
   return true;
 }
 
-function forceKillProcess(pid) {
+function forceKillProcess(pid, options) {
   if (process.platform === 'win32') {
-    return killProcess(pid);
+    return killProcess(pid, options);
   }
 
   try {
@@ -753,9 +774,14 @@ export function shouldRefuseHostedRestart(ancestor, {
   preserveRunning,
   ownRootDir,
   isolated = false,
+  allowSameCheckoutHostedRestart = false,
 }) {
   if (!ancestor || preserveRunning) return false;
-  if (commandContainsPath(ancestor.command, ownRootDir)) return true;
+  if (commandContainsPath(ancestor.command, ownRootDir)) {
+    // 托盘“重启程序”由当前 Electron 主进程主动拉起协调器；它必然仍在
+    // 当前 checkout 的祖先链里，不能把这条受控重启误判成脚本自杀。
+    return !allowSameCheckoutHostedRestart;
+  }
   return isolated !== true;
 }
 
@@ -1007,11 +1033,18 @@ function startDesktopDev(mode) {
     fs.mkdirSync(path.dirname(consoleLogPath), { recursive: true });
     const consoleLogFd = fs.openSync(consoleLogPath, 'a');
     console.log(`==> Headless dev launch: console output -> ${consoleLogPath}`);
+    // detached:true 让 runner/Electron 脱离本启动脚本的进程树(Windows 下独立
+    // 进程组)。外层自动化任务结束只会杀到本脚本,不会再连带杀掉 runner/Electron;
+    // child.unref() 让本脚本 return 后不必等 runner 退出即可退出事件循环。
+    // env 沿用 process.env,上游 main() 已把 --wait-ready 状态文件路径写入
+    // XDT_DESKTOP_DEV_STARTUP_STATUS_FILE,因此主链仍能读到就绪/失败状态,行为不变。
+    // stdio 保持重定向到 dev-console.log,fork 的日志不丢。
     const headlessChild = spawn(
       process.execPath,
       [path.join(rootDir, 'scripts', 'desktop-dev-runner.mjs'), mode],
-      { cwd: rootDir, stdio: ['ignore', consoleLogFd, consoleLogFd], windowsHide: true, env: process.env },
+      { cwd: rootDir, stdio: ['ignore', consoleLogFd, consoleLogFd], windowsHide: true, detached: true, env: process.env },
     );
+    headlessChild.unref();
     headlessChild.on('exit', (code, signal) => {
       if (process.env.XDT_DESKTOP_DEV_STARTUP_STATUS_FILE) return;
       if (signal) process.kill(process.pid, signal);
@@ -1428,10 +1461,19 @@ async function main() {
   if (startupConfig) ensureDesktopEnv();
 
   const devAncestor = findDevAncestor();
+  const allowSameCheckoutHostedRestart = process.env.XDT_DEV_RESTART_FROM_APP === '1';
+  // 应用主动拉起的协调器仍是旧 Electron 的子进程；若对旧主进程使用
+  // taskkill /T，会把协调器一并递归杀掉，结果就是“应用关了但不再重启”。
+  // 这条受控路径改为逐个终止已识别的桌面目标，普通终端启动仍保留树杀。
+  const preserveRestartCoordinator = allowSameCheckoutHostedRestart;
+  const forceKillDisplay = process.platform === 'win32'
+    ? `taskkill /F${preserveRestartCoordinator ? '' : ' /T'}`
+    : forceKillLabel;
   if (shouldRefuseHostedRestart(devAncestor, {
     preserveRunning,
     ownRootDir: rootDir,
     isolated: hasIsolationIntent(argv, process.env),
+    allowSameCheckoutHostedRestart,
   })) {
     const refusal = hostedRestartRefusal(devAncestor, { ownRootDir: rootDir });
     exitWithFailure(
@@ -1444,6 +1486,11 @@ async function main() {
           ? '==> Ask the user to restart from the official Cindy app, another worktree, or an external terminal.'
           : '==> Use --isolated=@worktree, or --preserve-running if you explicitly want shared login.',
       ],
+    );
+  }
+  if (allowSameCheckoutHostedRestart && devAncestor) {
+    console.log(
+      `==> Restart requested by the running desktop app; allowing same-checkout host pid ${devAncestor.pid}.`,
     );
   }
   if (devAncestor && !preserveRunning && isolatedArg) {
@@ -1554,7 +1601,7 @@ async function main() {
       console.log(`==> Stopping ${targets.length} desktop dev process(es) from the requested replacement root...`);
       for (const target of targets) {
         console.log(`    kill ${target.pid}: ${target.command.slice(0, 180)}`);
-        killProcess(target.pid);
+        killProcess(target.pid, { tree: !preserveRestartCoordinator });
       }
 
       const matchesReplacementRoot = (proc) => commandContainsPath(proc.command, replaceRunningRoot);
@@ -1565,8 +1612,8 @@ async function main() {
       if (remainingForRoot.length > 0) {
         console.log(`==> Force stopping ${remainingForRoot.length} stubborn process(es) from the replacement root...`);
         for (const target of remainingForRoot) {
-          console.log(`    ${forceKillLabel} ${target.pid}: ${target.command.slice(0, 180)}`);
-          forceKillProcess(target.pid);
+          console.log(`    ${forceKillDisplay} ${target.pid}: ${target.command.slice(0, 180)}`);
+          forceKillProcess(target.pid, { tree: !preserveRestartCoordinator });
         }
       }
 
@@ -1593,7 +1640,7 @@ async function main() {
     console.log(`==> Stopping ${targets.length} existing Cindy desktop dev process(es) from this checkout...`);
     for (const target of targets) {
       console.log(`    kill ${target.pid}: ${target.command.slice(0, 180)}`);
-      killProcess(target.pid);
+      killProcess(target.pid, { tree: !preserveRestartCoordinator });
     }
 
     // 等待/强杀同样限定在本 checkout —— 不带过滤器会把其他 checkout 仍在跑的
@@ -1603,8 +1650,8 @@ async function main() {
     if (remainingAfterTerm.length > 0) {
       console.log(`==> Force stopping ${remainingAfterTerm.length} stubborn Cindy desktop dev process(es)...`);
       for (const target of remainingAfterTerm) {
-        console.log(`    ${forceKillLabel} ${target.pid}: ${target.command.slice(0, 180)}`);
-        forceKillProcess(target.pid);
+        console.log(`    ${forceKillDisplay} ${target.pid}: ${target.command.slice(0, 180)}`);
+        forceKillProcess(target.pid, { tree: !preserveRestartCoordinator });
       }
     }
 

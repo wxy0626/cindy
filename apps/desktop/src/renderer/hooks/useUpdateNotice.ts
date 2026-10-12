@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
+  fetchCurrentReleaseNotes,
   fetchReleaseNotes,
   fetchReleaseNotesIndex,
   type ReleaseNotes,
@@ -40,6 +41,17 @@ const PREVIEW_INDEX_BUDGET_MS = 3000;
  * user-driven retry/fallback behavior.
  */
 const AUTO_NOTICE_RETRY_DELAY_MS = 2000;
+
+/**
+ * 公告版本必须使用开发版解析后的语义版本。Electron 的 appVersion 在未打包
+ * 开发版里固定为 0.0.0，直接用它会让自动公告永远匹配不到 CDN 版本。
+ */
+function getNoticeAppVersion(): string {
+  const api = window.electronAPI as
+    | { appSemanticVersion?: string; appVersion?: string }
+    | undefined;
+  return api?.appSemanticVersion?.trim() || api?.appVersion?.trim() || '0.0.0';
+}
 
 /** Numeric semver comparison. Returns >0 if a > b, <0 if a < b, 0 if equal. */
 function cmpVersion(a: string, b: string): number {
@@ -250,6 +262,7 @@ export function useUpdateNotice(): UseUpdateNoticeReturn {
         locale: SupportedLocale;
         promise: Promise<ReleaseNotes | null>;
       },
+      options?: { currentVersion?: string },
     ): Promise<(ReleaseNotes | null)[]> => {
       let requestLocale = localeRef.current;
       let canUseInitialRequest = true;
@@ -262,6 +275,9 @@ export function useUpdateNotice(): UseUpdateNoticeReturn {
           ) {
             return initialRequest.promise;
           }
+          if (version === options?.currentVersion) {
+            return fetchCurrentReleaseNotes(version, requestLocale);
+          }
           return fetchReleaseNotes(version, requestLocale);
         }));
         canUseInitialRequest = false;
@@ -273,7 +289,8 @@ export function useUpdateNotice(): UseUpdateNoticeReturn {
   );
 
   useEffect(() => {
-    const appVersion = window.electronAPI.appVersion;
+    const appVersion = getNoticeAppVersion();
+    const isDevelopmentBuild = window.electronAPI.appIsPackaged === false;
     let lastRead: string | null = null;
     try {
       lastRead = localStorage.getItem(STORAGE_KEY);
@@ -282,8 +299,8 @@ export function useUpdateNotice(): UseUpdateNoticeReturn {
       // user still sees the dialog; we just won't be able to mark it read.
     }
 
-    // Already saw this exact version → nothing to do.
-    if (lastRead === appVersion) return;
+    // 已打包版按自身版本去重；开发版还需拉取上游公告后才能判断是否已读。
+    if (!isDevelopmentBuild && lastRead === appVersion) return;
 
     let cancelled = false;
     autoNoticeSuppressedRef.current = false;
@@ -302,15 +319,29 @@ export function useUpdateNotice(): UseUpdateNoticeReturn {
         const targets = versionsToFetch(index, lastRead, appVersion).slice(
           -MAX_AGGREGATED_VERSIONS,
         );
-        const results = await fetchVersionsForCurrentLocale(targets);
+        const results = await fetchVersionsForCurrentLocale(targets, undefined, {
+          currentVersion: appVersion,
+        });
         if (cancelled || dialogOpenedRef.current || autoNoticeSuppressedRef.current) return;
         const notes = results.filter((n): n is ReleaseNotes => n !== null);
 
-        if (notes.length > 0 && notes.some((n) => n.version === appVersion)) {
+        const latestNoticeVersion = notes.at(-1)?.version ?? null;
+        const hasCurrentNotice = notes.some((n) => n.version === appVersion);
+        // 开发版的语义版本可能尚未出现在 CDN index；主进程会回落到最新公告。
+        // 此时按实际公告版本记账，既能避免重复弹出，也能继续提示后续上游版本。
+        const hasDevelopmentFallback =
+          isDevelopmentBuild &&
+          notes.length > 0 &&
+          !hasCurrentNotice;
+        if (hasDevelopmentFallback && latestNoticeVersion === lastRead) return;
+
+        if (notes.length > 0 && (hasCurrentNotice || hasDevelopmentFallback)) {
           // Compute the safe read-marker (unchanged from prior impl).
           const isCurIdxMissing = index !== null && index.indexOf(appVersion) === -1;
           const firstFailIdx = results.findIndex((n) => n === null);
-          if (isCurIdxMissing) {
+          if (hasDevelopmentFallback) {
+            readMarkerRef.current = latestNoticeVersion;
+          } else if (isCurIdxMissing) {
             readMarkerRef.current = lastRead ?? null;
           } else if (firstFailIdx === -1) {
             readMarkerRef.current = appVersion;
@@ -410,7 +441,7 @@ export function useUpdateNotice(): UseUpdateNoticeReturn {
     // before this async IIFE has called setOpen/setMode.
     autoNoticeSuppressedRef.current = true;
     dialogOpenedRef.current = true;
-    const appVersion = window.electronAPI.appVersion;
+    const appVersion = getNoticeAppVersion();
 
     (async () => {
       // Fetch index + appVersion's notes in parallel. The index is what the
@@ -418,12 +449,13 @@ export function useUpdateNotice(): UseUpdateNoticeReturn {
       // appVersion notes are what the top block shows immediately so the
       // dialog isn't blank-until-lazy-load on open.
       const warmupLocale = localeRef.current;
-      const appNotesWarmup = fetchReleaseNotes(appVersion, warmupLocale)
+      const appNotesWarmup = fetchCurrentReleaseNotes(appVersion, warmupLocale)
         .catch(() => null);
       const index = await fetchReleaseNotesIndex();
       const [appNotes] = await fetchVersionsForCurrentLocale(
         [appVersion],
         { version: appVersion, locale: warmupLocale, promise: appNotesWarmup },
+        { currentVersion: appVersion },
       );
       // The dialog needs at least one loaded note as its initial seed.
       // If appVersion's JSON is temporarily unavailable (CDN lag / 404), try
@@ -448,6 +480,9 @@ export function useUpdateNotice(): UseUpdateNoticeReturn {
         toast.error(t('logic.toasts.fetchUpdateNoticeFailed'));
         return;
       }
+      // 开发版请求的语义版本可能不在 CDN index；主进程会回落到最新公告，
+      // 历史列表必须按实际公告版本构建，否则首块占位键会与内容版本错位。
+      const noticeVersion = appNotes?.version ?? seed.version;
 
       // Guard against a race with auto-fetch: if the auto path already opened
       // the dialog with a valid marker, the manual overlay would either fight
@@ -459,7 +494,7 @@ export function useUpdateNotice(): UseUpdateNoticeReturn {
 
       setMode('manual');
       setReleaseNotes([seed]);
-      setAllVersions(versionsForManual(index, appVersion));
+      setAllVersions(versionsForManual(index, noticeVersion));
       readMarkerRef.current = null;
       setOpen(true);
     })().catch((err) => {
@@ -481,7 +516,7 @@ export function useUpdateNotice(): UseUpdateNoticeReturn {
     }
     autoNoticeSuppressedRef.current = true;
     dialogOpenedRef.current = true;
-    const appVersion = window.electronAPI.appVersion;
+    const appVersion = getNoticeAppVersion();
 
     (async () => {
       // Kick off the pending version's notes immediately — it is the one block

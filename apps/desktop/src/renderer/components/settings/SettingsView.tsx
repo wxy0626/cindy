@@ -51,6 +51,7 @@ import { SettingsCatalogPanel } from './SettingsCatalogPanel';
 import { getLastWorkingDir, subscribeToLastWorkingDir } from '@/state/lastWorkingDir';
 import { BillingSettingsSection } from '@/features/billing/BillingPage';
 import { BotsGlobalSettingsSection } from '@/features/bots/BotsGlobalSettingsSection';
+import { DecisionModelSection } from './DecisionModelSection';
 import { canAccessBillingSettings } from './billingVisibility';
 import { canAccessUsageSettings } from './usageVisibility';
 import { canAccessCindyMakeSettings } from './cindyMakeVisibility';
@@ -363,7 +364,6 @@ export function SettingsView() {
                       <BotsGlobalSettingsSection />
                     </section>
 
-
                     {/* Section — App Behavior(「应用行为」)
                         「保持电脑唤醒」跨平台生效,故 section 常驻;其中
                         「后台窗口首次左键点击仅激活不透传」仅 mac/win 有效,由
@@ -441,6 +441,18 @@ export function SettingsView() {
               <div role="tabpanel" id="settings-panel-usage" aria-labelledby="settings-tab-usage">
                 <section aria-label={t('settings.tabs.usage')}>
                   <UsageHistorySection />
+                </section>
+              </div>
+            )}
+
+            {activeTab === 'decision-model' && (
+              <div
+                role="tabpanel"
+                id="settings-panel-decision-model"
+                aria-labelledby="settings-tab-decision-model"
+              >
+                <section aria-label={t('settings.sections.decisionModel')}>
+                  <DecisionModelSection />
                 </section>
               </div>
             )}

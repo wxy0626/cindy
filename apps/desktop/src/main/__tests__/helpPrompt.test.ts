@@ -70,7 +70,7 @@ describe('buildHelpPrompt', () => {
 
   it('injects the locale name', () => {
     expect(buildHelpPrompt(history, 'zh-CN', 'claude-code', [])).toContain('Simplified Chinese');
-    expect(buildHelpPrompt(history, 'ja', 'claude-code', [])).toContain('Japanese');
+    expect(buildHelpPrompt(history, 'en', 'claude-code', [])).toContain('English');
   });
 
   it('lists every allowed tab id', () => {

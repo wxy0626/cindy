@@ -1160,6 +1160,18 @@ export function CustomProviderDialog({
     [restoreHydratedKey, setRtSynced],
   );
 
+  // 旧密文读失败后，只有用户显式输入替代 key 才算解除保护；
+  // 清空输入会重新回到保护态，避免把“读不出”误当成“没有 key”。
+  const hasUnresolvedKeyReadFailure = useCallback(
+    (agent: DialogAgentKind): boolean =>
+      keyHydrationFailed[agent] &&
+      !(
+        keyEditRevisionRef.current[agent] > 0 &&
+        rtRef.current[agent].apiKey.trim().length > 0
+      ),
+    [keyHydrationFailed],
+  );
+
   const openRuntimeFill = useCallback(() => {
     if (modelFetchInFlightRef.current || picker) {
       toast.info(t('settings.providers.custom.runtimeFill.modelsBusy'));
@@ -1171,7 +1183,9 @@ export function CustomProviderDialog({
       toast.info(t('settings.providers.custom.runtimeFill.loadingKeys'));
       return;
     }
-    if (usesApiKey && AGENTS.some((agent) => keyHydrationFailed[agent])) {
+    const unresolvedKeyAgent = AGENTS.find(hasUnresolvedKeyReadFailure);
+    if (usesApiKey && unresolvedKeyAgent) {
+      setActiveTab(unresolvedKeyAgent);
       toast.info(t('settings.providers.custom.runtimeFill.keysUnavailable'));
       return;
     }
@@ -1232,7 +1246,7 @@ export function CustomProviderDialog({
       targets,
       selected,
     });
-  }, [activeTab, keyHydrationFailed, keyHydrationReady, picker, t]);
+  }, [activeTab, hasUnresolvedKeyReadFailure, keyHydrationReady, picker, t]);
 
   const applyRuntimeFill = useCallback(() => {
     if (!runtimeFill) return;
@@ -1545,77 +1559,52 @@ export function CustomProviderDialog({
       )
         return; // 过期响应，静默丢弃
       if (result.ok && result.models && result.models.length > 0) {
-        // 用**响应到达时**的最新表单行构建弹层（rtRef），不是请求发出时的 rf 快照。
-        const current = rtRef.current[agent].models
-          .map((m) => ({
-            id: m.id.trim(),
-            name: m.name.trim(),
-            mode: m.mode,
-            modalities: m.modalities,
-            officialDocs: m.officialDocs,
-            discoveredMetadata: m.discoveredMetadata,
-            nameExplicit: m.nameExplicit,
-            ...(agent === 'pi' && m.piApi ? { piApi: m.piApi } : {}),
-            ...(m.route ? { route: { ...m.route } } : {}),
-            ...(m.contextWindow !== undefined ? { contextWindow: m.contextWindow } : {}),
-            ...(m.defaultEnabled === false ? { defaultEnabled: false } : {}),
-            ...(m.supportsImageInput !== undefined
-              ? { supportsImageInput: m.supportsImageInput }
+        // 「获取模型列表」= 上游清单本身:弹层只列端点返回的模型,不再把表单里已设置的
+        // 模型并进候选。同 id 行仍用响应到达时的最新表单行(rtRef)补全用户字段。
+        const currentById = new Map(
+          rtRef.current[agent].models
+            .filter((m) => m.id.trim().length > 0)
+            .map((m) => [m.id.trim(), m] as const),
+        );
+        const rows: ModelRow[] = result.models.map((m) => {
+          const cur = currentById.get(m.id);
+          // 已有行保留用户当前窗口值;新模型才带上端点声明的发现值。
+          const contextWindow = cur?.contextWindow;
+          return {
+            id: m.id,
+            name: cur?.name?.trim() || m.name,
+            discoveredMetadata: m.discoveredMetadata ?? { contextWindow: m.contextWindow },
+            mode: cur?.mode,
+            modalities: cur?.modalities,
+            officialDocs: cur?.officialDocs,
+            nameExplicit: cur ? (cur.nameExplicit ?? !cur.discoveredMetadata) : undefined,
+            ...(agent === 'pi' && cur?.piApi ? { piApi: cur.piApi } : {}),
+            ...(cur?.route ? { route: { ...cur.route } } : {}),
+            ...(contextWindow !== undefined ? { contextWindow } : {}),
+            ...(cur?.defaultEnabled === false ? { defaultEnabled: false } : {}),
+            ...(cur?.supportsImageInput !== undefined
+              ? { supportsImageInput: cur.supportsImageInput }
               : {}),
-            ...(m.reasoning !== undefined
+            ...(cur?.reasoning !== undefined
               ? {
-                  reasoning: m.reasoning,
-                  reasoningEfforts: [...(m.reasoningEfforts ?? [])],
-                  ...(m.reasoningDefaultEffort
-                    ? { reasoningDefaultEffort: m.reasoningDefaultEffort }
+                  reasoning: cur.reasoning,
+                  reasoningEfforts: [...(cur.reasoningEfforts ?? [])],
+                  ...(cur.reasoningDefaultEffort
+                    ? { reasoningDefaultEffort: cur.reasoningDefaultEffort }
                     : {}),
                 }
               : {}),
-          }))
-          .filter((m) => m.id.length > 0);
-        const currentById = new Map(current.map((m) => [m.id, m]));
-        const fetchedIds = new Set(result.models.map((m) => m.id));
-        // 行集合 = 表单已填但不在拉取结果里的（置顶保留）+ 拉取结果（撞 id 时保留用户显示名）。
-        const rows: ModelRow[] = [
-          ...current
-            .filter((m) => !fetchedIds.has(m.id))
-            .map((m) => ({ ...m, name: m.name || m.id })),
-          ...result.models.map((m) => {
-            const cur = currentById.get(m.id);
-            // contextWindow:表单已有的行以用户当前值为准——包括「显式清空」
-            // (cur 存在但无值时不得被发现值回填,review P1);只有表单没见过的
-            // 新模型才带上端点声明的发现值(否则保存后回落 200K,review P1)。
-            const contextWindow = cur?.contextWindow;
-            return {
-              id: m.id,
-              name: cur?.name || m.name,
-              discoveredMetadata: m.discoveredMetadata ?? { contextWindow: m.contextWindow },
-              mode: cur?.mode,
-              modalities: cur?.modalities,
-              officialDocs: cur?.officialDocs,
-              nameExplicit: cur ? (cur.nameExplicit ?? !cur.discoveredMetadata) : undefined,
-              ...(agent === 'pi' && cur?.piApi ? { piApi: cur.piApi } : {}),
-              ...(cur?.route ? { route: { ...cur.route } } : {}),
-              ...(contextWindow !== undefined ? { contextWindow } : {}),
-              ...(cur?.defaultEnabled === false ? { defaultEnabled: false } : {}),
-              ...(cur?.supportsImageInput !== undefined
-                ? { supportsImageInput: cur.supportsImageInput }
-                : {}),
-              ...(cur?.reasoning !== undefined
-                ? {
-                    reasoning: cur.reasoning,
-                    reasoningEfforts: [...(cur.reasoningEfforts ?? [])],
-                    ...(cur.reasoningDefaultEffort
-                      ? { reasoningDefaultEffort: cur.reasoningDefaultEffort }
-                      : {}),
-                  }
-                : {}),
-            };
-          }),
-        ];
+          };
+        });
         setChildLayer({
           kind: 'model-picker',
-          value: { agent, models: rows, selected: new Set(currentById.keys()), query: '' },
+          // 只对仍在上游清单中的旧模型保持勾选;已下架模型不会进入候选。
+          value: {
+            agent,
+            models: rows,
+            selected: new Set(rows.filter((m) => currentById.has(m.id)).map((m) => m.id)),
+            query: '',
+          },
         });
         // 弹层锁定所属 runtime：把背景 Tab 同步切回请求的 runtime（标题也带 runtime 名），
         // 请求期间切过 Tab 也不会在错误上下文里确认。
@@ -1637,17 +1626,12 @@ export function CustomProviderDialog({
   }, [activeTab, authMode, rt, fetchingModels, initial, picker, runtimeFill, savedBaselineFor, t]);
 
   /**
-   * 勾选弹层确认：勾选集写回该 runtime 的模型行。基于**确认时的最新表单行**合并，
-   * 不用拉取时的快照整体替换——拉取在途/弹层打开期间用户对模型行的编辑不能被静默冲掉：
-   *   - 弹层见过且勾选的 id 保留（显示名若被用户后改过，跟随最新值）；
-   *   - 弹层见过但未勾选的 id 移除（明确的用户意图）；
-   *   - 弹层没见过的 id（之后新手填的行）原样保留。
+   * 勾选弹层确认：弹层清单就是上游现状，确认时用勾选集整体替换该 runtime 的模型行。
+   * 已设置但上游已下架的 id 不留存；同 id 行按确认时的最新表单行补全用户字段。
    */
   const applyPicker = useCallback(() => {
     if (!picker) return;
     const chosen = picker.models.filter((m) => picker.selected.has(m.id));
-    if (chosen.length === 0) return;
-    const pickerIds = new Set(picker.models.map((m) => m.id));
     // 重映射靠 id 而不是行号:picker 确认会任意增删/重排该 runtime 的行,旧行号
     // 不能直接套到新数组。合并结果必须同步算出一份普通数组,同时喂给状态更新和
     // 草稿重映射——不能指望 patch() 调用后立即读 rtRef 拿到刚提交的值:rtRef 只
@@ -1694,46 +1678,14 @@ export function CustomProviderDialog({
           : {}),
       };
     });
-    for (const m of previousModels) {
-      const id = m.id.trim();
-      if (id && !pickerIds.has(id) && !merged.some((r) => r.id === id)) {
-        merged.push({
-          id,
-          name: m.name.trim() || id,
-          mode: m.mode,
-          modalities: m.modalities,
-          officialDocs: m.officialDocs,
-          discoveredMetadata: m.discoveredMetadata,
-          nameExplicit: m.nameExplicit,
-          ...(picker.agent === 'pi' && m.piApi ? { piApi: m.piApi } : {}),
-          ...(m.route ? { route: { ...m.route } } : {}),
-          ...(m.contextWindow !== undefined ? { contextWindow: m.contextWindow } : {}),
-          ...(m.defaultEnabled === false ? { defaultEnabled: false } : {}),
-          ...(m.supportsImageInput !== undefined
-            ? { supportsImageInput: m.supportsImageInput }
-            : {}),
-          ...(m.reasoning !== undefined
-            ? {
-                reasoning: m.reasoning,
-                reasoningEfforts: [...(m.reasoningEfforts ?? [])],
-                ...(m.reasoningDefaultEffort
-                  ? { reasoningDefaultEffort: m.reasoningDefaultEffort }
-                  : {}),
-              }
-            : {}),
-        });
-      }
-    }
+    // 未勾选与上游未返回的行都不保留,替换结果就是上游清单中的勾选子集。
     patch(picker.agent, (x) => ({ ...x, models: merged }));
     const oldIndexToId = new Map(previousModels.map((m, i) => [i, m.id.trim()]));
     const newIndexById = new Map<string, number>();
     merged.forEach((m, i) => {
       if (!newIndexById.has(m.id)) newIndexById.set(m.id, i);
     });
-    // 合并逻辑(上面的 latestById / 第二个 for 循环)对重复 id 都是「先遇到的旧行
-    // 赢」——按 previousModels 的原始顺序扫到的第一条。存活进 merged 的就是那
-    // 一条,不是随便哪条同 id 旧行。草稿重映射必须认准同一条,否则会把已被丢弃的
-    // 重复行的草稿错配到存活行上(review P1 ×2)。
+    // latestById 对重复 id 取先遇到的旧行;草稿重映射必须认准同一条。
     const survivingOldIndexById = new Map<string, number>();
     previousModels.forEach((m, i) => {
       const id = m.id.trim();
@@ -1790,7 +1742,7 @@ export function CustomProviderDialog({
     }
     if (editing && authMode === 'apiKey') {
       const failedEndpointEdit = VISIBLE_AGENTS.find((agent) => {
-        if (!keyHydrationFailed[agent]) return false;
+        if (!hasUnresolvedKeyReadFailure(agent)) return false;
         const baseline = savedBaselineFor(agent);
         const draft = rt[agent];
         return (
@@ -2095,7 +2047,7 @@ export function CustomProviderDialog({
     existingIds,
     onSaved,
     windowDrafts,
-    keyHydrationFailed,
+    hasUnresolvedKeyReadFailure,
     showAdvanced,
     savedBaselineFor,
     t,
@@ -3781,12 +3733,10 @@ export function ModelPickerOverlay({
               ref={primaryButtonRef}
               type="button"
               onClick={onConfirm}
-              disabled={picker.selected.size === 0}
               className={cn(
                 'inline-flex items-center justify-center rounded-full px-5 py-2 text-13 font-medium transition-colors active:scale-[0.98]',
                 'bg-[var(--confirm-btn-primary-bg)] text-[var(--confirm-btn-primary-text)] hover:bg-[var(--confirm-btn-primary-hover)]',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
-                picker.selected.size === 0 && 'cursor-not-allowed opacity-50',
               )}
             >
               {t('settings.providers.custom.fetch.confirm', { count: picker.selected.size })}

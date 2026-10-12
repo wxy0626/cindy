@@ -43,7 +43,7 @@ describe('MenuButton — settings menu item (#1881)', () => {
 });
 
 describe('MenuButton — locale coverage for the settings item', () => {
-  const locales = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'] as const;
+  const locales = ['zh-CN', 'en'] as const;
 
   for (const lng of locales) {
     it(`${lng} provides titleBar.menuItems.settings`, () => {

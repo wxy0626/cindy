@@ -44,7 +44,7 @@ import type {
 } from '../../shared/botCollaboration.js';
 import { BOT_DELEGATION_CLIENT_ID } from '../../shared/botCollaboration.js';
 import { ensureBotWorkspaceDir } from './botProfileFolder.js';
-import { ownerScopedUserDataPath } from '../appSessionState.js';
+import { machineSharedUserDataPath } from '../machineSharedStorage.js';
 
 const ACTIVE_DELEGATION_STATUSES = ['queued', 'running', 'waiting'] as const;
 /** 一条补充消息的正文上限：够写清「先别做 X，改做 Y」，又不至于变成另一项任务。 */
@@ -1754,7 +1754,7 @@ export function createBotDelegationService(deps: BotDelegationServiceDeps) {
       }
     } else {
       workingDir = await ensureBotWorkspaceDir(
-        ownerScopedUserDataPath(),
+        machineSharedUserDataPath(),
         caller.botId,
         app.getPath('userData'),
       );

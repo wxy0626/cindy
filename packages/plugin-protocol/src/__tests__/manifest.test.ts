@@ -595,8 +595,6 @@ describe('Ghost manifest contract', () => {
     const locales = {
       en: 'locales/en.json',
       'zh-CN': 'locales/zh-CN.json',
-      ja: 'locales/ja.json',
-      ko: 'locales/ko.json',
     };
     const result = validateGhostManifest({ ...validManifest, locales });
 
@@ -610,7 +608,7 @@ describe('Ghost manifest contract', () => {
     expect(
       validateGhostManifest({
         ...validManifest,
-        locales: { ja: 'locales/ja.json' },
+        locales: { 'zh-CN': 'locales/zh-CN.json' },
       }),
     ).toMatchObject({
       ok: false,
@@ -639,7 +637,7 @@ describe('Ghost manifest contract', () => {
         ...validManifest,
         locales: {
           en: 'locales/en.json',
-          ja: 'locales/EN.json',
+          'zh-CN': 'locales/EN.json',
         },
       }),
     ).toMatchObject({
@@ -651,7 +649,7 @@ describe('Ghost manifest contract', () => {
         ...validManifest,
         locales: {
           en: 'a.json',
-          ja: 'a.json/child.json',
+          'zh-CN': 'a.json/child.json',
         },
       }),
     ).toMatchObject({

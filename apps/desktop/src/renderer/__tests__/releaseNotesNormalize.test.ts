@@ -21,6 +21,24 @@ function stubFetch(payload: unknown) {
 }
 
 describe('release-notes normalization', () => {
+  it('current fetch 对齐实际版本缓存,不污染显式历史版本请求', async () => {
+    const fetchReleaseNotes = vi.fn(async (version: string, resolveLatest?: boolean) => ({
+      version: resolveLatest ? '0.1.95' : version,
+      date: '2026-09-29',
+      topics: [{ title: `${version}:${String(resolveLatest)}`, text: '正文。' }],
+    }));
+    vi.stubGlobal('window', { electronAPI: { fetchReleaseNotes } });
+
+    const mod = await import('@/release-notes');
+    const current = await mod.fetchCurrentReleaseNotes('0.1.86');
+    const historical = await mod.fetchReleaseNotes('0.1.86');
+
+    expect(current?.version).toBe('0.1.95');
+    expect(historical?.version).toBe('0.1.86');
+    expect(fetchReleaseNotes).toHaveBeenNthCalledWith(1, '0.1.86', true);
+    expect(fetchReleaseNotes).toHaveBeenNthCalledWith(2, '0.1.86', false);
+  });
+
   it('legacy payload:sections 按作者组展开,topics 归一为空数组', async () => {
     stubFetch({
       version: '0.1.17',
@@ -79,7 +97,7 @@ describe('release-notes normalization', () => {
       contributors: ['Lizi'],
       topics: [{ id: 'voice', title: '顶层中文', text: '兼容正文。' }],
       contentByLocale: Object.fromEntries(
-        ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'].map((locale) => [
+        ['zh-CN', 'en'].map((locale) => [
           locale,
           {
             intro: `intro-${locale}`,
@@ -98,7 +116,7 @@ describe('release-notes normalization', () => {
     });
     const mod = await import('@/release-notes');
 
-    for (const locale of ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'] as const) {
+    for (const locale of ['zh-CN', 'en'] as const) {
       const notes = await mod.fetchReleaseNotes('0.1.23', locale);
       expect(notes?.intro).toBe(`intro-${locale}`);
       expect(notes?.topics[0]).toMatchObject({
@@ -120,7 +138,7 @@ describe('release-notes normalization', () => {
     const mod = await import('@/release-notes');
 
     const english = mod.fetchReleaseNotes('0.1.28', 'en');
-    const japanese = mod.fetchReleaseNotes('0.1.28', 'ja');
+    const chinese = mod.fetchReleaseNotes('0.1.28', 'zh-CN');
     expect(fetchReleaseNotes).toHaveBeenCalledTimes(1);
 
     resolveRaw({
@@ -128,30 +146,28 @@ describe('release-notes normalization', () => {
       date: '2026-08-06',
       contentByLocale: {
         en: { topics: [{ id: 'same', title: 'English', text: 'English text.' }] },
-        ja: { topics: [{ id: 'same', title: '日本語', text: '日本語本文。' }] },
+        'zh-CN': { topics: [{ id: 'same', title: '简体中文', text: '简体中文正文。' }] },
       },
     });
 
     await expect(english).resolves.toMatchObject({ topics: [{ title: 'English' }] });
-    await expect(japanese).resolves.toMatchObject({ topics: [{ title: '日本語' }] });
+    await expect(chinese).resolves.toMatchObject({ topics: [{ title: '简体中文' }] });
     expect(fetchReleaseNotes).toHaveBeenCalledTimes(1);
   });
 
-  it('指定语言缺失或畸形时按 en → zh-CN → 顶层旧格式回退', async () => {
+  it('指定语言的 localized 块畸形时继续回退到可用语言', async () => {
     stubFetch({
       version: '0.1.24',
       date: '2026-08-06',
-      topics: [{ title: '顶层中文', text: 'legacy-root' }],
       contentByLocale: {
         'zh-CN': { topics: [{ title: '本地中文', text: 'localized-zh' }] },
-        en: { topics: [{ title: 'English', text: 'localized-en' }] },
-        ja: { topics: [{ title: '   ', text: '' }] },
+        en: { topics: [{ title: '   ', text: '' }] },
       },
     });
     const mod = await import('@/release-notes');
 
-    expect((await mod.fetchReleaseNotes('0.1.24', 'ja'))?.topics[0]?.text).toBe('localized-en');
-    expect((await mod.fetchReleaseNotes('0.1.24', 'ko'))?.topics[0]?.text).toBe('localized-en');
+    // en 块纯空白视为缺失 → 回退到 zh-CN
+    expect((await mod.fetchReleaseNotes('0.1.24', 'en'))?.topics[0]?.text).toBe('localized-zh');
     expect((await mod.fetchReleaseNotes('0.1.24', 'zh-CN'))?.topics[0]?.text).toBe('localized-zh');
   });
 
@@ -159,33 +175,17 @@ describe('release-notes normalization', () => {
     const fetchReleaseNotes = stubFetch({
       version: '0.1.29',
       date: '2026-08-06',
+      topics: [{ title: '顶层中文', text: 'legacy-root' }],
       contentByLocale: {
-        en: { topics: [{ title: 'English', text: 'localized-en' }] },
-        ja: null,
-        ko: 'not-an-object',
+        en: null,
+        'zh-CN': 'not-an-object',
       },
     });
     const mod = await import('@/release-notes');
 
-    expect((await mod.fetchReleaseNotes('0.1.29', 'ja'))?.topics[0]?.text).toBe('localized-en');
-    expect((await mod.fetchReleaseNotes('0.1.29', 'ko'))?.topics[0]?.text).toBe('localized-en');
+    // 两个 localized 块都不可用 → 回退顶层旧格式，且 raw payload 只请求一次
+    expect((await mod.fetchReleaseNotes('0.1.29', 'en'))?.topics[0]?.text).toBe('legacy-root');
     expect(fetchReleaseNotes).toHaveBeenCalledTimes(1);
-  });
-
-  it('zh-TW localized block 畸形时继续回退到有效 zh-CN 内容', async () => {
-    stubFetch({
-      version: '0.1.30',
-      date: '2026-08-06',
-      contentByLocale: {
-        'zh-TW': { topics: [] },
-        'zh-CN': { topics: [{ title: '简体说明', text: '有效的简体内容。' }] },
-      },
-    });
-    const mod = await import('@/release-notes');
-
-    await expect(mod.fetchReleaseNotes('0.1.30', 'zh-TW')).resolves.toMatchObject({
-      topics: [{ title: '简体说明', text: '有效的简体内容。' }],
-    });
   });
 
   it('英文缺失时回退中文,中文 localized 缺失时直接回退顶层中文', async () => {
@@ -199,7 +199,8 @@ describe('release-notes normalization', () => {
     });
     const mod = await import('@/release-notes');
 
-    expect((await mod.fetchReleaseNotes('0.1.25', 'ko'))?.topics[0]?.text).toBe('localized-zh');
+    // 请求 en 但只有 zh-CN 块 → 回退 zh-CN
+    expect((await mod.fetchReleaseNotes('0.1.25', 'en'))?.topics[0]?.text).toBe('localized-zh');
 
     vi.resetModules();
     stubFetch({
@@ -211,6 +212,7 @@ describe('release-notes normalization', () => {
       },
     });
     const zhMod = await import('@/release-notes');
+    // 请求 zh-CN 但只有 en 块 → 回退顶层旧格式
     expect((await zhMod.fetchReleaseNotes('0.1.26', 'zh-CN'))?.topics[0]?.text).toBe('legacy-root');
   });
 
@@ -219,20 +221,20 @@ describe('release-notes normalization', () => {
       version: '0.1.27',
       date: '2026-08-06',
       contentByLocale: {
-        ja: {
+        en: {
           sections: [
             {
               title: 'Bug Fixes',
-              items: [{ name: 'A', list: ['修正しました'] }],
+              items: [{ name: 'A', list: ['Fixed'] }],
             },
           ],
         },
       },
     });
     const mod = await import('@/release-notes');
-    const notes = await mod.fetchReleaseNotes('0.1.27', 'ja');
+    const notes = await mod.fetchReleaseNotes('0.1.27', 'en');
     expect(notes?.sections).toEqual([
-      { title: 'Bug Fixes', items: [{ text: '修正しました', by: 'A' }] },
+      { title: 'Bug Fixes', items: [{ text: 'Fixed', by: 'A' }] },
     ]);
   });
 

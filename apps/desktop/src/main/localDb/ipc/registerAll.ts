@@ -34,6 +34,7 @@ import { registerDevSqliteVecIpc } from './dev/sqliteVec';
 import { registerSearchIpc } from './search';
 import { registerRemoteHistoryIpc } from './history';
 import { recoverActiveBotTemplateSkills, registerBotIpc } from './bots';
+import { recoverMissingBotProfilesFromHomes } from '../botProfileRecovery.js';
 import { registerBotRemoteResourceProvider } from './botRemoteResourceProvider';
 
 import { createLogger } from '../../logger';
@@ -150,6 +151,7 @@ export function registerLocalDbIpc(opts: RegisterLocalDbIpcOpts = {}): void {
         (opts.isOwnerCurrent?.(userId) ?? true);
       // 数据库与账号边界都已就绪后再补装旧版内置伙伴能力；不依赖用户先打开
       // 伙伴页面。列表/get 仍保留幂等恢复，覆盖同进程账号切换后的读取路径。
+      await recoverMissingBotProfilesFromHomes(client);
       await recoverActiveBotTemplateSkills();
       if (!isReadyOwnerCurrent()) return;
       startMediaRefCompensationReconcile(userId, client, isReadyOwnerCurrent);

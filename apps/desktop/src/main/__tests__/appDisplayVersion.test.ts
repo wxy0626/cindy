@@ -13,6 +13,17 @@ describe('app display version', () => {
     ).toBe('0.1.76-beta');
   });
 
+  it('同一发布线取最高版本，不被 git describe 的最近 tag 误导', () => {
+    expect(
+      resolveDevelopmentAppVersion({
+        packagedVersion: '0.0.0',
+        upstreamTag: 'v0.1.85',
+        upstreamTags: ['v0.1.83', 'v0.1.85', 'v0.1.86-beta', 'v0.1.86', 'v1.0.0'],
+        headTag: 'v0.1.80-beta',
+      }),
+    ).toBe('0.1.86');
+  });
+
   it('没有上游标签时回退当前 checkout 标签，再回退包内版本', () => {
     expect(
       resolveDevelopmentAppVersion({

@@ -2639,8 +2639,10 @@ function ModelSelectorContentView({
 
   // 0 个可连来源:整张引导卡取代列表(仅 providers 加载完成后判,避免拉取期闪空态)。
   // device-link 远程会话不显示该引导(控制端无法替被控端连来源)→ 退化为扁平兜底列表。
+  // 统一面板也必须走这条空态:否则它绕过旧面板的引导卡,只显示「没有匹配的模型」,
+  // 把「还没连接来源」误报成搜索无结果。已建会话保留真实路由 / 重连入口,不在此接管。
   const emptyState =
-    !unifiedPanel &&
+    !actualRoute &&
     sourcesEnabled &&
     !deviceId &&
     currentAgentKind &&

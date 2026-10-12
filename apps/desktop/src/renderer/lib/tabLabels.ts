@@ -13,6 +13,7 @@ export type SettingsTab =
   | 'usage'
   | 'personalization'
   | 'providers'
+  | 'decision-model'
   | 'api-keys'
   | 'voice-input'
   | 'shortcuts'
@@ -35,6 +36,8 @@ export const TAB_IDS = [
   'general',
   'personalization',
   'providers',
+  // 本机 Laya 只负责新任务首条消息前的 Agent 路由判断,紧跟供应商配置管理。
+  'decision-model',
   'billing',
   // 「用量历史」紧随计费:两者都回答"我用了多少",但分工明确 —— billing 管账单与账户
   // 信息,usage 只统计本机 Cindy 内产生的 token 消耗(#2785 维护者裁决)。
@@ -75,6 +78,7 @@ export const TAB_LABEL_KEY: Record<SettingsTab, string> = {
   import: 'settings.tabs.import',
   connections: 'settings.tabs.connections',
   providers: 'settings.tabs.providers',
+  'decision-model': 'settings.tabs.decisionModel',
   'remote-control': 'settings.tabs.remoteControl',
   tina: 'settings.tabs.tina',
   ghosts: 'settings.tabs.ghosts',

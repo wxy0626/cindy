@@ -123,7 +123,7 @@ export function UserInfoSection({ isCollapsed, onOpenUpdateNotice }: UserInfoSec
 
   const initial = displayName.charAt(0).toUpperCase();
   // 未登录(跳过登录)态没有身份可展示:头像兜底用中性人形图标,而不是拿状态文案
-  // 取首字——那会渲染成「未」/「N」这类无意义字符,且四语各不相同。
+  // 取首字——那会渲染成「未」/「N」这类无意义字符,且中英各不相同。
   const showNotSignedInGlyph = !user && isLocal;
   const appDisplayVersion = window.electronAPI.appDisplayVersion;
   // 开发版用独立标签显示语义版本，正式版继续显示区域和应用版本。

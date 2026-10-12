@@ -13,7 +13,7 @@ export const GHOST_MANIFEST_SCHEMA_VERSION = 3 as const;
 export const GHOST_MANIFEST_SUMMARY_MAX_CHARS = 300;
 
 /** Cindy host locales supported by Plugin manifest resources. */
-export const GHOST_LOCALES = ['zh-CN', 'en', 'ja', 'ko'] as const;
+export const GHOST_LOCALES = ['zh-CN', 'en'] as const;
 export type GhostLocale = (typeof GHOST_LOCALES)[number];
 export type GhostManifestLocales = {
   en: string;

@@ -3,11 +3,9 @@
  *
  * 设计上和 useTheme 镜像：
  *   - 偏好持久化在 localStorage (key='language')，不经 server。
- *   - 'system' = 运行时跟 OS 走，由 main 进程读取 OS 首选语言列表并解析。
+ *   - 未设置偏好或非法值统一回退中文。
  *   - 切换语言时同步 i18next.changeLanguage 触发 react-i18next 重渲染，
  *     同步 <html lang="...">，并通知 main 刷新 macOS 原生菜单文案。
- *
- * 不做 OS 语言运行时监听。用户改了系统语言后需要重启应用，这是 Electron 通用行为。
  */
 
 import {
@@ -24,27 +22,22 @@ import { createElement } from 'react';
 import {
   i18n,
   DEFAULT_LOCALE,
-  SUPPORTED_LOCALES,
+  isLocalePreference,
   type LocalePreference,
   type SupportedLocale,
 } from '@/i18n';
 
 interface LocaleContextValue {
-  /** 用户的偏好选择 (含 'system')。 */
+  /** 用户的显示语言偏好。 */
   locale: LocalePreference;
-  /** 实际生效的语言 ('system' 已解析为 OS 语言)。 */
+  /** 实际生效的语言；当前与偏好相同。 */
   effectiveLocale: SupportedLocale;
   /** 设置偏好 —— 持久化到 localStorage、刷 i18next、刷 <html lang>。 */
-  setLocale: (next: LocalePreference) => void;
+  setLocale: (next: SupportedLocale) => void;
 }
 
 const STORAGE_KEY = 'language';
 const LocaleContext = createContext<LocaleContextValue | undefined>(undefined);
-
-function isLocalePreference(v: string): v is LocalePreference {
-  if (v === 'system') return true;
-  return (SUPPORTED_LOCALES as readonly string[]).includes(v);
-}
 
 function readStoredLocale(): LocalePreference {
   try {
@@ -53,20 +46,7 @@ function readStoredLocale(): LocalePreference {
   } catch {
     // localStorage 不可用 (例如 SSR / 沙箱) 时静默回退
   }
-  return 'system';
-}
-
-function detectSystemLocale(): SupportedLocale {
-  if (typeof window === 'undefined') return DEFAULT_LOCALE;
-  const locale = window.electronAPI?.preferredSystemLocale;
-  return typeof locale === 'string' && (SUPPORTED_LOCALES as readonly string[]).includes(locale)
-    ? (locale as SupportedLocale)
-    : DEFAULT_LOCALE;
-}
-
-function effectiveOf(pref: LocalePreference): SupportedLocale {
-  if (pref === 'system') return detectSystemLocale();
-  return pref;
+  return DEFAULT_LOCALE;
 }
 
 function syncApplicationMenuLocale(loc: SupportedLocale): void {
@@ -93,27 +73,26 @@ function applyLocale(loc: SupportedLocale): void {
  * in the user's selected language.
  */
 export function bootstrapInitialLocale(): SupportedLocale {
-  const effectiveLocale = effectiveOf(readStoredLocale());
+  const effectiveLocale = readStoredLocale();
   applyLocale(effectiveLocale);
   return effectiveLocale;
 }
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<LocalePreference>(readStoredLocale);
-  const [effectiveLocale, setEffectiveLocale] = useState<SupportedLocale>(() =>
-    effectiveOf(readStoredLocale()),
-  );
+  const [effectiveLocale, setEffectiveLocale] = useState<SupportedLocale>(readStoredLocale);
 
-  const setLocale = useCallback((next: LocalePreference) => {
-    setLocaleState(next);
+  const setLocale = useCallback((next: SupportedLocale) => {
+    // 兼容子窗口广播或历史运行态传来的旧语言值；可持久化偏好仍只有中英。
+    const preference = isLocalePreference(next) ? next : DEFAULT_LOCALE;
+    setLocaleState(preference);
     try {
-      localStorage.setItem(STORAGE_KEY, next);
+      localStorage.setItem(STORAGE_KEY, preference);
     } catch {
       // 持久化失败不影响当前会话切换
     }
-    const eff = effectiveOf(next);
-    setEffectiveLocale(eff);
-    applyLocale(eff);
+    setEffectiveLocale(preference);
+    applyLocale(preference);
   }, []);
 
   // 首次 mount 时确保 i18next + <html lang> 与 state 一致 (state 来自 localStorage,

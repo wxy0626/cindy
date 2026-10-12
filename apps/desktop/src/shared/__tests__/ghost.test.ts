@@ -303,14 +303,12 @@ describe('ghost · 清单校验', () => {
     expect(validateGhostManifest({ ...goodManifest(), author: 42 }).ok).toBe(false);
   });
 
-  it('locales 只接受插件协议四种语言、安全 JSON 路径且必须提供英文', () => {
+  it('locales 只接受插件协议中英语言、安全 JSON 路径且必须提供英文', () => {
     const valid = validateGhostManifest({
       ...goodManifest(),
       locales: {
         en: 'locales/en.json',
         'zh-CN': 'locales/zh-CN.json',
-        ja: 'locales/ja.json',
-        ko: 'locales/ko.json',
       },
     });
     expect(valid.ok).toBe(true);
@@ -337,13 +335,13 @@ describe('ghost · 清单校验', () => {
     expect(
       validateGhostManifest({
         ...goodManifest(),
-        locales: { en: 'locales/en.json', ja: 'locales/en.json' },
+        locales: { en: 'locales/en.json', 'zh-CN': 'locales/en.json' },
       }).ok,
     ).toBe(false);
     expect(
       validateGhostManifest({
         ...goodManifest(),
-        locales: { en: 'locales/en.json', ja: 'Locales/EN.json' },
+        locales: { en: 'locales/en.json', 'zh-CN': 'Locales/EN.json' },
       }).ok,
     ).toBe(false);
     expect(
@@ -355,7 +353,7 @@ describe('ghost · 清单校验', () => {
     expect(
       validateGhostManifest({
         ...goodManifest(),
-        locales: { en: 'locales/en.json', 'zh-TW': 'locales/zh-TW.json' },
+        locales: { en: 'locales/en.json', ja: 'locales/ja.json' },
       }).ok,
     ).toBe(false);
   });
@@ -533,29 +531,31 @@ describe('ghost · 清单校验', () => {
     ).toBe(false);
   });
 
-  it('locale 选择完全跟随宿主，插件不支持或宿主值未知时固定回退英文', () => {
+  it('locale 选择完全跟随宿主，插件缺少当前语言或宿主值未知时回退中文', () => {
     const parsed = validateGhostManifest({
       ...goodManifest(),
-      locales: { en: 'locales/en.json', ja: 'locales/ja.json' },
+      locales: { en: 'locales/en.json', 'zh-CN': 'locales/zh-CN.json' },
     });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(ghostLocalePathFor(parsed.manifest, 'ja')).toBe('locales/ja.json');
-    expect(ghostLocalePathFor(parsed.manifest, 'zh-CN')).toBe('locales/en.json');
-    expect(ghostLocalePathFor(parsed.manifest, 'zh-TW')).toBe('locales/en.json');
-    expect(ghostLocalePathFor(parsed.manifest, 'fr-FR')).toBe('locales/en.json');
-    expect(withGhostResolvedLocale(parsed.manifest, 'ko').resolvedLocale).toBe('ko');
-    expect(withGhostResolvedLocale(parsed.manifest, 'zh-TW').resolvedLocale).toBe('zh-TW');
-    expect(withGhostResolvedLocale(parsed.manifest, 'fr-FR').resolvedLocale).toBe('en');
+    expect(ghostLocalePathFor(parsed.manifest, 'zh-CN')).toBe('locales/zh-CN.json');
+    expect(ghostLocalePathFor(parsed.manifest, 'en')).toBe('locales/en.json');
+    expect(ghostLocalePathFor(parsed.manifest, 'zh-TW')).toBe('locales/zh-CN.json');
+    expect(ghostLocalePathFor(parsed.manifest, 'ja')).toBe('locales/zh-CN.json');
+    expect(ghostLocalePathFor(parsed.manifest, 'fr-FR')).toBe('locales/zh-CN.json');
+    expect(withGhostResolvedLocale(parsed.manifest, 'zh-CN').resolvedLocale).toBe('zh-CN');
+    expect(withGhostResolvedLocale(parsed.manifest, 'zh-TW').resolvedLocale).toBe('zh-CN');
+    expect(withGhostResolvedLocale(parsed.manifest, 'ja').resolvedLocale).toBe('zh-CN');
+    expect(withGhostResolvedLocale(parsed.manifest, 'fr-FR').resolvedLocale).toBe('zh-CN');
   });
 
-  it('app-context locale 保持插件协议旧四语，新增宿主语言固定回退英文', () => {
+  it('app-context locale 只保留中英，历史值和未知值固定回退中文', () => {
     expect(ghostAppContextLocale('zh-CN')).toBe('zh-CN');
-    expect(ghostAppContextLocale('zh-TW')).toBe('en');
+    expect(ghostAppContextLocale('zh-TW')).toBe('zh-CN');
     expect(ghostAppContextLocale('en')).toBe('en');
-    expect(ghostAppContextLocale('ja')).toBe('ja');
-    expect(ghostAppContextLocale('ko')).toBe('ko');
-    expect(ghostAppContextLocale('fr-FR')).toBe('en');
+    expect(ghostAppContextLocale('ja')).toBe('zh-CN');
+    expect(ghostAppContextLocale('ko')).toBe('zh-CN');
+    expect(ghostAppContextLocale('fr-FR')).toBe('zh-CN');
   });
 
   it('locale 资源按稳定 tool name 合并;翻译可部分提供、缺译回退原文,错位仍拒', () => {

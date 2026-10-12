@@ -52,7 +52,7 @@ export interface ContextUsagePopoverProps extends ContextUsageHoverCardProps {
  * token 来源分类的 i18n key 表。
  * 登记**完整 key**而不是「前缀 + 拼接」：模板拼接会让 i18nCompleteness 静态扫描
  * 只看到半截前缀（`chat.systemCard.context.categories.`），把整条误报成缺词条；
- * 写全字面量才能被门禁校验五语齐全。
+ * 写全字面量才能被门禁校验中英齐全。
  */
 const CONTEXT_SOURCE_LABEL_KEY: Record<string, string> = {
   systemPromptSource: 'chat.systemCard.context.categories.systemPromptSource',

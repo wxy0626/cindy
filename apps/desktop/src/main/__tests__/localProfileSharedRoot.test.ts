@@ -4,7 +4,7 @@
  * 这里锁的不是实现细节，而是三条数据安全的语义边界：
  *   1. 本地档案在正式区域目录之间必须落到**同一个**共享根（特性的全部意义）；
  *   2. 云账号必须纹丝不动地留在各自的区域目录（两区域后端不通，串了就是事故）；
- *   3. 隔离沙箱 / 自定义 userData 永远不参与共享（测试与沙箱不许碰真数据）。
+ *   3. 标准开发沙箱归一到稳定 dev2 共享目录；真正自定义 userData 仍不参与共享。
  */
 
 import path from 'node:path';
@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import {
   LOCAL_PROFILE_SHARED_DIR_NAME,
   isProductionRegionUserDataDir,
+  resolveDevelopmentSharedUserDataDir,
   resolveOwnerDataRootDir,
   resolveSessionDbRootDir,
 } from '../localProfileSharedRoot.js';
@@ -52,13 +53,21 @@ describe('resolveOwnerDataRootDir', () => {
     expect(resolveOwnerDataRootDir('', CN_DIR)).toBe(CN_DIR);
   });
 
-  it('隔离沙箱与自定义 userData 退化为自身，不共享', () => {
-    const sandbox = path.join('/AppData/Roaming', 'Cindy-dev2');
-    const namedSandbox = path.join('/AppData/Roaming', 'CindyGlobal-dev2-experiment');
+  it('真正自定义 userData 仍退化为自身，不共享', () => {
+    const sandbox = path.join('/tmp', 'cindy-custom-sandbox');
     const custom = path.join('/tmp', 'my-cindy-profile');
     expect(resolveOwnerDataRootDir(LOCAL_PROFILE_DATA_OWNER_ID, sandbox)).toBe(sandbox);
-    expect(resolveOwnerDataRootDir(LOCAL_PROFILE_DATA_OWNER_ID, namedSandbox)).toBe(namedSandbox);
     expect(resolveOwnerDataRootDir(LOCAL_PROFILE_DATA_OWNER_ID, custom)).toBe(custom);
+  });
+
+  it('标准开发沙箱统一到稳定 dev2 共享目录', () => {
+    const namedSandbox = path.join('/AppData/Roaming', 'CindyGlobal-dev2-experiment');
+    const worktreeSandbox = path.join('/AppData/Roaming', 'CindyGlobal-dev2-cindy-a1b2');
+    const expected = path.join('/AppData/Roaming', 'CindyGlobal-dev2-dev');
+    expect(resolveDevelopmentSharedUserDataDir(namedSandbox)).toBe(expected);
+    expect(resolveDevelopmentSharedUserDataDir(worktreeSandbox)).toBe(expected);
+    expect(resolveOwnerDataRootDir(LOCAL_PROFILE_DATA_OWNER_ID, namedSandbox)).toBe(expected);
+    expect(resolveSessionDbRootDir(LOCAL_PROFILE_DATA_OWNER_ID, worktreeSandbox)).toBe(expected);
   });
 
   it('共享根与区域目录同级，不嵌套在任何一个区域目录内', () => {
@@ -104,8 +113,8 @@ describe('resolveSessionDbRootDir', () => {
     expect(resolveSessionDbRootDir('', CN_DIR)).toBe(CN_DIR);
   });
 
-  it('隔离沙箱与自定义 userData 不共享会话库', () => {
-    const sandbox = path.join('/AppData/Roaming', 'Cindy-dev2');
+  it('真正自定义 userData 不共享会话库', () => {
+    const sandbox = path.join('/tmp', 'cindy-custom-sandbox');
     const custom = path.join('/tmp', 'my-cindy-profile');
     expect(resolveSessionDbRootDir(LOCAL_PROFILE_DATA_OWNER_ID, sandbox)).toBe(sandbox);
     expect(resolveSessionDbRootDir(CLOUD_OWNER_ID, custom)).toBe(custom);
@@ -119,8 +128,9 @@ describe('isProductionRegionUserDataDir', () => {
     expect(isProductionRegionUserDataDir(DEV_DIR)).toBe(true);
   });
 
-  it('沙箱、共享根自身与自定义目录都不是正式目录', () => {
-    expect(isProductionRegionUserDataDir(path.join('/AppData/Roaming', 'Cindy-dev2'))).toBe(false);
+  it('标准开发沙箱参与共享，旧裸目录与自定义目录仍不是正式目录', () => {
+    expect(isProductionRegionUserDataDir(path.join('/AppData/Roaming', 'CindyGlobal-dev2-experiment'))).toBe(true);
+    expect(isProductionRegionUserDataDir(path.join('/AppData/Roaming', 'Cindy-dev2'))).toBe(true);
     expect(isProductionRegionUserDataDir(EXPECTED_SHARED)).toBe(false);
     expect(isProductionRegionUserDataDir('/tmp/whatever')).toBe(false);
   });

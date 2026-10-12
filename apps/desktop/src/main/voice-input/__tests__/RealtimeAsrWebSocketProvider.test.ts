@@ -55,7 +55,8 @@ describe('RealtimeAsrWebSocketProvider helpers', () => {
     expect(openAiLanguageCode('auto')).toBeUndefined();
     expect(openAiLanguageCode('zh-CN')).toBe('zh');
     expect(openAiLanguageCode('en-US')).toBe('en');
-    expect(openAiLanguageCode('Japanese')).toBe('ja');
+    expect(openAiLanguageCode('Japanese')).toBeUndefined();
+    expect(openAiLanguageCode('Korean')).toBeUndefined();
   });
 
   it('builds LiteLLM passthrough realtime WebSocket URLs without query model leakage', () => {

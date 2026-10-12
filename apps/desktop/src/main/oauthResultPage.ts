@@ -7,7 +7,7 @@
 import { DEEP_LINK_URL_PREFIX } from '../shared/deepLinkSchemes';
 import { LOGIN_CALLBACK_CHIBI } from './assets/loginCallbackAssets';
 
-export type OAuthResultPageLang = 'zh' | 'zh-TW' | 'en' | 'ja' | 'ko';
+export type OAuthResultPageLang = 'zh' | 'en';
 export type OAuthResultPageVariant = 'success' | 'warning' | 'error';
 export type OAuthResultPageTheme = 'light' | 'dark';
 
@@ -55,43 +55,26 @@ export interface OAuthResultPageInput {
 
 export const OAUTH_RESULT_HTML_LANG: Record<OAuthResultPageLang, string> = {
   zh: 'zh-CN',
-  'zh-TW': 'zh-TW',
   en: 'en',
-  ja: 'ja',
-  ko: 'ko',
 };
 
 /** Selects the first supported language in browser preference order. */
 export function pickOAuthResultPageLang(acceptLanguage: string | undefined): OAuthResultPageLang {
-  if (typeof acceptLanguage !== 'string' || acceptLanguage.length === 0) return 'en';
+  if (typeof acceptLanguage !== 'string' || acceptLanguage.length === 0) return 'zh';
   for (const part of acceptLanguage.split(',')) {
     const primary = part.trim().split(';')[0]?.trim().toLowerCase() ?? '';
-    if (primary.startsWith('zh')) {
-      if (primary.includes('hans')) return 'zh';
-      if (primary.includes('hant') || /(?:-|^)(?:tw|hk|mo)(?:-|$)/.test(primary)) {
-        return 'zh-TW';
-      }
-      return 'zh';
-    }
-    if (primary.startsWith('ja')) return 'ja';
-    if (primary.startsWith('ko')) return 'ko';
+    if (primary.startsWith('zh')) return 'zh';
     if (primary.startsWith('en')) return 'en';
   }
-  return 'en';
+  return 'zh';
 }
 
 function returnLabel(lang: OAuthResultPageLang, brandName: string): string {
   switch (lang) {
     case 'zh':
       return `返回 ${brandName}`;
-    case 'zh-TW':
-      return `返回 ${brandName}`;
     case 'en':
       return `Return to ${brandName}`;
-    case 'ja':
-      return `${brandName} に戻る`;
-    case 'ko':
-      return `${brandName}(으)로 돌아가기`;
   }
 }
 
@@ -131,33 +114,6 @@ export function getProviderOAuthResultCopy(
         missingCodeBody: `没有收到 ${providerName} 的授权码，请返回 ${brandName} 重试。`,
         invalidStateBody: `授权校验失败，请返回 ${brandName} 重新发起连接。`,
         exchangeFailedBody: `连接 ${providerName} 时发生错误，请返回 ${brandName} 重试。`,
-      };
-    case 'zh-TW':
-      return {
-        successTitle: '授權成功',
-        successBody: `${providerName} 已連線至 ${brandName}。你可以返回應用程式繼續。`,
-        errorTitle: '授權未完成',
-        missingCodeBody: `沒有收到 ${providerName} 的授權碼，請返回 ${brandName} 重試。`,
-        invalidStateBody: `授權驗證失敗，請返回 ${brandName} 重新發起連線。`,
-        exchangeFailedBody: `連線 ${providerName} 時發生錯誤，請返回 ${brandName} 重試。`,
-      };
-    case 'ja':
-      return {
-        successTitle: '認可が完了しました',
-        successBody: `${providerName} が ${brandName} に接続されました。アプリに戻って続行できます。`,
-        errorTitle: '認可を完了できませんでした',
-        missingCodeBody: `${providerName} から認可コードを受信できませんでした。${brandName} に戻って再試行してください。`,
-        invalidStateBody: `認可の検証に失敗しました。${brandName} に戻って接続をやり直してください。`,
-        exchangeFailedBody: `${providerName} への接続中にエラーが発生しました。${brandName} に戻って再試行してください。`,
-      };
-    case 'ko':
-      return {
-        successTitle: '인증 완료',
-        successBody: `${providerName} 계정이 ${brandName}에 연결되었습니다. 앱으로 돌아가 계속할 수 있습니다.`,
-        errorTitle: '인증이 완료되지 않았습니다',
-        missingCodeBody: `${providerName} 인증 코드를 받지 못했습니다. ${brandName}(으)로 돌아가 다시 시도하세요.`,
-        invalidStateBody: `인증 검증에 실패했습니다. ${brandName}(으)로 돌아가 연결을 다시 시작하세요.`,
-        exchangeFailedBody: `${providerName} 연결 중 오류가 발생했습니다. ${brandName}(으)로 돌아가 다시 시도하세요.`,
       };
     default:
       return {
@@ -199,16 +155,6 @@ const GHOST_OAUTH_PAGE_STRINGS: Record<OAuthResultPageLang, GhostOAuthResultCopy
       internal: '回调处理异常，请回到 {brand} 重试。',
     },
   },
-  'zh-TW': {
-    successTitle: '授權成功',
-    successBody: '你可以關閉此頁面，返回 {brand} 繼續。',
-    errorTitle: '授權失敗',
-    errors: {
-      'provider-error': '授權伺服器傳回錯誤：{detail}',
-      'invalid-callback': '回呼參數不完整或驗證失敗，請返回 {brand} 重試。',
-      internal: '處理回呼時發生錯誤，請返回 {brand} 重試。',
-    },
-  },
   en: {
     successTitle: 'Authorization successful',
     successBody: 'You can close this page and return to {brand}.',
@@ -219,28 +165,6 @@ const GHOST_OAUTH_PAGE_STRINGS: Record<OAuthResultPageLang, GhostOAuthResultCopy
         'The callback is incomplete or failed validation. Please return to {brand} and try again.',
       internal:
         'Something went wrong while handling the callback. Please return to {brand} and try again.',
-    },
-  },
-  ja: {
-    successTitle: '認可が完了しました',
-    successBody: 'このページを閉じて {brand} に戻れます。',
-    errorTitle: '認可に失敗しました',
-    errors: {
-      'provider-error': '認可サーバーがエラーを返しました：{detail}',
-      'invalid-callback':
-        'コールバックのパラメータが不完全か検証に失敗しました。{brand} に戻ってやり直してください。',
-      internal: 'コールバック処理中にエラーが発生しました。{brand} に戻ってやり直してください。',
-    },
-  },
-  ko: {
-    successTitle: '인증 완료',
-    successBody: '이 페이지를 닫고 {brand}(으)로 돌아가세요.',
-    errorTitle: '인증 실패',
-    errors: {
-      'provider-error': '인증 서버가 오류를 반환했습니다: {detail}',
-      'invalid-callback':
-        '콜백 매개변수가 불완전하거나 검증에 실패했습니다. {brand}(으)로 돌아가 다시 시도하세요.',
-      internal: '콜백 처리 중 오류가 발생했습니다. {brand}(으)로 돌아가 다시 시도하세요.',
     },
   },
 };
@@ -270,21 +194,6 @@ export function getOAuthNeutralResultCopy(
       return {
         title: '需要继续操作',
         body: `请返回 ${brandName}，完成当前工作区的安装后继续。`,
-      };
-    case 'zh-TW':
-      return {
-        title: '需要繼續操作',
-        body: `請返回 ${brandName}，完成目前工作區的安裝後繼續。`,
-      };
-    case 'ja':
-      return {
-        title: '操作が必要です',
-        body: `${brandName} に戻り、現在のワークスペースへのインストールを完了してください。`,
-      };
-    case 'ko':
-      return {
-        title: '추가 작업 필요',
-        body: `${brandName}로 돌아가 현재 워크스페이스 설치를 완료하세요.`,
       };
     default:
       return {

@@ -47,16 +47,13 @@ Quality bar:
 /** locale → 自述语言的人类可读名(给模型的确定性指令,不靠它从请求里猜)。 */
 const REPLY_LANGUAGE_BY_LOCALE: Record<string, string> = {
   'zh-CN': 'Simplified Chinese (简体中文)',
-  'zh-TW': 'Traditional Chinese (繁體中文)',
   en: 'English',
-  ja: 'Japanese (日本語)',
-  ko: 'Korean (한국어)',
 };
 
 export interface BuildLearnPromptArgs {
   /** 用户在 /learn 后输入的自由文本(空串 = 从触发会话上下文蒸馏,由调用方兜底)。 */
   userRequest: string;
-  /** 应用当前语言(SupportedLocale 字符串)。自述语言跟随系统语言配置;
+  /** 应用当前语言(SupportedLocale 字符串)。自述语言跟随应用当前语言;
    *  未知值回退 English。 */
   appLocale?: string;
   /** 已格式化的本地会话证据块(evidence.pure 的 formatEvidenceBlock 输出;空串省略)。 */
@@ -230,7 +227,7 @@ export function buildLearnPrompt(args: BuildLearnPromptArgs): string {
     '',
     // 收尾自述是产品面材料:审查者主要读这段说明来决定是否应用提案,diff 只作
     // 核对。结构与语言都是硬要求(用户不会通读 SKILL.md 全文);语言由代码按
-    // 系统语言配置注入,不让模型从请求里猜(规则 9)。
+    // 应用语言配置注入,不让模型从请求里猜(规则 9)。
     'FINAL REPLY (this is what the reviewer reads to decide whether to accept the',
     'skill — the file diff is only a cross-check, so write this carefully):',
     `Reply in ${replyLanguage} (the user's app language). If the USER PROFILE`,

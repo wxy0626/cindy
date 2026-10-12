@@ -1,11 +1,17 @@
-/** UI-supported concrete locales. */
-export const SUPPORTED_LOCALES = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'] as const;
+/** 应用支持的显示语言。只保留中文和英文，不保留历史语言。 */
+export const SUPPORTED_LOCALES = ['zh-CN', 'en'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
-/** User-facing locale preference. 'system' is resolved by the host process. */
-export type LocalePreference = SupportedLocale | 'system';
+export type LocalePreference = SupportedLocale;
 
-export const DEFAULT_LOCALE: SupportedLocale = 'en';
+export const DEFAULT_LOCALE = 'zh-CN' satisfies SupportedLocale;
+
+export function isLocalePreference(value: unknown): value is LocalePreference {
+  return (
+    typeof value === 'string' &&
+    (SUPPORTED_LOCALES as readonly string[]).includes(value)
+  );
+}
 
 function normalizeLocaleTag(raw: string | undefined | null): string | null {
   const tag = raw?.trim().replace(/_/g, '-').replace(/\..*$/, '');
@@ -61,22 +67,9 @@ function matchSupportedLocale(raw: string | undefined | null): SupportedLocale |
 }
 
 function matchSystemLocale(raw: string | undefined | null): SupportedLocale | null {
-  const normalized = normalizeLocaleTag(raw);
   const language = getLanguageCode(raw);
-  if (language === 'zh') {
-    const intlLocale = normalized ? new Intl.Locale(normalized) : null;
-    const script = intlLocale?.script?.toLowerCase() ?? '';
-    const region = intlLocale?.region?.toLowerCase() ?? '';
-    // An explicit script is stronger than a conflicting region, e.g.
-    // zh-Hans-HK is Simplified Chinese and zh-Hant-CN is Traditional Chinese.
-    if (script === 'hans') return 'zh-CN';
-    if (script === 'hant') return 'zh-TW';
-    if (['cn', 'sg'].includes(region)) return 'zh-CN';
-    if (['tw', 'hk', 'mo'].includes(region)) return 'zh-TW';
-    // Bare `zh` follows the mainland default; an explicit Traditional tag is
-    // handled above before this fallback.
-    return 'zh-CN';
-  }
+  if (language === 'zh') return 'zh-CN';
+  if (language === 'en') return 'en';
   return matchSupportedLocale(raw);
 }
 

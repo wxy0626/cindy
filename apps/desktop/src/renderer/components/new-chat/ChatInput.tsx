@@ -167,6 +167,7 @@ import {
 } from './sourceSwitch';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog-provider';
 import { PermissionSelector } from './PermissionSelector';
+import { DecisionModelButton } from './DecisionModelButton';
 import { ExtraDirsButton, type CollaborationMenuConfig } from './ExtraDirsButton';
 import { expandHostCapabilityInvocation } from '../../cindy-brain/hostCapabilityInvocation';
 import {
@@ -7948,7 +7949,9 @@ export function ChatInput({
   };
 
   const handleNavigateToProviders = useCallback(() => {
-    navigate('/settings?tab=providers');
+    // 模型选择器的零来源空态也走这条路径。未登录本机档案要先看到
+    // “选择供应商”向导，而不是落在已有连接列表/编辑态里继续误以为必须登录。
+    navigate('/settings?tab=providers&wizard=1');
   }, [navigate]);
 
   const handleReconnectSource = useCallback(() => {
@@ -8691,6 +8694,11 @@ export function ChatInput({
                   dense={effectiveDenseToolbar}
                   iconOnly={useUltraCompactToolbar}
                   visualVariant={isCreateAgentVariant ? 'create-agent' : 'default'}
+                />
+                <DecisionModelButton
+                  dense={effectiveDenseToolbar}
+                  compact={useUltraCompactToolbar}
+                  createAgent={isCreateAgentVariant}
                 />
                 {useNarrowToolbar && !useCompactMiddleToolbar && <>{middleToolbarSlot}</>}
               </div>

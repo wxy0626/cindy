@@ -69,7 +69,7 @@ export const DEFAULT_MAX_CONSECUTIVE_POLL_FAILURES = 8;
 
 /**
  * 轮询失败但错误对象没带可用 code 时的兜底。选它而不是造新码:
- * `login.errors.AUTH_REQUEST_FAILED` 已有五语文案(「登录请求失败,请重试」)。
+ * `login.errors.AUTH_REQUEST_FAILED` 已有中英文案(「登录请求失败,请重试」)。
  */
 const FALLBACK_POLL_ERROR_CODE = 'AUTH_REQUEST_FAILED';
 
@@ -84,7 +84,7 @@ export function hostedCallbackPollDelayMs(elapsedMs: number): number {
  * poll 响应 → 登录尝试结果;`null` = 尚未有结论,继续轮询。
  *
  * `expired` 复用 `INVALID_AUTH_CODE`(「授权已过期,请重新登录」)而不是新造错误码:
- * 语义一致且现网五语文案齐全。provider 侧错误原样透传,与 loopback 路径口径相同。
+ * 语义一致且现网中英文案齐全。provider 侧错误原样透传,与 loopback 路径口径相同。
  */
 export function mapDesktopAuthorizationPoll(
   poll: DesktopAuthorizationPoll,

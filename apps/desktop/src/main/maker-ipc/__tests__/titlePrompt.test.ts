@@ -21,7 +21,9 @@ describe('buildAutoTitlePrompt', () => {
   });
 
   it('follows the UI locale for the title language line', () => {
+    expect(buildAutoTitlePrompt('hello', 'zh-CN')).toContain(
+      'Write the title in Simplified Chinese.',
+    );
     expect(buildAutoTitlePrompt('hello', 'en')).toContain('Write the title in English.');
-    expect(buildAutoTitlePrompt('hello', 'ja')).toContain('Write the title in Japanese.');
   });
 });

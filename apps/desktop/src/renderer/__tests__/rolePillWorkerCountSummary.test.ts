@@ -30,7 +30,7 @@ describe('RolePillDropdown worker count summary', () => {
   });
 
   it('defines the pluralized summary string in every locale', () => {
-    for (const locale of ['zh-CN', 'zh-TW', 'en', 'ja', 'ko']) {
+    for (const locale of ['zh-CN', 'en']) {
       const raw = readFileSync(
         resolve(__dirname, '..', 'i18n', 'locales', locale, 'common.json'),
         'utf8',
@@ -39,7 +39,7 @@ describe('RolePillDropdown worker count summary', () => {
         orca?: { rolePill?: Record<string, unknown> };
       };
       const rp = json.orca?.rolePill ?? {};
-      // 传 count 后 i18next 对所有语言都按 _other 解析 (zh/ja/ko 仅 other 复数类别);
+      // 传 count 后 i18next 对中文按 _other 解析;
       // en 额外需要 _one, 否则 totalCount===1 时显示 "1 workers" 语法错误。
       const other = rp.workerCountSummary_other;
       expect(other).toEqual(expect.any(String));

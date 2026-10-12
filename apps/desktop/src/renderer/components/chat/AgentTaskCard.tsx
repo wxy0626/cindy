@@ -42,7 +42,7 @@ import {
   subagentSpawnResultIndicatesRunning,
 } from '@cindy/maker-shared/agent-task';
 
-// 徽标可显示的思考强度档:协议全部合法档(效果词表 effortLevels 四语齐)。
+// 徽标可显示的思考强度档:协议全部合法档(效果词表 effortLevels 中英齐)。
 const EFFORT_BADGE_LEVELS = new Set<string>(['minimal', ...CODEX_SUBAGENT_EFFORTS]);
 
 interface AgentTaskCardProps {

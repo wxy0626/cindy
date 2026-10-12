@@ -122,12 +122,8 @@ type SelfDeviceNameQueuedWrite =
   | { kind: 'rename'; name: string; options: SelfDeviceNameSaveOptions }
   | { kind: 'reset' };
 const SETTINGS_DEVICE_TIMEOUT_MS = 12_000;
-// 显示语言选项:「跟随系统」在前,英语作为第一个显式语言,其余语言按支持列表顺序排列。
-const LANGUAGE_OPTIONS: readonly LocalePreference[] = [
-  'system',
-  'en',
-  ...SUPPORTED_LOCALES.filter((locale) => locale !== 'en'),
-];
+// 设置页只提供中文和 English。
+const LANGUAGE_OPTIONS: readonly LocalePreference[] = SUPPORTED_LOCALES;
 
 export default function SettingsScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -1120,7 +1116,7 @@ export default function SettingsScreen() {
           ]}
         </SettingsGroup>
 
-        {/* 显示语言:默认跟随系统,手动选择即持久化 override(恢复跟随系统 = 清除 override) */}
+        {/* 显示语言:默认中文,手动选择即持久化 override。 */}
         <SettingsGroup
           footer={t('settings.language.hint')}
           title={t('settings.language.title')}

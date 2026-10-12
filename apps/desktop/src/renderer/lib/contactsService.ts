@@ -129,7 +129,7 @@ export const contactsService = {
     api().onSyncStatusChanged((status) => cb(status as ContactsDeviceSyncStatus)),
 };
 
-/** contacts UI 有专属文案的 IPC 错误码(settings.contacts.ipcError.* 四语言齐备) */
+/** contacts UI 有专属文案的 IPC 错误码(settings.contacts.ipcError.* 中英齐备) */
 const CONTACTS_ERROR_CODES = new Set([
   'IDENTITY_CONFLICT',
   'PERMISSION_DENIED',

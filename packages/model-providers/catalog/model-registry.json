@@ -3234,10 +3234,7 @@
         "runtimeProfile": "qwen-xhigh",
         "descriptions": {
           "en": "Capability pick based on independent benchmarks; local quantization can affect results.",
-          "zh-CN": "依据独立跑分保留的能力推荐，本地量化效果仍可能有差异。",
-          "zh-TW": "依據獨立跑分保留的能力推薦，本機量化效果仍可能有差異。",
-          "ja": "独立評価に基づく能力重視の推奨。ローカルの量子化で結果は変わり得ます。",
-          "ko": "독립 벤치마크에 따른 성능 추천입니다. 로컬 양자화에 따라 결과가 달라질 수 있습니다."
+          "zh-CN": "依据独立跑分保留的能力推荐，本地量化效果仍可能有差异。"
         },
         "evidence": [
           {
@@ -3267,10 +3264,7 @@
         ],
         "descriptions": {
           "en": "Low-memory candidate; comparable speed and memory tests are pending.",
-          "zh-CN": "低内存候选，待补齐同条件速度与内存实测。",
-          "zh-TW": "低記憶體候選，待補齊相同條件的速度與記憶體實測。",
-          "ja": "省メモリ候補。同条件での速度とメモリの実測待ち。",
-          "ko": "저메모리 후보. 동일 조건의 속도와 메모리 실측이 필요합니다."
+          "zh-CN": "低内存候选，待补齐同条件速度与内存实测。"
         },
         "evidence": [
           {
@@ -3300,10 +3294,7 @@
         ],
         "descriptions": {
           "en": "Low-memory candidate to compare with Gemma 4 12B.",
-          "zh-CN": "低内存候选，待与 Gemma 4 12B 比较。",
-          "zh-TW": "低記憶體候選，待與 Gemma 4 12B 比較。",
-          "ja": "省メモリ候補。Gemma 4 12B との比較待ち。",
-          "ko": "저메모리 후보. Gemma 4 12B와 비교가 필요합니다."
+          "zh-CN": "低内存候选，待与 Gemma 4 12B 比较。"
         },
         "evidence": [
           {
@@ -3333,10 +3324,7 @@
         ],
         "descriptions": {
           "en": "Low-memory candidate to compare with Qwen3.5 9B.",
-          "zh-CN": "低内存候选，待与 Qwen3.5 9B 比较。",
-          "zh-TW": "低記憶體候選，待與 Qwen3.5 9B 比較。",
-          "ja": "省メモリ候補。Qwen3.5 9B との比較待ち。",
-          "ko": "저메모리 후보. Qwen3.5 9B와 비교가 필요합니다."
+          "zh-CN": "低内存候选，待与 Qwen3.5 9B 比较。"
         },
         "evidence": [
           {
@@ -3366,10 +3354,7 @@
         ],
         "descriptions": {
           "en": "Speed candidate; a comparison with Nemotron is pending.",
-          "zh-CN": "速度候选，待与 Nemotron 做同条件比较。",
-          "zh-TW": "速度候選，待與 Nemotron 做相同條件比較。",
-          "ja": "速度重視の候補。Nemotron との同条件比較待ち。",
-          "ko": "속도 후보. Nemotron과 동일 조건 비교가 필요합니다."
+          "zh-CN": "速度候选，待与 Nemotron 做同条件比较。"
         },
         "evidence": [
           {
@@ -3399,10 +3384,7 @@
         ],
         "descriptions": {
           "en": "Speed candidate; a comparison with Qwen3.6 is pending.",
-          "zh-CN": "速度候选，待与 Qwen3.6 做同条件比较。",
-          "zh-TW": "速度候選，待與 Qwen3.6 做相同條件比較。",
-          "ja": "速度重視の候補。Qwen3.6 との同条件比較待ち。",
-          "ko": "속도 후보. Qwen3.6과 동일 조건 비교가 필요합니다."
+          "zh-CN": "速度候选，待与 Qwen3.6 做同条件比较。"
         },
         "evidence": [
           {
@@ -3427,10 +3409,7 @@
         ],
         "descriptions": {
           "en": "High-memory candidate; local peak memory and performance still need validation.",
-          "zh-CN": "大内存候选，仍需验证本机峰值内存与性能。",
-          "zh-TW": "大記憶體候選，仍需驗證本機峰值記憶體與效能。",
-          "ja": "大容量メモリ向け候補。本機でのピークメモリと性能は未検証。",
-          "ko": "대용량 메모리 후보. 로컬 최대 메모리와 성능 검증이 필요합니다."
+          "zh-CN": "大内存候选，仍需验证本机峰值内存与性能。"
         },
         "evidence": [
           {

@@ -98,7 +98,7 @@ export function matchesModelName(
   const brand = modelBrand(model);
   const haystack = [model.id, name, model.description, brand?.label,
     localizedModelName(name, t), localizedModelDescription(model, t),
-    ...['zh-CN', 'zh-TW', 'en'].flatMap((lng) => [
+    ...['zh-CN', 'en'].flatMap((lng) => [
       localizedModelName(name, t, lng),
       brand && Object.hasOwn(brands, brand.key)
         ? t(`modelNames.manufacturers.${brand.key}`, { lng, defaultValue: brand.label }) : '',

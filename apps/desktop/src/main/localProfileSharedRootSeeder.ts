@@ -186,7 +186,7 @@ export function seedSessionDbSharedRoot(
   dbFilePrefix: string,
 ): boolean {
   const sharedRoot = resolveSessionDbRootDir(LOCAL_PROFILE_DATA_OWNER_ID, currentUserDataDir);
-  // 非正式区域目录（沙箱/自定义）退化为自身，无需播种，也不该播种。
+  // 真正自定义目录退化为自身，无需播种；标准开发沙箱会归一到稳定 dev2 根。
   if (sharedRoot === currentUserDataDir) return false;
 
   const appDataRoot = path.dirname(currentUserDataDir);

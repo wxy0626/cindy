@@ -7,7 +7,8 @@ import {
   normalizeBotModelChain,
   type BotModelRoute,
 } from '../../shared/botModelChain.js';
-import { activeOwnerScopeKey, getActiveAppSession, ownerScopedUserDataPath } from '../appSessionState.js';
+import { activeOwnerScopeKey } from '../appSessionState.js';
+import { machineSharedUserDataPath } from '../machineSharedStorage.js';
 import { desktopMakerLogger } from './logger-adapter.js';
 import { getMakerIfReady } from './index.js';
 import { getDesktopProviderService } from './createDesktopProviderService.js';
@@ -54,8 +55,7 @@ function readConnectedProviders(owner: string): Promise<ProviderView[]> {
 }
 
 function currentStore(rootPath?: string) {
-  const ownerRoot = rootPath
-    ?? (getActiveAppSession().dataOwnerId ? ownerScopedUserDataPath() : null);
+  const ownerRoot = rootPath ?? machineSharedUserDataPath();
   const key = ownerRoot ?? '<global>';
   let current = stores.get(key);
   if (!current) {

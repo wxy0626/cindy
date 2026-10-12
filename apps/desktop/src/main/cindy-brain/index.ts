@@ -7932,7 +7932,7 @@ export function registerGhostIpc(): void {
     if (typeof id !== 'string' || !isValidGhostId(id)) throwIpcError('INVALID_PARAMS', '非法插件 id');
     // **唯一有效的删除确认在 Main**:preload 即使被其它 trusted renderer
     // 调用也绕不过用户点击(review:Renderer 确认可被内部调用方绕过)。文案走
-    // main i18n(与 Renderer 五语同一资源),壳由系统绘制；取消不取得 mutation
+    // main i18n(与 Renderer 中英同一资源),壳由系统绘制；取消不取得 mutation
     // 租约、不触碰 binding/数据。
     const parent = BrowserWindow.fromWebContents(event.sender);
     const ghostName = findAvailableGhost(id)?.manifest.name ?? id;

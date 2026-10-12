@@ -14,7 +14,7 @@ const component = readFileSync(
   fileURLToPath(new URL('../components/branding/BrandLoadingMark.tsx', import.meta.url)),
   'utf8',
 );
-const locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'].map((locale) =>
+const locales = ['en', 'zh-CN'].map((locale) =>
   JSON.parse(
     readFileSync(
       fileURLToPath(new URL(`../i18n/locales/${locale}/common.json`, import.meta.url)),
@@ -53,10 +53,4 @@ describe('BrandLoadingMark design exception contract', () => {
     expect(locales.every((locale) => locale.chat.sessionLoading.length > 0)).toBe(true);
   });
 
-  it('uses the session term in Japanese and Korean', () => {
-    expect(locales[3].chat.sessionLoading).toContain('セッション');
-    expect(locales[3].chat.sessionLoading).not.toContain('タスク');
-    expect(locales[4].chat.sessionLoading).toContain('세션');
-    expect(locales[4].chat.sessionLoading).not.toContain('작업');
-  });
 });

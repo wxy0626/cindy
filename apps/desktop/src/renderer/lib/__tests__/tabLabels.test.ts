@@ -3,10 +3,22 @@ import { describe, expect, it } from 'vitest';
 import { isSettingsTab, TAB_IDS } from '@/lib/tabLabels';
 
 describe('Settings tab order', () => {
-  it('places billing immediately after model providers', () => {
+  it('places decision model immediately after model providers', () => {
     const providersIndex = TAB_IDS.indexOf('providers');
 
-    expect(TAB_IDS.slice(providersIndex, providersIndex + 2)).toEqual(['providers', 'billing']);
+    expect(TAB_IDS.slice(providersIndex, providersIndex + 2)).toEqual([
+      'providers',
+      'decision-model',
+    ]);
+  });
+
+  it('places billing immediately after decision model', () => {
+    const decisionModelIndex = TAB_IDS.indexOf('decision-model');
+
+    expect(TAB_IDS.slice(decisionModelIndex, decisionModelIndex + 2)).toEqual([
+      'decision-model',
+      'billing',
+    ]);
   });
 
   it('places usage history immediately after billing', () => {

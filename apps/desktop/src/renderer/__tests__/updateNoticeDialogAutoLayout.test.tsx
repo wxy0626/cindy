@@ -5,8 +5,8 @@
  *
  * 装完后的自动公告走这条布局,UpdateBanner 的「装前预览」也刻意复用它(见 useUpdateNotice
  * 的 onOpenVersion)。所以这个文件既是既有行为的回归护栏,也是新入口渲染形态的说明:
- *   - 单版本:右上角是 v<版本> 徽标
- *   - 跨版本:右上角是 v<版本> 徽标,跟随滚动更新到当前可见版本
+ *   - 单版本:右上角显示公告版本
+ *   - 跨版本:右上角仍显示待读公告的最新版,不随正文滚动变化
  * 两种情况都没有版本跳转器、没有懒加载占位块。
  */
 
@@ -52,6 +52,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  delete (window as unknown as { electronAPI?: unknown }).electronAPI;
   vi.unstubAllGlobals();
 });
 
@@ -74,7 +75,7 @@ describe('UpdateNoticeDialog auto layout', () => {
 
     expect(screen.queryByText(/update\.notice\.versionsSpan/)).toBeNull();
     expect(screen.getAllByText(/2026/).length).toBeGreaterThan(0);
-    // v0.1.21 appears in header badge AND in the version block subheader.
+    // v0.1.21 同时出现在右上角本机版本徽标和正文版本子标题。
     expect(screen.getAllByText('v0.1.21')).toHaveLength(2);
     expect(
       screen.getByText('update.notice.ariaDescription(version=0.1.21)'),
@@ -84,15 +85,27 @@ describe('UpdateNoticeDialog auto layout', () => {
   it('multiple versions: version badge in header, per-version badges, span aria', () => {
     renderAuto([NEWEST, OLDER]);
 
-    // No version count label anymore — header shows v0.1.21 badge.
+    // 不再显示版本数量；右上角显示本机版本，正文按版本分块。
     expect(screen.queryByText(/update\.notice\.versionsSpan/)).toBeNull();
-    // v0.1.21 appears in header badge AND in its content block.
+    // v0.1.21 同时出现在右上角本机版本徽标和对应正文块。
     expect(screen.getAllByText('v0.1.21')).toHaveLength(2);
-    // v0.1.20 appears only in its content block (header badge shows v0.1.21).
+    // v0.1.20 只出现在正文块；右上角固定显示本机版本 v0.1.21。
     expect(screen.getByText('v0.1.20')).toBeTruthy();
     expect(
       screen.getByText('update.notice.ariaDescriptionSpan(from=0.1.20,count=2)'),
     ).toBeTruthy();
+  });
+
+  it('header badge shows the upstream notice version instead of the stale local semantic version', () => {
+    (window as unknown as { electronAPI: unknown }).electronAPI = {
+      appVersion: '0.0.0',
+      appSemanticVersion: '0.1.20',
+    };
+
+    renderAuto([NEWEST, OLDER]);
+
+    expect(screen.getAllByText('v0.1.21')).toHaveLength(2);
+    expect(screen.getByText('v0.1.20')).toBeTruthy();
   });
 
   it('renders one content block per aggregated version', () => {

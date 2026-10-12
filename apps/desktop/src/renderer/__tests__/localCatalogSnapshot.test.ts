@@ -149,9 +149,27 @@ describe('refreshLocalCatalogSnapshot', () => {
     expect(mocks.commitCapabilities).not.toHaveBeenCalled();
   });
 
+  it('publishes the catalog while visibility initialization is pending and keeps retrying', async () => {
+    const providers = { dataOwnerId: 'owner-a', ownerGeneration: 1, providers: [], providerOrder: [] };
+    mocks.loadProviders.mockResolvedValue(providers);
+    mocks.loadCapabilities.mockResolvedValue([]);
+    mocks.initializeVisibility.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    await expect(refreshLocalCatalogSnapshot()).resolves.toBe(false);
+    expect(mocks.commitProviders).toHaveBeenCalledWith(1, providers);
+    expect(mocks.commitCapabilities).toHaveBeenCalledWith(1, []);
+    expect(mocks.warn).toHaveBeenCalledWith(
+      'model visibility initialization pending; publishing local catalog snapshot',
+    );
+
+    await expect(refreshLocalCatalogSnapshot()).resolves.toBe(true);
+    expect(mocks.commitProviders).toHaveBeenCalledTimes(2);
+    expect(mocks.commitCapabilities).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     ['storage', true], ['lock', true], ['storage', false], ['lock', false],
-  ] as const)('propagates real %s initialization failures through preload (recovers: %s)', async (failure, recovers) => {
+  ] as const)('publishes catalog while retrying real %s initialization failures (recovers: %s)', async (failure, recovers) => {
     vi.useFakeTimers();
     const saved = new Map<string, string>();
     let rejectWrite = false;
@@ -197,8 +215,8 @@ describe('refreshLocalCatalogSnapshot', () => {
       const preload = preloadLocalCatalogSnapshot();
       await vi.advanceTimersByTimeAsync(0);
       expect(mocks.loadProviders).toHaveBeenCalledTimes(1);
-      expect(mocks.commitProviders).not.toHaveBeenCalled();
-      expect(mocks.commitCapabilities).not.toHaveBeenCalled();
+      expect(mocks.commitProviders).toHaveBeenCalledTimes(1);
+      expect(mocks.commitCapabilities).toHaveBeenCalledTimes(1);
       expect(sync).toHaveBeenLastCalledWith('owner-a', 1, {}, expect.objectContaining({ pending: true }));
 
       if (recovers) { rejectWrite = false; rejectLock = false; }
@@ -207,17 +225,17 @@ describe('refreshLocalCatalogSnapshot', () => {
         // 故障源已在快试窗口内恢复：第 2 次尝试（500ms 处）成功提交。
         await preload;
         expect(mocks.loadProviders).toHaveBeenCalledTimes(2);
-        expect(mocks.commitProviders).toHaveBeenCalledTimes(1);
-        expect(mocks.commitCapabilities).toHaveBeenCalledTimes(1);
+        expect(mocks.commitProviders).toHaveBeenCalledTimes(2);
+        expect(mocks.commitCapabilities).toHaveBeenCalledTimes(2);
         expect(mocks.commitProviders).toHaveBeenLastCalledWith(2, providers);
         expect(sync).toHaveBeenLastCalledWith('owner-a', 1, {},
           expect.not.objectContaining({ pending: true }));
         expect(prefs.isModelEnabled('pi', 'xd', { id: 'recommended' })).toBe(true);
       } else {
-        // 快试 3 次全败（0/500/1000ms），此时尚无任何提交，镜像仍标记 pending。
+        // 快试 3 次全败（0/500/1000ms）；目录每轮都先提交，镜像仍标记 pending。
         expect(mocks.loadProviders).toHaveBeenCalledTimes(3);
-        expect(mocks.commitProviders).not.toHaveBeenCalled();
-        expect(mocks.commitCapabilities).not.toHaveBeenCalled();
+        expect(mocks.commitProviders).toHaveBeenCalledTimes(3);
+        expect(mocks.commitCapabilities).toHaveBeenCalledTimes(3);
         expect(sync).toHaveBeenLastCalledWith('owner-a', 1, {}, expect.objectContaining({ pending: true }));
         // 慢退避语义：恢复故障源后下一次尝试（3000ms 处）应成功提交，而不是像旧
         // 实现那样 3 次后永久放弃（供应商页会一直空到下一次广播）。
@@ -226,8 +244,8 @@ describe('refreshLocalCatalogSnapshot', () => {
         await vi.advanceTimersByTimeAsync(2500);
         await preload;
         expect(mocks.loadProviders).toHaveBeenCalledTimes(4);
-        expect(mocks.commitProviders).toHaveBeenCalledTimes(1);
-        expect(mocks.commitCapabilities).toHaveBeenCalledTimes(1);
+        expect(mocks.commitProviders).toHaveBeenCalledTimes(4);
+        expect(mocks.commitCapabilities).toHaveBeenCalledTimes(4);
       }
     } finally {
       prefs.__resetForTest();
