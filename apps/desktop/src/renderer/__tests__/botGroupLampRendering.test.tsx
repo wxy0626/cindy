@@ -63,7 +63,7 @@ function props(groupDevice: boolean): ProjectsSectionProps {
     onToggleProject: vi.fn(), onToggleProjectPin: vi.fn(), onRenameProject: vi.fn(), onRemoveFromSidebar: vi.fn(),
     onCollapseAll: vi.fn(), onExpandAll: vi.fn(), onCreateInProject: vi.fn(), onOpenConversationSearch: vi.fn(),
     onOpenInExplorer: vi.fn(), onLinkCodexProject: vi.fn(), linkingCodexProject: null, onBrowseFiles: vi.fn(),
-    onArchiveAll: vi.fn(), onDeleteProject: vi.fn(), onCreateDialogue: vi.fn(),
+    onArchiveAll: vi.fn(), onCreateDialogue: vi.fn(),
   };
 }
 

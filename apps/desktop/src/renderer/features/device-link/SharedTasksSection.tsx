@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Crown, FileText, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { isSharedTaskPeer, type SharedTaskOwnedItem } from '@cindy/device-link';
 import { SessionCard } from '@/features/cc-agent/sidebar/SessionCard';
-import { SessionItem, type SessionAction } from '@/features/cc-agent/sidebar/SessionItem';
+import { SessionItem } from '@/features/cc-agent/sidebar/SessionItem';
 import { sessionActivityMs } from '@/features/cc-agent/lib/dateSessionGrouping';
 import type { SessionMoveTarget } from '@/features/cc-agent/sidebar/sessionMoveTarget';
 import type { FolderPickerOption } from '@/components/new-chat/FolderPickerPopover';
@@ -136,11 +136,7 @@ export function SharedTasksSection({ activeSessionId, localSessions = [], runnin
       onClick,
       onAction: navigationOnly
         ? ignoreTaskAction
-        : (sessionId: string, action: SessionAction) => {
-            // 共享任务不提供永久删除入口；普通删除仍需交给上层处理。
-            if (action === 'delete-now') return;
-            onAction(sessionId, action, sharedTaskId);
-          },
+        : (sessionId: string, action: SharedTaskSessionAction) => onAction(sessionId, action, sharedTaskId),
       onRename: navigationOnly ? ignoreTaskAction : onRename,
       onTogglePin: navigationOnly ? ignoreTaskAction : onTogglePin,
       onMoveSession: navigationOnly ? undefined : onMoveSession,

@@ -57,7 +57,6 @@ function props(): ProjectNodeProps {
     linkingCodexProject: false,
     onBrowseFiles: vi.fn(),
     onArchiveAll: vi.fn(),
-    onDeleteProject: vi.fn(),
   };
 }
 

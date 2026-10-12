@@ -111,7 +111,7 @@ import { SectionCollapse } from '../SectionCollapse';
 import { SessionEntryList, SessionEntryRows } from '../SessionEntryList';
 import { useCollapsibleShowAll } from '../hooks/useCollapsibleShowAll';
 import { useAutomationGroupsCollapsed } from '../../hooks/useAutomationGroupCollapsed';
-import type { SessionAction, SessionClickHandler } from '../SessionItem';
+import type { SessionClickHandler } from '../SessionItem';
 import type { ProjectNode as ProjectNodeData } from '../../lib/projectGrouping';
 import type { UseSidebarFilterReturn } from '../../hooks/useSidebarFilter';
 import type {
@@ -225,7 +225,7 @@ export interface ProjectsSectionProps {
   scheduleSessionIndex: ReadonlyMap<string, AutomationScheduleSessionInfo>;
   selectedSessionIds?: ReadonlySet<string>;
   onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: SessionAction) => void;
+  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   onMoveSession?: (id: string, target: SessionMoveTarget) => void;
@@ -235,8 +235,6 @@ export interface ProjectsSectionProps {
   onToggleProjectPin: (project: ProjectNodeData, currentlyPinned: boolean) => void;
   onRenameProject: (project: ProjectNodeData, alias: string) => Promise<void>;
   onRemoveFromSidebar: (project: ProjectNodeData) => void;
-  /** 归档视图中的项目级删除；只删除项目下的已归档任务，不删除磁盘目录。 */
-  onDeleteProject: (project: ProjectNodeData, sessions?: Session[]) => void;
   onCollapseAll: () => void;
   onExpandAll: () => void;
   /**
@@ -260,7 +258,7 @@ export interface ProjectsSectionProps {
   onArchiveAll: (project: ProjectNodeData) => void;
   /**
    * E 期「按设备分组」:远程设备的展示顺序与名称/在线状态(设备切换栏同源)。
-   * null / 空数组 = 没有远程设备连接 → 设备分组选项隐藏、不切段。
+   * 含断线缓存设备；null / 空 map = 没有可选远程设备 → 设备分组选项隐藏、不切段。
    */
   remoteDeviceIndex?: ReadonlyMap<string, { name: string; online: boolean }> | null;
   /**
@@ -303,7 +301,6 @@ export function ProjectsSection({
   onToggleProjectPin,
   onRenameProject,
   onRemoveFromSidebar,
-  onDeleteProject,
   onCollapseAll,
   onExpandAll,
   onCreateInProject,
@@ -571,7 +568,7 @@ export function ProjectsSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- remoteActivityRevision 代表 getRemoteSessionActivity 读到的整表内容
   }, [projects, dialogues, unclassified, bots, remoteActivityRevision]);
 
-  // E 期「按设备分组」:有远程设备连接 + 开关开 → 按设备切段(本机在前,
+  // E 期「按设备分组」:有可选远程设备（含断线缓存）+ 开关开 → 按设备切段(本机在前,
   // 远程按设备切换栏顺序);其余情况单段直渲。切段后按当前排序重排本段。
   // 自定义项目顺序可以和设备分组叠加:每段内项目行按全局序的子集排,段内可拖。
   // 范围收窄到单台机器时照常保留分组与整理菜单选项(2026-10-05 用户定稿,推翻
@@ -906,7 +903,6 @@ export function ProjectsSection({
       onToggleProjectPin={onToggleProjectPin}
       onRenameProject={onRenameProject}
       onRemoveFromSidebar={onRemoveFromSidebar}
-      onDeleteProject={onDeleteProject}
       onSessionClick={onSessionClick}
       onAction={onAction}
       onRename={onRename}
@@ -1397,7 +1393,7 @@ export function SessionGroupNode({
   scheduleSessionIndex: ReadonlyMap<string, AutomationScheduleSessionInfo>;
   selectedSessionIds?: ReadonlySet<string>;
   onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: SessionAction) => void;
+  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   onMoveSession?: (id: string, target: SessionMoveTarget) => void;

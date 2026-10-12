@@ -42,8 +42,7 @@ import { buildProjectDeepLink } from '@/lib/deepLink';
 import { createLogger } from '@/lib/logger';
 import { SectionCollapse } from '../SectionCollapse';
 import { SessionEntryList } from '../SessionEntryList';
-import type { SessionAction, SessionClickHandler } from '../SessionItem';
-import type { Session } from '@/lib/ccAgent.types';
+import type { SessionClickHandler } from '../SessionItem';
 import type { ProjectNode as ProjectNodeData } from '../../lib/projectGrouping';
 import type {
   AutomationScheduleAction,
@@ -55,7 +54,7 @@ import type { SessionLampAggregate } from '../../lib/sessionLampAggregation';
 import type { FolderPickerOption } from '@/components/new-chat/FolderPickerPopover';
 import type { SessionMoveTarget } from '../sessionMoveTarget';
 import type { FilterStatus } from '../../hooks/useSidebarFilter';
-import { MENU_ITEM_CLASS, MENU_ITEM_DANGER_CLASS } from '../menuStyles';
+import { MENU_ITEM_CLASS } from '../menuStyles';
 import { RemoteProjectIcon } from '../RemoteProjectIcon';
 import { SidebarRightStatusIndicator } from '../SidebarRightStatusIndicator';
 import { isDeviceLinkWriteBlocked } from '../../lib/remoteSessionWriteGuard';
@@ -109,10 +108,8 @@ export interface ProjectNodeProps {
   onRenameProject: (project: ProjectNodeData, alias: string) => Promise<void>;
   /** 仅隐藏本地项目的侧栏入口，不改变其中任务的生命周期。 */
   onRemoveFromSidebar: (project: ProjectNodeData) => void;
-  /** 归档视图中的项目级删除；只删除项目下的已归档任务，不删除磁盘目录。 */
-  onDeleteProject: (project: ProjectNodeData, sessions?: Session[]) => void;
   onSessionClick: SessionClickHandler;
-  onAction: (id: string, action: SessionAction) => void;
+  onAction: (id: string, action: 'delete' | 'archive' | 'archive-now' | 'unarchive') => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   onMoveSession?: (id: string, target: SessionMoveTarget) => void;
@@ -157,7 +154,6 @@ export const ProjectNode = memo(function ProjectNode({
   onToggleProjectPin,
   onRenameProject,
   onRemoveFromSidebar,
-  onDeleteProject,
   onSessionClick,
   onAction,
   onRename,
@@ -196,7 +192,6 @@ export const ProjectNode = memo(function ProjectNode({
         onToggleProjectPin={onToggleProjectPin}
         onRenameProject={onRenameProject}
         onRemoveFromSidebar={onRemoveFromSidebar}
-        onDeleteProject={onDeleteProject}
         onCreateInProject={onCreateInProject}
         onOpenConversationSearch={onOpenConversationSearch}
         onOpenInExplorer={onOpenInExplorer}
@@ -262,7 +257,6 @@ type ProjectHeaderProps = Pick<
   | 'onToggleProjectPin'
   | 'onRenameProject'
   | 'onRemoveFromSidebar'
-  | 'onDeleteProject'
   | 'onCreateInProject'
   | 'onOpenConversationSearch'
   | 'onOpenInExplorer'
@@ -284,7 +278,6 @@ const ProjectHeader = memo(function ProjectHeader({
   onToggleProjectPin,
   onRenameProject,
   onRemoveFromSidebar,
-  onDeleteProject,
   onCreateInProject,
   onOpenConversationSearch,
   onOpenInExplorer,
@@ -385,16 +378,6 @@ const ProjectHeader = memo(function ProjectHeader({
     setMenuPos(null);
     onRemoveFromSidebar(project);
   }, [onRemoveFromSidebar, project]);
-
-  // 归档视图中的项目级删除使用独立回调，避免误走活跃项目的侧栏移除逻辑。
-  const handleDeleteProject = useCallback(() => {
-    if (projectWritesBlocked) {
-      toast.warning(t('ccAgent.remoteSession.actionsUnavailable'));
-      return;
-    }
-    setMenuPos(null);
-    onDeleteProject(project);
-  }, [onDeleteProject, project, projectWritesBlocked, t]);
 
   return (
     <>
@@ -718,29 +701,19 @@ const ProjectHeader = memo(function ProjectHeader({
                     {t('ccAgent.sidebar.projectAction.removeFromSidebar')}
                   </DropdownMenuItem>
                 )}
-                {statusFilter === 'archived' ? (
-                  <DropdownMenuItem
-                    disabled={projectWritesBlocked}
-                    onClick={handleDeleteProject}
-                    className={MENU_ITEM_DANGER_CLASS}
-                  >
-                    {t('ccAgent.sidebar.projectAction.deleteProject')}
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem
-                    disabled={projectWritesBlocked}
-                    onClick={() => {
-                      handleArchiveAll();
-                    }}
-                    className={MENU_ITEM_CLASS}
-                  >
-                    {t(
-                      bulkArchiveAction === 'unarchive'
-                        ? 'ccAgent.sidebar.projectAction.unarchiveAll'
-                        : 'ccAgent.sidebar.projectAction.archivedAll',
-                    )}
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem
+                  disabled={projectWritesBlocked}
+                  onClick={() => {
+                    handleArchiveAll();
+                  }}
+                  className={MENU_ITEM_CLASS}
+                >
+                  {t(
+                    bulkArchiveAction === 'unarchive'
+                      ? 'ccAgent.sidebar.projectAction.unarchiveAll'
+                      : 'ccAgent.sidebar.projectAction.archivedAll',
+                  )}
+                </DropdownMenuItem>
               </>
             )}
           </MountedMenuContent>

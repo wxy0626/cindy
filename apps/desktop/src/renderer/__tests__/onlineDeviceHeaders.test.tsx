@@ -127,7 +127,6 @@ function props(groupDevice: boolean): ProjectsSectionProps {
     linkingCodexProject: null,
     onBrowseFiles: vi.fn(),
     onArchiveAll: vi.fn(),
-    onDeleteProject: vi.fn(),
     onCreateDialogue: vi.fn(),
   };
 }
