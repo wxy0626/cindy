@@ -2801,7 +2801,14 @@
         "dialog": {
           "createTitle": "Add a custom provider",
           "editTitle": "Edit connection settings",
-          "desc": "Configure an OpenAI / Anthropic-compatible provider."
+          "desc": "Configure the address, key, and models once, then choose each engine's protocol."
+        },
+        "connectionMode": {
+          "label": "Configuration",
+          "shared": "Shared",
+          "independent": "Independent",
+          "sharedDesc": "Claude Code, Codex, and Pi share one address, API key, headers, and model list. Saving applies it to all three engines.",
+          "independentDesc": "Each engine keeps its own address, key, and models. Use this only when a provider exposes different endpoints or credentials."
         },
         "imageGenerationReload": {
           "title": "Reload Codex",
@@ -2814,6 +2821,8 @@
           "name": "Display name",
           "namePlaceholder": "My AI provider",
           "protocols": "Runtime",
+          "protocolMapping": "Engine protocol mapping",
+          "protocolMappingHelp": "Switch engines to configure only that engine's upstream protocol and request path. Address, key, and models are shared.",
           "wireProtocol": "Upstream protocol",
           "baseUrl": "Base URL",
           "baseUrlPlaceholder": "https://api.myprovider.com/v1",

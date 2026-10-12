@@ -86,13 +86,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it('all selection enables one recommended harness, clear always closes it, and repeat works', async () => {
+it('all selection enables every harness, clear always closes it, and repeat works', async () => {
   render(<UnifiedModelList provider={provider} />);
   await command('showAll');
   for (let i = 0; i < models.length; i++) {
     expect(enabled('pi', i)).toBe(true);
-    expect(enabled('codex', i)).toBe(false);
-    expect(enabled('claude-code', i)).toBe(false);
+    expect(enabled('codex', i)).toBe(true);
+    expect(enabled('claude-code', i)).toBe(true);
   }
   await command('hideAll');
   expect(enabled('pi')).toBe(false);

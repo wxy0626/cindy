@@ -1495,7 +1495,7 @@ describe('compact model defaults upgrade', () => {
 });
 
 
-it('restores imported native defaults while preserving manual overrides until reset', async () => {
+it('restores imported all-engine defaults while preserving manual overrides until reset', async () => {
   const prefs = await import('../state/modelVisibilityPrefs');
   prefs.setModelVisibilityOwner('owner-a', 1, 'cloud');
   const agents = ['claude-code', 'codex', 'pi'] as const;
@@ -1508,10 +1508,10 @@ it('restores imported native defaults while preserving manual overrides until re
     routes: [{ providerId: 'imported-native', modelId: 'claude-test', agents: ['claude-code', 'codex'] }],
   }] } });
   const enabled = () => agents.map(agent => prefs.isModelEnabled(agent, p.id, p.models[agent]![0]!));
-  expect(enabled()).toEqual([true, false, true]);
+  expect(enabled()).toEqual([true, true, true]);
   await prefs.setModelVisibility('pi', p.id, 'claude-test', false);
   await prefs.setModelVisibility('codex', p.id, 'claude-test', true);
   expect(enabled()).toEqual([true, true, false]);
   await prefs.resetModelVisibilities(p.id, agents.map(agent => ({ agent, modelId: 'claude-test' })));
-  expect(enabled()).toEqual([true, false, true]);
+  expect(enabled()).toEqual([true, true, true]);
 });

@@ -1,6 +1,6 @@
 import { useDialogExit } from '@/hooks/useDialogExit';
 import { WINDOW_DRAG_STYLE, WINDOW_NO_DRAG_STYLE } from '@/components/layout/windowDrag';
-import { providerEndpointBindings, canonicalProviderEndpoint, BUNDLED_CATALOG, mergeModelMetadata } from '@cindy/model-providers';
+import { providerEndpointBindings, canonicalProviderEndpoint, BUNDLED_CATALOG } from '@cindy/model-providers';
 /**
  * Connection credentials and advanced routing only. Model capabilities are imported into the
  * shared catalog and edited through standard model settings. Stored per-runtime credentials,
@@ -266,6 +266,114 @@ function emptyRuntime(agent: DialogAgentKind): RuntimeFields {
   };
 }
 
+const SHARED_CONNECTION_FIELDS = [
+  'baseUrl',
+  'modelsUrl',
+  'catalogPresetId',
+  'modelRouteBaseUrl',
+  'models',
+  'headers',
+  'apiKey',
+  'imageApi',
+  'videoApi',
+] as const;
+
+type SharedConnectionField = (typeof SHARED_CONNECTION_FIELDS)[number];
+
+/** 共享连接指纹刻意排除协议与请求路径，便于旧的三套同址配置自动收口为统一配置。 */
+function sharedConnectionFingerprint(runtime: RuntimeFields): string {
+  return JSON.stringify({
+    baseUrl: runtime.baseUrl.trim(),
+    modelsUrl: runtime.modelsUrl.trim(),
+    catalogPresetId: runtime.catalogPresetId ?? '',
+    models: runtime.models
+      .filter((model) => model.id.trim())
+      .map((model) => {
+        const portable = { ...model };
+        delete portable.piApi;
+        return portable;
+      }),
+    headers: runtime.headers.filter((header) => header.name.trim() || header.value.trim()),
+    imageApi: runtime.imageApi ?? '',
+    videoApi: runtime.videoApi ?? '',
+  });
+}
+
+function shouldShareRuntimeConfigs(initial?: CustomProviderConfig): boolean {
+  if (!initial) return true;
+  const configuredAgents = AGENTS.filter((agent) => initial.runtimes[agent]);
+  // 旧的单引擎配置保持原样；只有新建连接或已有多引擎同址配置才自动进入统一模式。
+  if (configuredAgents.length < 2) return false;
+  const initialized = initRuntimes(initial);
+  const first = sharedConnectionFingerprint(initialized[configuredAgents[0]]);
+  return configuredAgents.every(
+    (agent) => sharedConnectionFingerprint(initialized[agent]) === first,
+  );
+}
+
+function cloneSharedConnectionValue(
+  source: RuntimeFields,
+  field: SharedConnectionField,
+): RuntimeFields[SharedConnectionField] {
+  switch (field) {
+    case 'models':
+      return source.models.map((model) => structuredClone(model));
+    case 'headers':
+      return source.headers.map((header) => ({ ...header }));
+    default:
+      return source[field];
+  }
+}
+
+/**
+ * 把指定运行时的共享字段复制到目标引擎；协议、路径与引擎能力保持各自独立。
+ * targets 省略时同步全部引擎；预设导入时只同步该预设真正声明的引擎，
+ * 避免把「协议未知而跳过」的 runtime 重新补成一份可保存配置。
+ */
+function applySharedConnectionFields(
+  current: Record<DialogAgentKind, RuntimeFields>,
+  sourceAgent: DialogAgentKind,
+  source: RuntimeFields = current[sourceAgent],
+  fields: readonly SharedConnectionField[] = SHARED_CONNECTION_FIELDS,
+  targets: readonly DialogAgentKind[] = AGENTS,
+): Record<DialogAgentKind, RuntimeFields> {
+  const sharedPatch = Object.fromEntries(
+    fields.map((field) => [field, cloneSharedConnectionValue(source, field)]),
+  ) as Partial<RuntimeFields>;
+  const next = { ...current };
+  for (const agent of targets) {
+    next[agent] = agent === sourceAgent
+      ? source
+      : {
+          ...current[agent],
+          ...sharedPatch,
+        };
+  }
+  return next;
+}
+
+function resolveSharedConnectionSource(
+  current: Record<DialogAgentKind, RuntimeFields>,
+  preferredAgent: DialogAgentKind,
+): { agent: DialogAgentKind; runtime: RuntimeFields } {
+  const preferred = current[preferredAgent];
+  const configuredAgent = AGENTS.find(
+    (agent) =>
+      current[agent].baseUrl.trim().length > 0 ||
+      current[agent].models.some((model) => model.id.trim().length > 0),
+  );
+  const agent = preferred.baseUrl.trim() || preferred.models.some((model) => model.id.trim())
+    ? preferredAgent
+    : configuredAgent ?? preferredAgent;
+  const apiKey = [preferredAgent, ...AGENTS]
+    .map((candidate) => current[candidate].apiKey.trim())
+    .find((value) => value.length > 0);
+  return {
+    agent,
+    runtime: apiKey ? { ...current[agent], apiKey } : current[agent],
+  };
+}
+
 function initRuntimes(initial?: CustomProviderConfig): Record<DialogAgentKind, RuntimeFields> {
   const out: Record<DialogAgentKind, RuntimeFields> = {
     'claude-code': emptyRuntime('claude-code'),
@@ -464,6 +572,7 @@ export function ProviderConnectionDialog({
       (focusAgent && VISIBLE_AGENTS.includes(focusAgent as DialogAgentKind) ? focusAgent as DialogAgentKind : null) ??
       ((initial && VISIBLE_AGENTS.find((a) => initial.runtimes[a])) || 'claude-code'),
   );
+  const [sharedConnection, setSharedConnection] = useState(() => shouldShareRuntimeConfigs(initial));
   const [hasKey, setHasKey] = useState<Record<DialogAgentKind, boolean>>({
     'claude-code': false,
     codex: false,
@@ -816,6 +925,23 @@ export function ProviderConnectionDialog({
     [restoreHydratedKey, setRtSynced],
   );
 
+  const changeSharedConnectionMode = useCallback(
+    (mode: 'shared' | 'independent') => {
+      const enabled = mode === 'shared';
+      setSharedConnection(enabled);
+      childLayerRef.current = null;
+      setChildLayer(null);
+      if (enabled) {
+        setRtSynced((prev) => {
+          const source = resolveSharedConnectionSource(prev, activeTab);
+          return applySharedConnectionFields(prev, source.agent, source.runtime);
+        });
+      }
+      setTest({ 'claude-code': IDLE_TEST, codex: IDLE_TEST, pi: IDLE_TEST });
+    },
+    [activeTab, setRtSynced],
+  );
+
   // 新建和编辑态拉取预设模板（本地 IPC 极快返回；失败静默 —— 没有预设也不影响手填，规则 7 不做 loading）。
   // 按实际构建区域排序，不随 UI 语言变化（只排序不过滤，可达性由测试连接实测裁决）。
   useEffect(() => {
@@ -876,7 +1002,13 @@ export function ProviderConnectionDialog({
             supportsImageGeneration: a === 'codex' && rc.supportsImageGeneration === true,
           };
         }
-        return next;
+        const declared = configuredPresetAgents(p).filter(
+          (agent): agent is DialogAgentKind => AGENTS.includes(agent as DialogAgentKind),
+        );
+        const first = declared[0];
+        return sharedConnection && first
+          ? applySharedConnectionFields(next, first, next[first], SHARED_CONNECTION_FIELDS, declared)
+          : next;
       });
       setTest({ 'claude-code': IDLE_TEST, codex: IDLE_TEST, pi: IDLE_TEST });
       // 预设整体替换所有 runtime 的 models 数组(含清空未声明的 runtime),旧行号
@@ -890,7 +1022,7 @@ export function ProviderConnectionDialog({
       // (review P1)。
       setFieldError(null);
     },
-    [i18n.language, setRtSynced],
+    [i18n.language, setRtSynced, sharedConnection],
   );
 
   // 编辑态：回填各已配置 runtime 的已存明文密钥（用户本机自己的 key）——
@@ -930,6 +1062,17 @@ export function ProviderConnectionDialog({
           fetched[a] = k;
         }
       }
+      if (sharedConnection) {
+        const canonicalKey = AGENTS
+          .map((agent) => fetched[agent] ?? '')
+          .find((value) => value.length > 0) ?? '';
+        for (const agent of AGENTS) {
+          if (!initial.runtimes[agent]) continue;
+          nextHas[agent] = canonicalKey.length > 0;
+          if (canonicalKey) fetched[agent] = canonicalKey;
+          else delete fetched[agent];
+        }
+      }
       if (cancelled) return;
       setHasKey(nextHas);
       // 记下回填的已存明文 key 作为基线:测试连接判定「凭证材料是否被改动」时用来决定
@@ -957,7 +1100,7 @@ export function ProviderConnectionDialog({
     return () => {
       cancelled = true;
     };
-  }, [editing, initial, savedBaselineFor]);
+  }, [editing, initial, savedBaselineFor, sharedConnection]);
 
   const patch = useCallback(
     (agent: DialogAgentKind, fn: (f: RuntimeFields) => RuntimeFields) => {
@@ -967,19 +1110,30 @@ export function ProviderConnectionDialog({
         const endpointChanged =
           current.baseUrl.trim() !== next.baseUrl.trim() ||
           current.modelsUrl.trim() !== next.modelsUrl.trim();
-        return {
-          ...prev,
-          [agent]:
-            endpointChanged &&
-            keyEditRevisionRef.current[agent] === 0 &&
-            next.apiKey === current.apiKey
-              ? { ...next, apiKey: '' }
-              : next,
-        };
+        const nextSource =
+          endpointChanged &&
+          keyEditRevisionRef.current[agent] === 0 &&
+          next.apiKey === current.apiKey
+            ? { ...next, apiKey: '' }
+            : next;
+        if (sharedConnection) {
+          const changedFields = SHARED_CONNECTION_FIELDS.filter(
+            (field) => current[field] !== nextSource[field],
+          );
+          if (changedFields.length > 0) {
+            return applySharedConnectionFields(
+              { ...prev, [agent]: nextSource },
+              agent,
+              nextSource,
+              changedFields,
+            );
+          }
+        }
+        return { ...prev, [agent]: nextSource };
       });
       setTest((prev) => ({ ...prev, [agent]: IDLE_TEST }));
     },
-    [restoreHydratedKey, setRtSynced],
+    [restoreHydratedKey, setRtSynced, sharedConnection],
   );
 
   // 旧密文读失败后，只有用户显式输入替代 key 才算解除保护；
@@ -1688,7 +1842,7 @@ export function ProviderConnectionDialog({
       if (
         authMode === 'apiKey' &&
         rf.apiKey.trim() &&
-        (!editing || keyEditRevisionRef.current[a] > 0)
+        (sharedConnection || !editing || keyEditRevisionRef.current[a] > 0)
       ) {
         keys[a] = rf.apiKey.trim();
       }
@@ -1839,6 +1993,7 @@ export function ProviderConnectionDialog({
     showAdvanced,
     savedBaselineFor,
     t,
+    sharedConnection,
   ]);
 
   const saveWithImageGenerationRestartPolicy = useCallback(
@@ -2147,12 +2302,53 @@ export function ProviderConnectionDialog({
             )}
           </div>
 
-          {/* Runtime 分段 Tab：Claude Code 与 Codex 各自维护端点、协议、模型与凭证。 */}
+          {/* 连接配置模式：统一模式共享端点、密钥、请求头与模型，避免三个引擎重复填写。 */}
+          <div className="flex flex-col gap-2 rounded-xl border border-[var(--settings-theme-card-border)] bg-[var(--surface-elevated)] px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <FieldLabel>{t('settings.providers.custom.connectionMode.label')}</FieldLabel>
+              <SegmentedControl
+                aria-label={t('settings.providers.custom.connectionMode.label')}
+                value={sharedConnection ? 'shared' : 'independent'}
+                onValueChange={changeSharedConnectionMode}
+                height={34}
+                optionHeight={28}
+                options={[
+                  {
+                    value: 'shared',
+                    label: t('settings.providers.custom.connectionMode.shared'),
+                  },
+                  {
+                    value: 'independent',
+                    label: t('settings.providers.custom.connectionMode.independent'),
+                  },
+                ]}
+              />
+            </div>
+            <span className="text-12 leading-snug text-[var(--text-tertiary)]">
+              {t(
+                sharedConnection
+                  ? 'settings.providers.custom.connectionMode.sharedDesc'
+                  : 'settings.providers.custom.connectionMode.independentDesc',
+              )}
+            </span>
+          </div>
+
+          {/* Runtime Tab 只用于确认各引擎协议；统一模式下共享字段会同步到全部引擎。 */}
           <div className="flex flex-col gap-2">
-            <FieldLabel>{t('settings.providers.custom.fields.protocols')}</FieldLabel>
+            <FieldLabel>
+              {t(
+                sharedConnection
+                  ? 'settings.providers.custom.fields.protocolMapping'
+                  : 'settings.providers.custom.fields.protocols',
+              )}
+            </FieldLabel>
             <SegmentedControl
               role="tablist"
-              aria-label={t('settings.providers.custom.fields.protocols')}
+              aria-label={t(
+                sharedConnection
+                  ? 'settings.providers.custom.fields.protocolMapping'
+                  : 'settings.providers.custom.fields.protocols',
+              )}
               value={activeTab}
               onValueChange={(agent) => {
                 setChildLayer(null);
@@ -2180,7 +2376,11 @@ export function ProviderConnectionDialog({
               })}
             />
             <span className="text-12 leading-snug text-[var(--text-tertiary)]">
-              {templateBound ? (boundPreset ? presetDisplayName(boundPreset, i18n.language) : name) : t(TAB_META[activeTab].helpKey)}
+              {sharedConnection
+                ? t('settings.providers.custom.fields.protocolMappingHelp')
+                : templateBound
+                  ? (boundPreset ? presetDisplayName(boundPreset, i18n.language) : name)
+                  : t(TAB_META[activeTab].helpKey)}
             </span>
           </div>
 
@@ -2252,7 +2452,7 @@ export function ProviderConnectionDialog({
                 id={fieldId(`${activeTab}:baseUrl`)}
                 label={t('settings.providers.custom.fields.baseUrl')}
                 error={errorFor(`${activeTab}:baseUrl`)}
-                labelAction={!templateBound && (
+                labelAction={!templateBound && !sharedConnection && (
                   <button
                     ref={runtimeFillTriggerRef}
                     type="button"
@@ -2337,7 +2537,11 @@ export function ProviderConnectionDialog({
                       surface="ivory"
                       value={f.apiKey}
                       onChange={(v) => {
-                        keyEditRevisionRef.current[activeTab] += 1;
+                        if (sharedConnection) {
+                          for (const agent of AGENTS) keyEditRevisionRef.current[agent] += 1;
+                        } else {
+                          keyEditRevisionRef.current[activeTab] += 1;
+                        }
                         patch(activeTab, (x) => ({ ...x, apiKey: v }));
                       }}
                       placeholder={keyPlaceholder}
@@ -2544,14 +2748,21 @@ export function ProviderConnectionDialog({
                         onChange={(event) => {
                           const enabled = event.currentTarget.checked;
                           // One explicit media owner per provider; other chat routes and keys stay intact.
-                          setRtSynced((prev) => Object.fromEntries(
-                            Object.entries(prev).map(([agent, runtime]) => [agent, {
+                          if (sharedConnection) {
+                            patch(activeTab, (runtime) => ({
                               ...runtime,
-                              imageApi: agent === activeTab && enabled
-                                ? 'openai-images'
-                                : enabled || agent === activeTab ? undefined : runtime.imageApi,
-                            }]),
-                          ) as Record<DialogAgentKind, RuntimeFields>);
+                              imageApi: enabled ? 'openai-images' : undefined,
+                            }));
+                          } else {
+                            setRtSynced((prev) => Object.fromEntries(
+                              Object.entries(prev).map(([agent, runtime]) => [agent, {
+                                ...runtime,
+                                imageApi: agent === activeTab && enabled
+                                  ? 'openai-images'
+                                  : enabled || agent === activeTab ? undefined : runtime.imageApi,
+                              }]),
+                            ) as Record<DialogAgentKind, RuntimeFields>);
+                          }
                         }}
                         className="h-4 w-4 shrink-0 cursor-pointer accent-[var(--settings-menu-text-selected)]"
                       />
@@ -2577,14 +2788,21 @@ export function ProviderConnectionDialog({
                         onChange={(event) => {
                           const enabled = event.currentTarget.checked;
                           // One explicit media owner per provider; other chat routes and keys stay intact.
-                          setRtSynced((prev) => Object.fromEntries(
-                            Object.entries(prev).map(([agent, runtime]) => [agent, {
+                          if (sharedConnection) {
+                            patch(activeTab, (runtime) => ({
                               ...runtime,
-                              videoApi: agent === activeTab && enabled
-                                ? 'xai-videos'
-                                : enabled || agent === activeTab ? undefined : runtime.videoApi,
-                            }]),
-                          ) as Record<DialogAgentKind, RuntimeFields>);
+                              videoApi: enabled ? 'xai-videos' : undefined,
+                            }));
+                          } else {
+                            setRtSynced((prev) => Object.fromEntries(
+                              Object.entries(prev).map(([agent, runtime]) => [agent, {
+                                ...runtime,
+                                videoApi: agent === activeTab && enabled
+                                  ? 'xai-videos'
+                                  : enabled || agent === activeTab ? undefined : runtime.videoApi,
+                              }]),
+                            ) as Record<DialogAgentKind, RuntimeFields>);
+                          }
                         }}
                         className="h-4 w-4 shrink-0 cursor-pointer accent-[var(--settings-menu-text-selected)]"
                       />

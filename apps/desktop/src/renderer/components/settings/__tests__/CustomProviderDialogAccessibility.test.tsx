@@ -2113,6 +2113,62 @@ it('saves OpenRouter OAuth connections that leave scopes empty for provider defa
   });
 });
 
+it('shares one endpoint, key, and fetched model list across all engines', async () => {
+  customProviderMocks.readCustomProviderKey.mockResolvedValue(null);
+  const fetchModels = vi.fn().mockResolvedValue({
+    ok: true,
+    models: [{ id: 'shared-model', name: 'Shared Model' }],
+  });
+  window.electronAPI.maker.fetchProviderModels = fetchModels;
+  const user = userEvent.setup();
+
+  render(<ProviderConnectionDialog onSaved={vi.fn()} onClose={vi.fn()} />);
+  await user.type(
+    screen.getByPlaceholderText('settings.providers.custom.fields.namePlaceholder'),
+    'Shared provider',
+  );
+  await user.type(
+    screen.getByLabelText('settings.providers.custom.fields.baseUrl'),
+    'https://shared.example.test/v1',
+  );
+  await user.type(
+    screen.getByLabelText('settings.providers.custom.fields.apiKey'),
+    'shared-key',
+  );
+  await user.click(screen.getByRole('button', { name: 'settings.providers.custom.fetch.button' }));
+  await screen.findByRole('heading', { name: 'settings.providers.custom.fetch.pickerTitle' });
+  await user.click(screen.getByRole('checkbox', { name: /Shared Model/ }));
+  await user.click(screen.getByRole('button', { name: 'settings.providers.custom.fetch.confirm' }));
+
+  for (const agent of ['codex', 'pi'] as const) {
+    await user.click(screen.getByRole('tab', {
+      name: `settings.providers.custom.protocol.${agent}`,
+    }));
+    expect(
+      (screen.getByLabelText('settings.providers.custom.fields.baseUrl') as HTMLInputElement).value,
+    ).toBe('https://shared.example.test/v1');
+    expect(
+      (screen.getByLabelText('settings.providers.custom.fields.apiKey') as HTMLInputElement).value,
+    ).toBe('shared-key');
+  }
+
+  await user.click(screen.getByRole('button', { name: 'settings.providers.custom.save' }));
+  await waitFor(() => expect(customProviderMocks.createCustomProvider).toHaveBeenCalledOnce());
+  expect(fetchModels).toHaveBeenCalledOnce();
+  const [config, keys] = customProviderMocks.createCustomProvider.mock.calls[0]!;
+  for (const agent of ['claude-code', 'codex', 'pi'] as const) {
+    expect(config.runtimes[agent]).toMatchObject({
+      baseUrl: 'https://shared.example.test/v1',
+      models: [expect.objectContaining({ id: 'shared-model', name: 'Shared Model' })],
+    });
+  }
+  expect(keys).toEqual({
+    'claude-code': 'shared-key',
+    codex: 'shared-key',
+    pi: 'shared-key',
+  });
+});
+
 it('main provider form contains Tab and blocks dismissal only during the actual save', async () => {
   let finish!: () => void;
   customProviderMocks.readCustomProviderKey.mockResolvedValue(null);

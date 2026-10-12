@@ -440,7 +440,7 @@ describe('model advanced editor', () => {
     expect(screen.queryByText('settings.providers.models.advanced.protocol.reference')).toBeNull();
   });
 
-  it('renders imported OpenRouter Gemini with only Pi enabled, preserving all three supplier interfaces', () => {
+  it('renders imported OpenRouter Gemini with every engine enabled, preserving all three supplier interfaces', () => {
     const preset = BUNDLED_CATALOG.presets!.find(p => p.id === 'openrouter')!;
     const agents = ['claude-code', 'codex', 'pi'] as const;
     const id = 'google/gemini-3.8-flash';
@@ -452,7 +452,7 @@ describe('model advanced editor', () => {
       onOpenChange={vi.fn()} pricePresentationOf={() => null} onDisable={vi.fn()} disabled={false} paymentRequired={false} />);
     for (const agent of ['Claude Code', 'Codex', 'Pi']) {
       const toggle = screen.getByRole('switch', { name: `Gemini · ${agent}` });
-      expect(toggle.getAttribute('aria-checked')).toBe(agent === 'Pi' ? 'true' : 'false');
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
       expect(toggle.hasAttribute('data-compatibility')).toBe(agent !== 'Pi');
     }
     expect(screen.getByText(/^Messages/)).toBeTruthy();

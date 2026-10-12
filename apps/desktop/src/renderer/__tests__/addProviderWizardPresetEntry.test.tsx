@@ -1222,7 +1222,8 @@ it('imports the same discovered OpenRouter identity, capabilities and prices int
       cost: { input: 0.75864, output: 1.51728 } });
     expect(modelProtocolComparison(provider, { [agent]: model }).forAgent(agent)?.mode)
       .toBe(agent === 'pi' ? 'matching' : 'compatibility');
-    expect(model.defaultEnabled).toBe(agent === 'pi');
+    // 本地开发版规则：已声明引擎全部默认可见，协议匹配只决定走原生还是兼容路由。
+    expect(model.defaultEnabled).toBe(true);
   }
 });
 
@@ -1232,7 +1233,7 @@ describe.each([true, false])('native defaults with discovery available=%s', disc
     ['anthropic/claude-fable-5', 'anthropic-messages', [true, false, true]],
     ['deepseek/deepseek-v4-pro', 'openai-completions', [false, false, true]],
     ['google/gemini-3.8-flash', 'google-generative-ai', [false, false, true]],
-  ] as const)('enables only matching engines when selecting %s', async (id, nativeApi, enabled) => {
+  ] as const)('keeps every engine enabled when selecting %s', async (id, nativeApi, enabled) => {
     const agents = ['claude-code', 'codex', 'pi'] as const;
     const preset = structuredClone(BUNDLED_CATALOG.presets!.find(p => p.id === 'openrouter')!);
     for (const agent of agents) {
@@ -1258,7 +1259,7 @@ describe.each([true, false])('native defaults with discovery available=%s', disc
       // Model selection must not be persisted as a per-engine compatibility override.
       expect(saved.runtimes[agent]!.models.find(m => m.id === id)).not.toHaveProperty('defaultEnabled');
       const model = provider.models[agent]!.find(m => m.id === id)!;
-      expect(model).toMatchObject({ nativeApi, defaultEnabled: enabled[index] });
+      expect(model).toMatchObject({ nativeApi, defaultEnabled: true });
       expect(modelProtocolComparison(provider, { [agent]: model }).forAgent(agent)?.mode)
         .toBe(enabled[index] ? 'matching' : 'compatibility');
     });
@@ -1289,7 +1290,7 @@ it('imports an OpenCode Go Responses model into all three engines', async () => 
   expect(model).toMatchObject({ piApi: 'openai-responses', supportsImageInput: true });
   const projected = buildUserProvider(saved, { presets: [preset] });
   for (const agent of projected.agents) {
-    expect(projected.models[agent]?.find(m => m.id === 'gpt-5.6-luna')).toMatchObject({ api: 'openai-responses', defaultEnabled: agent !== 'claude-code' });
+    expect(projected.models[agent]?.find(m => m.id === 'gpt-5.6-luna')).toMatchObject({ api: 'openai-responses', defaultEnabled: true });
     expect(saved.runtimes[agent]?.models.find(m => m.id === 'gpt-5.6-luna')).not.toHaveProperty('route');
   }
 });
@@ -1412,12 +1413,12 @@ it('preserves OAuth-discovered prices for every engine when finishing model sele
   for (const agent of ['claude-code', 'codex', 'pi'] as const) {
     expect(saved.runtimes[agent]!.models[0].discoveredCost).toEqual(prices[agent]);
     expect(projected.models[agent]![0].cost).toEqual(prices[agent]);
-    expect(projected.models[agent]![0].defaultEnabled).toBe(agent === 'pi');
+    expect(projected.models[agent]![0].defaultEnabled).toBe(true);
   }
 });
 
 
-it('imports the full Hermes inventory immediately, enables selected Pi models and retains both optional harnesses', async () => {
+it('imports the full Hermes inventory immediately, enables the selected model on every engine and retains both optional harnesses', async () => {
   const preset = structuredClone(BUNDLED_CATALOG.presets!.find(p => p.id === 'nous')!);
   vi.mocked(window.electronAPI.maker.listProviderPresets).mockResolvedValue({ presets: [preset] });
   vi.mocked(window.electronAPI.maker.fetchProviderModels).mockImplementation(async spec => spec.agent === 'claude-code'
@@ -1436,7 +1437,8 @@ it('imports the full Hermes inventory immediately, enables selected Pi models an
   expect(provider.agents).toEqual(['claude-code', 'codex', 'pi']);
   for (const agent of provider.agents) {
     expect(provider.models[agent]?.map(m => m.id)).toEqual(['google/gemini-test', 'other']);
-    expect(provider.models[agent]?.find(m => m.id === 'google/gemini-test')?.defaultEnabled).toBe(agent === 'pi');
+    expect(provider.models[agent]?.find(m => m.id === 'google/gemini-test')?.defaultEnabled).toBe(true);
+    // 未勾选的发现模型在保存配置里显式写了 defaultEnabled:false，显式声明优先于本地默认。
     expect(provider.models[agent]?.find(m => m.id === 'other')?.defaultEnabled).toBe(false);
   }
 });

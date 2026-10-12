@@ -792,7 +792,7 @@ it('imports complete metadata and explicit off into all three engines', () => {
     expect(draft.config.runtimes[agent]?.models[0]).toMatchObject(model);
     expect(provider.models[agent]?.[0]).toMatchObject({ maxOutput: 32000,
       supportsFastMode: false, supportsImageInput: false, supportsToolCalls: false,
-      efforts: [], defaultEnabled: agent !== 'claude-code' });
+      efforts: [], defaultEnabled: true });
   }
 });
 

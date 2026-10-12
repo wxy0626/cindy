@@ -2777,7 +2777,14 @@
         "dialog": {
           "createTitle": "添加自定义供应商",
           "editTitle": "编辑连接设置",
-          "desc": "配置与 OpenAI / Anthropic 兼容的供应商。"
+          "desc": "配置一次地址、密钥和模型，再为各引擎选择协议。"
+        },
+        "connectionMode": {
+          "label": "配置方式",
+          "shared": "统一配置",
+          "independent": "独立覆盖",
+          "sharedDesc": "地址、API 密钥、请求头和模型列表由 Claude Code、Codex、Pi 共享；保存后三端自动使用同一份配置。",
+          "independentDesc": "每个引擎分别维护地址、密钥和模型。仅在供应商确实提供不同端点或凭证时使用。"
         },
         "imageGenerationReload": {
           "title": "重新加载 Codex",
@@ -2790,6 +2797,8 @@
           "name": "显示名称",
           "namePlaceholder": "我的 AI 供应商",
           "protocols": "Runtime",
+          "protocolMapping": "引擎协议映射",
+          "protocolMappingHelp": "切换引擎只配置该引擎的上游协议与请求路径；地址、密钥和模型已经共享。",
           "wireProtocol": "上游协议",
           "baseUrl": "基础 URL",
           "baseUrlPlaceholder": "https://api.myprovider.com/v1",
