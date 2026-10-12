@@ -1615,3 +1615,20 @@ test("readDesktopDevLogTail strips terminal control sequences and keeps the last
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("desktop dev child env keeps SWC native cache outside AppData", () => {
+	const env = desktopDevChildEnv({ USERPROFILE: "C:\\Users\\tester" });
+	assert.equal(
+		env.SWC_NATIVE_BINDING_CACHE,
+		path.join("C:\\Users\\tester", ".swc-native-cache"),
+	);
+	assert.match(env.NODE_OPTIONS, /--max-old-space-size=8192/);
+});
+
+test("desktop dev child env preserves an explicit SWC native cache", () => {
+	const env = desktopDevChildEnv({
+		USERPROFILE: "C:\\Users\\tester",
+		SWC_NATIVE_BINDING_CACHE: "D:\\private-swc-cache",
+	});
+	assert.equal(env.SWC_NATIVE_BINDING_CACHE, "D:\\private-swc-cache");
+});

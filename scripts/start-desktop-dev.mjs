@@ -10,6 +10,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -71,11 +72,16 @@ export function existingReadyInstance(report = null) {
 export function desktopDevChildEnv(env = process.env) {
   const existing = env.NODE_OPTIONS?.trim();
   const heapOption = '--max-old-space-size=8192';
+  // Windows 的 AppData\Local 常带 AppContainer 替换权限，SWC 会拒绝在那里物化原生
+  // binding；默认缓存改放用户目录根部，避免开发版在 Vite 启动阶段直接退出。
+  const swcCache = env.SWC_NATIVE_BINDING_CACHE?.trim()
+    || path.join(env.USERPROFILE?.trim() || os.homedir(), '.swc-native-cache');
   return {
     ...env,
     NODE_OPTIONS: existing
       ? (existing.includes(heapOption) ? existing : existing + ' ' + heapOption)
       : heapOption,
+    SWC_NATIVE_BINDING_CACHE: swcCache,
   };
 }
 
