@@ -818,7 +818,7 @@ Theme switching: `useTheme.ts` provides `theme` (System / Light / Dark mode) plu
 |  | `--surface-card-ivory` | `#faf9f5` | `#2c2c2a` | Slightly warm ivory Card (Settings) |
 |  | `--surface-chip` | `#e5e5e5` | `#3c3c3a` | Chips / pills / selected rows |
 |  | `--surface-chip-alt` | `#e5e5e5` | `#2c2c2a` | Chip variant that collapses to Card in Dark |
-|  | `--surface-hover` | `#e5e5e5` | `#3c3c3a` | General hover bg |
+|  | `--surface-hover` | `#e5e5e0` | `#2a2a2a` | General hover bg |
 |  | `--surface-hover-soft` | `#f8f8f6` | `#3c3c3a` | Soft hover bg |
 |  | `--surface-hover-hsl` | `0 0% 90%` | `60 2% 17%` | Hover, HSL form |
 |  | `--surface-on-card` | `#ffffff` | `#1f1f1e` | Dark foreground on CTAs / checked icons |

@@ -485,17 +485,11 @@ function normalizeLanguage(value) {
     case 'simplified chinese':
     case 'traditional chinese':
       return 'zh';
-    case 'cantonese':
-      return 'yue';
     case 'english':
       return 'en';
-    case 'japanese':
-      return 'ja';
-    case 'korean':
-      return 'ko';
   }
   const primary = normalized.split(/[-_]/)[0];
-  return /^[a-z]{2,3}$/.test(primary) ? primary : undefined;
+  return primary === 'zh' || primary === 'en' ? primary : undefined;
 }
 
 function redact(value, credential) {

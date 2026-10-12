@@ -7,7 +7,7 @@
  *    只存在于部分 locale 的 key 在其余 locale 视角下即缺失)、同一 key 在不同 locale
  *    类型冲突(一边是字符串叶子、一边是嵌套对象)、JSON 解析失败。
  *  - 复数 key(i18next `_one` / `_other` 等后缀)按家族校验:每个 locale 只要求
- *    具备 Intl.PluralRules 给出的本语言复数类别(en 需 one+other,zh/ja/ko 只需
+ *    具备 Intl.PluralRules 给出的本语言复数类别(en 需 one+other,zh 只需
  *    other),en 独有 `_one` 不算缺失。
  *  - 警告(不阻塞):值为空字符串;非默认 locale 的值与默认 locale(fallback,
  *    即 DEFAULT_LOCALE)完全相同——疑似未翻译,专有名词 / "OK" 等合法重复较多,

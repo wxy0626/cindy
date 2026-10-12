@@ -46,13 +46,8 @@ internal class CredentialVault(private val context: Context, private val install
   }
   private fun labels(locale: String): JSONObject {
     val catalog = context.assets.open("credentials.json").bufferedReader().use { JSONObject(it.readText()) }
-    val language = when {
-      locale.startsWith("zh-TW", true) || locale.startsWith("zh-HK", true) || locale.contains("Hant", true) -> "zh-TW"
-      locale.startsWith("zh", true) -> "zh-CN"
-      locale.startsWith("ja", true) -> "ja"
-      locale.startsWith("ko", true) -> "ko"
-      else -> "en"
-    }
+    // 应用仅保留中英双语；所有中文区域统一使用简体中文资源。
+    val language = if (locale.startsWith("zh", true)) "zh-CN" else "en"
     return catalog.getJSONObject(language)
   }
   private val authenticators: Int get() = if (Build.VERSION.SDK_INT >= 30)

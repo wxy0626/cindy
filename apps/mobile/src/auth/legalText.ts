@@ -2,7 +2,7 @@
  * legalText — 协议文案内联链接标记解析(consent PR,与桌面 parseLegalSegments 同源语义)。
  *
  * loginMessages 的协议声明/弹窗正文用 `<terms>…</terms>` / `<privacy>…</privacy>`
- * 标记内联链接段:单 key 保住各语言词序(ja 链接前置、zh/en 链接居中),链接段由
+ * 标记内联链接段:单 key 保住中文与英文词序,链接段由
  * 代码确定性拆分渲染(仓规 9),不引入富文本 i18n 依赖。
  */
 

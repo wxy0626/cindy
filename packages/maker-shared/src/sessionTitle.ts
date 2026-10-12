@@ -58,8 +58,8 @@ export function isDefaultDraftSessionTitle(title: string | null | undefined): bo
  *
  * 只做一件事:标题是哨兵且调用方给了已解析的 i18n 文案时换成那个文案,其余原样返回
  * (`null` / `undefined` 归一成空串,由调用方自己接后续兜底链,例如 workingDir)。
- * 刻意不在这里兜任何具体文案:共享层不知道调用方的 locale,写死中文串会让 en / ja /
- * ko 端悄悄显示中文(PR #1031 review P1)。
+ * 刻意不在这里兜任何具体文案:共享层不知道调用方的 locale,写死中文串会让非中文
+ * 端悄悄显示中文(PR #1031 review P1)。
  *
  * 为什么必须共享:同一条会话的「显示串」被三类路径消费 —— 渲染、搜索 haystack /
  * 命中下标、重命名输入框预填。任何一处用原始 `title`、另一处用投影值,就会错位:

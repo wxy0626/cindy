@@ -5,7 +5,7 @@
  *
  * renderer 面板(AgentActionRow 经 verbAggregator)与 main 灵动岛
  * (agent-island/toolWording)各自用自己的 t() 解析同一批 key,让两端的
- * "正在做什么"措辞来自同一事实源。key 的 4 语言齐全性由
+ * "正在做什么"措辞来自同一事实源。key 的中英双语齐全性由
  * `renderer/__tests__/agentActionsI18n.test.ts` 显式断言兜底
  * (i18nCompleteness 静态扫描认不出 `t(变量)`)。
  */
@@ -119,7 +119,7 @@ export const INTENT_ROW_VERB_KEY: Record<CommandIntentAction, string> = {
  *
  * updateTodos 特例:绑到灵动岛既有的 `agentIsland.native.updatingTasks`
  * ("正在更新任务",进行时)——岛是实况状态面,面板没有"更新待办"的 i18n key,
- * 复用现成 4 语言 key 而不新增。
+ * 复用现成中英双语 key 而不新增。
  */
 export const TOOL_ROW_VERB_I18N_KEY: Record<ToolRowVerbKey, string> = {
   read: 'chat.agentActionRow.verb.read',

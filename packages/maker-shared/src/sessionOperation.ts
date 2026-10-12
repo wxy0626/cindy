@@ -100,7 +100,7 @@ export type SessionPendingInteractionPlacement = 'composer' | 'above-composer' |
  *
  * `session-syncing` / `pending-interaction` 两条文案由本模型自己造(中文默认值),
  * 控制端要按 locale 翻译后再展示 —— 它会经 composer 与队列行的 accessibility
- * hint 读给用户,直出中文会让读屏在 en / ja / ko 下念混语(#530 review)。
+ * hint 读给用户,直出中文会让非中文语言的读屏念混语(#530 review)。
  * `caller-provided` 表示理由是调用方传进来的(remoteUnavailableReason /
  * readOnlyReason),已由调用方负责本地化,原样展示即可。
  */

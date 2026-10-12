@@ -33,7 +33,7 @@ export const WORKING_STATUS_COPY_INSTRUCTIONS = [
   'Write like a fluent colleague, not a system log. Never mention an operation, feedback, something returning, or what came back. Describe the human activity: checking a memory entry, looking through files, checking web sources, or reviewing tests.',
   'Prefer a natural concrete action over filler words like now, currently, just, a bit or 一下. Do not randomly rotate synonyms.',
   'For example, saving memory can be “把这件事记下来…”; reading memory can be “翻翻之前记下的事…”.',
-  'Keep Chinese/Japanese/Korean to about 16 characters, English to about 8 words. At most 64 characters in any language.',
+  'Keep Chinese to about 16 characters, English to about 8 words. At most 64 characters in any language.',
   'Return only the caption, without quotes, markdown, emoji, explanation or multiple alternatives.',
 ].join('\n');
 

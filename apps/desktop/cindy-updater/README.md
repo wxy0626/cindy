@@ -107,7 +107,7 @@ The original permission probe, UAC handoff, temporary staging location and
 privileges after an elevated update. No token switching or ACL classification is
 performed. The existing seven-day temporary-directory cleanup still applies.
 
-Retry controls retain the five-language WebView catalog and existing theme styles.
+Retry controls retain the Chinese/English WebView catalog and existing theme styles.
 
 A release uses the updater bundled with the currently installed Cindy. Shipping
 a new updater does not change the process already performing that update.

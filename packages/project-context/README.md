@@ -372,7 +372,7 @@ Cindy Desktop 已内置自动入口：每次创建新的 Claude Code、Codex 或
 - **无需任何 UI 开关**：所有用户默认启用（不再走"实验功能"入口）
 - **目录探测**：以 cwd 为根，命中 `.cindy/project-knowledge/TOC.md` 才触发
 - **per-session 快照**：是否注入会回写到 `sessions.used_project_context` 列；老 session 维持启动时刻状态，不被后续追溯
-- **可视提示**：chat footer 的 Brain icon + tooltip "项目知识库已加载"（4 语言已对齐）
+- **可视提示**：chat footer 的 Brain icon + tooltip "项目知识库已加载"（中英双语已对齐）
 
 注入逻辑实现：`apps/desktop/src/main/maker-ipc/projectContextInject.ts`。100KB 硬上限超出截断尾部并加 `truncated="true"` 标记。
 

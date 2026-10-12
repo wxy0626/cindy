@@ -42,7 +42,7 @@ export function botPronoun(gender: BotGender, displayName: string): string {
  * 挤成一团(「让Cindy加入」)。文案模板里因此**不写空格**,由这里按值决定 ——
  * 名字首尾是西文才补,中文名字原样返回。
  *
- * 只对中文生效:en / ja / ko 的文案根本不引用这个插值。
+ * 只对中文生效:英文文案根本不引用这个插值。
  */
 function padLatin(name: string): string {
   if (!name) return name;

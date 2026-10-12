@@ -233,12 +233,12 @@ function InteractionPanelContent({
   const selectedQueueItem = queuePresentation.items.find((item) => item.requestId === activeRequestIdForPresentation)
     ?? queuePresentation.active;
   // 共享层的 title / label 是中文直出(desktop 时代留下的),控制端要按当前 locale
-  // 翻译后再渲染,否则这些队列文案在 en / ja / ko 下仍是中文(#530 review)。
+  // 翻译后再渲染,否则这些队列文案在英文界面下仍是中文(#530 review)。
   const localizedKindText = (itemKind: string, field: 'title' | 'label') => t(
     `interaction.kinds.${localizedInteractionKindKey(itemKind)}.${field}`,
   );
   // positionLabel 同样是中文直出,且会被插进队列切换的 accessibility 文案 —— 不翻的话
-  // VoiceOver / TalkBack 在 en / ja / ko 下会念出混语(#530 review)。
+  // VoiceOver / TalkBack 在英文界面下会念出混语(#530 review)。
   const localizedPositionLabel = (index: number) => {
     if (index === 0) return t('interaction.panel.queuePositionCurrent');
     if (index === 1) return t('interaction.panel.queuePositionNext');
@@ -1725,7 +1725,7 @@ function PluginSetupStepRow({ step, terminal, native }: { step: RemotePluginSetu
   return (
     <View
       // 聚合成一个读屏单元:标题 / 状态 / 待办 / 错误分开念会把一步拆成四条碎片。
-      // 分隔符走文案目录:硬编码「，」会让 en / ja / ko 的读屏念出中文标点。
+      // 分隔符走文案目录:硬编码「，」会让英文界面的读屏念出中文标点。
       accessible
       accessibilityLabel={[step.title, phaseText, terminal ? null : step.description, visibleActionHint, errorText]
         .filter((part): part is string => !!part)

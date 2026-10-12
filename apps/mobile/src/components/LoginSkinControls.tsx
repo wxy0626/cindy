@@ -207,7 +207,7 @@ export function LoginConsentRow({
     >
       {/* 命中区 88×88 设计px(≈44 物理pt,codex P1),不加 hitSlop(父 bounds 裁剪、
           Android 界外不派发——历史结论)。右下锚定:右缘 = 视觉 24 槽位右缘(不越 gap 6.5
-          侵入协议链接命中区,ja 句首即链接)、底缘 = 行底 622(不越父容器 bounds);
+          侵入协议链接命中区)、底缘 = 行底 622(不越父容器 bounds);
           布局占位仍 24(marginLeft 负回收),视觉圆圈位置与 24×24 时代逐像素一致 */}
       <Pressable
         accessibilityLabel={statementLabel}

@@ -2,7 +2,7 @@
  * Pure menu model shared by the message action sheet and tests.
  *
  * 文案走 i18n（与同目录 `sessionMenu.ts` 同规）：这些 label 会直接渲染成
- * `MessageActionSheet` 的可视文本与无障碍标签，mobile 支持 en / ja / ko，
+ * `MessageActionSheet` 的可视文本与无障碍标签，mobile 仅支持中英双语，
  * 塞硬编码中文会让非中文语言环境看到中文菜单。
  */
 import { i18n } from '@/i18n';

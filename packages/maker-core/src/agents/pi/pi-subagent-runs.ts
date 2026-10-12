@@ -2740,7 +2740,7 @@ async function resumeClaimedPiSubagentRun(
     bridgeExtension,
     permissionFile,
     // Keep the original title: the sidebar renders it verbatim, so an English
-    // prefix would leak into zh/ja/ko. Continuation is already the same logical
+    // prefix would leak into zh/en. Continuation is already the same logical
     // run (same taskId); untitled stays untitled.
     title: sourceConfig.title,
     description: followUp,

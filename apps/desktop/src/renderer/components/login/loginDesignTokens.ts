@@ -110,7 +110,7 @@ export const SUBTITLE = { x: 70, y: 75, width: 540, fontSize: 20, lineHeight: 23
 /**
  * 区域徽标(figma §4.10 胶囊 h30 r40)。v2 inline 组方案(用户裁定 2026-07-25):
  * 标题文字 shrink-to-fit 单行 + 徽标紧随其后 gap 2 设计px,组整体相对面板水平居中——
- * 修复旧固定跨度方案(标题 span 固定 236 @185 + 徽标绝对 @425)在 en/ja/ko 下
+ * 修复旧固定跨度方案(标题 span 固定 236 @185 + 徽标绝对 @425)在中英下
  * 标题与徽标重叠的问题;GLOBAL_TITLE_SPAN 随之废弃删除。
  *
  * 宽度自适应(2026-07-27 拍板):原 width 固定 70 是为 "Global" 一词量身定的。

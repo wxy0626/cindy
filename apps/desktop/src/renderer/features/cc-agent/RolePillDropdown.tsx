@@ -1305,7 +1305,7 @@ export function RolePillDropdown({
             </span>
             <span className="text-10 font-medium text-[var(--text-tertiary)]">
               {t('orca.rolePill.workerCountSummary', {
-                // count 驱动 i18next 复数选择 (en: _one/_other; zh/ja/ko: _other),
+                // count 驱动 i18next 复数选择 (en: _one/_other; zh: _other),
                 // totalCount/activeCount 仍用于插值。
                 count: totalWorkerCount,
                 totalCount: totalWorkerCount,

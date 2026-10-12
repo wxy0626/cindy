@@ -64,7 +64,7 @@ export function buildSessionMenuHeader(session: RemoteSession): SessionMenuHeade
   return {
     // 哨兵(尚未起名)直接给本地化兜底,**不回落 workspaceName** —— 回落会把目录名当标题,
     // 与 desktop 的「未命名任务」不一致(PR #1031 review P1)。文案走 i18n:本模块中英
-    // 都在用 i18n.t,不能塞硬编码中文(mobile 支持 en / ja / ko)。
+    // 都在用 i18n.t,不能塞硬编码中文(mobile 仅支持中英双语)。
     title: isDefaultDraftSessionTitle(session.title)
       ? i18n.t('session.menu.unnamedTitle')
       : session.title || workspaceName(session) || i18n.t('session.menu.titleFallback'),

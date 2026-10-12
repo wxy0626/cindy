@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 /**
  * HookConnectionsSection —— 「IM 机器人」页「官方」栏(Cindy 渠道)。
- * i18n key 刻意留在 settings.remoteControl.hook.* 命名空间(50+ 条 × 4 语言的
+ * i18n key 刻意留在 settings.remoteControl.hook.* 命名空间(50+ 条 × 中英双语的
  * 纯搬家徒增 diff 与漏改风险)。
  * ---------------------------------------------------------------------------
  * 中心 slack-hook-server 的接入面(内置连接, 零凭证配置)。结构与「个人」栏

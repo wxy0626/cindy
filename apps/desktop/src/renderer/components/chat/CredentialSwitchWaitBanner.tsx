@@ -70,7 +70,7 @@ export function CredentialSwitchWaitBanner({
   const displayTitles = blockerTitles.map(
     (title) => projectDraftSessionTitle(title, t('ccAgent.common.unnamedSession')),
   );
-  // 标题连接符跟随当前语言(zh/ja 顿号、en/ko 逗号等),不硬编码中文顿号。
+  // 标题连接符跟随当前语言(中文顿号、英文逗号),不硬编码中文顿号。
   // Intl.ListFormat 在 Electron 的 V8 下全量可用;构造失败(异常 locale)回退简单逗号。
   let joinedTitles = '';
   if (displayTitles.length > 0) {

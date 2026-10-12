@@ -102,7 +102,7 @@
 
 ## 11. i18n / UI 适配
 
-- [ ] 远程控制相关文案全部 4 语言(zh-CN/en/ja/ko)齐全且准确(`settings.remoteControl.*` / `ccAgent.remoteSession.*` / `newChat.addRemoteProject.*` 等),缺 key 会静默回退英文。手机版自己的文案同理。
+- [ ] 远程控制相关文案中英双语(zh-CN/en)齐全且准确(`settings.remoteControl.*` / `ccAgent.remoteSession.*` / `newChat.addRemoteProject.*` 等),缺 key 会静默回退英文。手机版自己的文案同理。
 - [ ] 颜色走主题 token,不硬编码(手机若另起设计系统,等价约束)。
 
 ## 12. IM(飞书/Slack)接管交互的相互影响

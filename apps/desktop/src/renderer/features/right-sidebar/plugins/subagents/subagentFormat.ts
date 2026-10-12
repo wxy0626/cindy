@@ -159,9 +159,9 @@ const RELATIVE_UNITS: Array<{ limitMs: number; divisorMs: number; unit: Intl.Rel
 
 /**
  * Relative label for the list row corner. `Intl.RelativeTimeFormat` is used
- * deliberately instead of a new five-language key family: the platform already
+ * deliberately instead of a new key family: the platform already
  * owns the wording for every locale Cindy ships, and a hand-written set would
- * be one more copy surface to keep in sync (and improvised ja/ko copy is
+ * be one more copy surface to keep in sync (and improvised non-English copy is
  * forbidden by the i18n rules). Falls back to the clock time when the runtime
  * has no relative formatter.
  */

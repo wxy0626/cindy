@@ -808,7 +808,7 @@ export type LegalSegment = { kind: 'text' | 'terms' | 'privacy'; text: string };
 
 /**
  * 解析协议文案里的内联链接标记(`<terms>…</terms>` / `<privacy>…</privacy>`)。
- * i18n 单 key 保住各语言词序(ja 链接前置、zh/en 链接居中),链接段由代码确定性
+ * i18n 单 key 保住中文与英文词序,链接段由代码确定性
  * 拆分渲染(规则 9),不依赖 react-i18next Trans(仓内无此先例)。
  */
 export function parseLegalSegments(input: string): LegalSegment[] {

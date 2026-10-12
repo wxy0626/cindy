@@ -18,7 +18,7 @@ export function createMobileToolRowWording(): ToolRowWording {
   return {
     verb: (key) => i18n.t(TOOL_ROW_VERB_I18N_KEY[key]),
     intentVerb: (action) => i18n.t(INTENT_ROW_VERB_KEY[action]),
-    // 整句 key:语序按语言走,不在这里拼动词与文件数(ja/ko 拼出来不成句)。
+    // 整句 key:语序按语言走,不在这里拼动词与文件数(语言间语序不同)。
     updateFilesLabel: (count) => i18n.t(FILE_CHANGE_UPDATED_FILES_I18N_KEY, { count }),
   };
 }

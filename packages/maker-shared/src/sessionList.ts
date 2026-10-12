@@ -426,7 +426,7 @@ function buildProjectSections(
  * 哨兵本身是 locale-independent 的英文字面量(见 ./sessionTitle.ts),原样显示会露出
  * "New Maker"。
  *
- * `unnamedLabel` 由调用方传入已解析的 i18n 文案(mobile 支持 en / ja / ko,本模块不能
+ * `unnamedLabel` 由调用方传入已解析的 i18n 文案(mobile 仅支持中英双语,本模块不能
  * 导出中文 UI 串),与 desktop 的 `getSessionDisplayTitle(session, unnamedLabel)` 同款
  * 签名。
  *
@@ -436,7 +436,7 @@ export function remoteSessionDisplayTitle(session: RemoteSession, unnamedLabel?:
   if (isDefaultDraftSessionTitle(session.title)) {
     // 调用方给了**已解析的 i18n 文案**就用它;没给则按「无标题」走既有兜底链
     // (workingDir → '未命名任务'),即本 PR 之前的行为 —— 但无论如何都不把英文哨兵
-    // 原样显示出去。刻意不在共享层兜一个中文串:mobile 支持 en / ja / ko,那会让未接
+    // 原样显示出去。刻意不在共享层兜一个中文串:mobile 仅支持中英双语,那会让未接
     // i18n 的调用方悄悄显示中文(PR #1031 review P1)。
     return unnamedLabel || session.workingDir || '未命名任务';
   }

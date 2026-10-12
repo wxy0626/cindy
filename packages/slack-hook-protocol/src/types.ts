@@ -1652,7 +1652,7 @@ export interface TurnEndClientFinal {
  * provider.commands.set(desktop -> server): 官方 Telegram 命令菜单
  * (HOOK_FEATURE_TELEGRAM_COMMANDS)。每次握手成功后发一次; 服务端**只存内存、不落库**,
  * 按 `{type:'chat', chat_id: principalId}` 作用域调用 setMyCommands。服务端只管理默认
- * 菜单与 zh / ja / ko, 每次全量重写(缺席的语言写空, 其它语言码含显式 'en' 忽略); 只有该
+ * 菜单与客户端声明的语言, 每次全量重写(缺席的语言写空, 其它语言码含显式 'en' 忽略); 只有该
  * 设备当前仍协商本能力时才用它的菜单。服务端重启后到 desktop 重连前(以及设备离线期间)
  * 用服务端自己的默认菜单。服务端只校验形状与 Telegram 限制, 不改文案、不增删命令。
  */

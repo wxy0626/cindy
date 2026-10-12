@@ -15,7 +15,7 @@
  * 当前接线边界:
  *   - 个人 bot: 本表是运行时事实来源(菜单渲染 + 命令分发都读它)。
  *   - 官方 bot: 双方协商 `telegram-commands-v1` 后, **菜单**以本表为准 —— desktop 按
- *     en / zh / ja / ko 渲染(`buildOfficialBotCommandMenus`)经 provider.commands.set
+ *     中英双语渲染(`buildOfficialBotCommandMenus`)经 provider.commands.set
  *     下发, 服务端只执行 setMyCommands; 未协商时服务端照旧用自己的 TELEGRAM_COMMANDS。
  *     **命令分发**仍在服务端(官方入站由服务端收), 命令集合与服务端分发的一致性仍由
  *     `botCommands.test.ts` 的内联清单守住。

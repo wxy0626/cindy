@@ -210,8 +210,8 @@ export function BotGroupPlanCard({
       })}
     </View>
     {actionable ? <>
-      {/* Two sentences: Chinese and Japanese run them together, other languages need a space. */}
-      <Text style={styles.note}>{[t('groupChat.plan.pauseNote'), t('groupChat.plan.editHint')].join(/^(zh|ja)/.test(i18n.language) ? '' : ' ')}</Text>
+      {/* 中文两句直接相连，英文两句之间保留空格。 */}
+      <Text style={styles.note}>{[t('groupChat.plan.pauseNote'), t('groupChat.plan.editHint')].join(/^zh/.test(i18n.language) ? '' : ' ')}</Text>
       <CompanionCardActions>
         <CompanionCardButton label={t('groupChat.plan.dismiss')} busy={pending === 'dismiss'} disabled={busy || !online}
           onPress={onDismiss} testID="botGroup.plan.dismiss" />

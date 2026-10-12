@@ -23,7 +23,7 @@
  * {{count}} 个文件"),不拆 verb/noun 两段拼接。聚合/行级 key 在下方映射表,
  * command intent 的动词 key 表在 `src/shared/agentActionVerbKeys.ts`(与
  * main 灵动岛措辞共享)— i18nCompleteness 静态扫描认不出 `t(变量)`,这些
- * key 的 4 语言齐全性由 `agentActionsI18n.test.ts` 显式断言兜底。
+ * key 的中英双语齐全性由 `agentActionsI18n.test.ts` 显式断言兜底。
  */
 
 import type { TFunction } from 'i18next';
