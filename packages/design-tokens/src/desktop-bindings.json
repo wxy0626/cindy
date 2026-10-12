@@ -28,13 +28,13 @@
       "light": "semantic.defaults.surface-chip-alt.light",
       "dark": "semantic.defaults.surface-chip-alt.dark"
     },
-    "surface-hover": {
-      "light": "semantic.defaults.surface-hover.light",
-      "dark": "semantic.defaults.surface-hover.dark"
-    },
     "surface-hover-soft": {
       "light": "semantic.defaults.surface-hover-soft.light",
       "dark": "semantic.defaults.surface-hover-soft.dark"
+    },
+    "surface-hover": {
+      "light": "semantic.defaults.surface-hover.light",
+      "dark": "semantic.defaults.surface-hover.dark"
     },
     "surface-hover-hsl": {
       "light": "semantic.defaults.surface-hover-hsl.light",
@@ -1008,10 +1008,6 @@
       "light": "semantic.defaults.engine-badge-pi.light",
       "dark": "semantic.defaults.engine-badge-pi.dark"
     },
-    "perm-item-selected-bg": {
-      "light": "semantic.defaults.perm-item-selected-bg.light",
-      "dark": "semantic.defaults.perm-item-selected-bg.dark"
-    },
     "perm-auto-selected-text": {
       "light": "semantic.defaults.perm-auto-selected-text.light",
       "dark": "semantic.defaults.perm-auto-selected-text.dark"
@@ -1300,10 +1296,6 @@
       "light": "component.defaults.settings-menu-text-selected.light",
       "dark": "component.defaults.settings-menu-text-selected.dark"
     },
-    "settings-menu-bg-selected": {
-      "light": "semantic.defaults.settings-menu-bg-selected.light",
-      "dark": "semantic.defaults.settings-menu-bg-selected.dark"
-    },
     "settings-menu-border-selected": {
       "light": "component.defaults.settings-menu-border-selected.light",
       "dark": "component.defaults.settings-menu-border-selected.dark"
@@ -1351,10 +1343,6 @@
     "settings-input-border": {
       "light": "component.defaults.settings-input-border.light",
       "dark": "component.defaults.settings-input-border.dark"
-    },
-    "settings-input-border-focus": {
-      "light": "component.defaults.settings-input-border-focus.light",
-      "dark": "component.defaults.settings-input-border-focus.dark"
     },
     "settings-input-text": {
       "light": "component.defaults.settings-input-text.light",
@@ -2216,7 +2204,10 @@
     "button-primary-pressed": "Runtime color-mix: retain theme-responsive mixing in the existing registration",
     "button-secondary-hover": "Runtime color-mix: retain theme-responsive mixing in the existing registration",
     "button-secondary-pressed": "Runtime color-mix: retain theme-responsive mixing in the existing registration",
-    "button-cta-pressed": "Runtime color-mix: retain theme-responsive mixing in the existing registration"
+    "button-cta-pressed": "Runtime color-mix: retain theme-responsive mixing in the existing registration",
+    "perm-item-selected-bg": "Local override: product keeps the --model-item-hover alias in its own registration",
+    "settings-menu-bg-selected": "Local override: product keeps the tuned selected-pill tint in its own registration",
+    "settings-input-border-focus": "Local override: product keeps the --focus-ring alias in its own registration"
   },
   "themes": {
     "atom-one-light.ts": {

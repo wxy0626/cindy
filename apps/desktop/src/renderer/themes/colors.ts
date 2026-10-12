@@ -29,13 +29,13 @@ const GENERATED_DEFAULTS = {
     "light": "#e5e5e5",
     "dark": "#2c2c2a"
   },
-  "surface-hover": {
-    "light": "#e5e5e5",
-    "dark": "#3c3c3a"
-  },
   "surface-hover-soft": {
     "light": "#f8f8f6",
     "dark": "#3c3c3a"
+  },
+  "surface-hover": {
+    "light": "#e5e5e0",
+    "dark": "#2a2a2a"
   },
   "surface-hover-hsl": {
     "light": "0 0% 90%",
@@ -1009,10 +1009,6 @@ const GENERATED_DEFAULTS = {
     "light": "#a78bfa",
     "dark": "#a78bfa"
   },
-  "perm-item-selected-bg": {
-    "light": "#f8f8f6",
-    "dark": "#3c3c3a"
-  },
   "perm-auto-selected-text": {
     "light": "#417CDD",
     "dark": "#417CDD"
@@ -1301,10 +1297,6 @@ const GENERATED_DEFAULTS = {
     "light": "var(--text-primary)",
     "dark": "var(--text-primary)"
   },
-  "settings-menu-bg-selected": {
-    "light": "#e8e8e6",
-    "dark": "#2c2c2a"
-  },
   "settings-menu-border-selected": {
     "light": "var(--border-transparent-mixed)",
     "dark": "var(--border-transparent-mixed)"
@@ -1352,10 +1344,6 @@ const GENERATED_DEFAULTS = {
   "settings-input-border": {
     "light": "var(--border-default)",
     "dark": "var(--border-default)"
-  },
-  "settings-input-border-focus": {
-    "light": "var(--text-tertiary-stone)",
-    "dark": "var(--text-tertiary-stone)"
   },
   "settings-input-text": {
     "light": "var(--text-primary)",
@@ -2217,50 +2205,17 @@ export const PRICE_TIER_COLORS = {
 // END GENERATED DS-8: defaults
 
 /* === P3.2: Semantic slot tokens === */
-registerColor('surface', {
-  light: '#f8f8f6',
-  dark: '#1f1f1e',
-}, 'Surface 页面背景 (hex 形式)');
-registerColor('surface-hsl', {
-  light: '60 12.5% 97%',
-  dark: '60 2% 12%',
-}, 'Surface 页面背景 (HSL 形式)');
-registerColor('surface-elevated', {
-  light: '#ffffff',
-  dark: '#2c2c2a',
-}, 'Card 抬一层 / 弹窗 / popover 背景');
-registerColor('surface-elevated-soft', {
-  light: '#e5e5e5',
-  dark: '#2c2c2a',
-}, 'Disabled / dimmed 卡片背景');
-registerColor('surface-card-ivory', {
-  light: '#faf9f5',
-  dark: '#2c2c2a',
-}, 'Settings 微暖 ivory Card');
-registerColor('surface-chip', {
-  light: '#e5e5e5',
-  dark: '#3c3c3a',
-}, 'Chip / pill / 选中行背景');
-registerColor('surface-chip-alt', {
-  light: '#e5e5e5',
-  dark: '#2c2c2a',
-}, 'Chip 暗态塌缩到 Card 的变体');
-registerColor('surface-hover', {
-  light: '#e5e5e0',
-  dark: '#2a2a2a',
-}, '通用 hover 背景');
-registerColor('surface-hover-soft', {
-  light: '#f8f8f6',
-  dark: '#3c3c3a',
-}, '柔和 hover 背景');
-registerColor('surface-hover-hsl', {
-  light: '0 0% 90%',
-  dark: '60 2% 17%',
-}, 'Hover 背景 HSL 形式');
-registerColor('surface-on-card', {
-  light: '#ffffff',
-  dark: '#1f1f1e',
-}, 'CTA/checked icon 的深色前景');
+registerColor('surface', GENERATED_DEFAULTS["surface"], 'Surface 页面背景 (hex 形式)');
+registerColor('surface-hsl', GENERATED_DEFAULTS["surface-hsl"], 'Surface 页面背景 (HSL 形式)');
+registerColor('surface-elevated', GENERATED_DEFAULTS["surface-elevated"], 'Card 抬一层 / 弹窗 / popover 背景');
+registerColor('surface-elevated-soft', GENERATED_DEFAULTS["surface-elevated-soft"], 'Disabled / dimmed 卡片背景');
+registerColor('surface-card-ivory', GENERATED_DEFAULTS["surface-card-ivory"], 'Settings 微暖 ivory Card');
+registerColor('surface-chip', GENERATED_DEFAULTS["surface-chip"], 'Chip / pill / 选中行背景');
+registerColor('surface-chip-alt', GENERATED_DEFAULTS["surface-chip-alt"], 'Chip 暗态塌缩到 Card 的变体');
+registerColor('surface-hover', GENERATED_DEFAULTS["surface-hover"], '通用 hover 背景');
+registerColor('surface-hover-soft', GENERATED_DEFAULTS["surface-hover-soft"], '柔和 hover 背景');
+registerColor('surface-hover-hsl', GENERATED_DEFAULTS["surface-hover-hsl"], 'Hover 背景 HSL 形式');
+registerColor('surface-on-card', GENERATED_DEFAULTS["surface-on-card"], 'CTA/checked icon 的深色前景');
 // 历史幽灵 token 补注册:--panel-bg 被 9 处宿主组件裸引用(PanelChrome / TabBar
 // / RightSidebarShell / ReviewTabBody / ghostPanels / RightSidebar / SidebarWindowLayout,
 // 均 bg-[var(--panel-bg)] 无 fallback)但 colors.ts 从未注册,:root 读不到值 → 面板/
@@ -2666,54 +2621,18 @@ registerColor('perm-allow-kbd-bg', GENERATED_DEFAULTS["perm-allow-kbd-bg"], 'All
 registerColor('perm-allow-kbd-border', GENERATED_DEFAULTS["perm-allow-kbd-border"], 'Allow once kbd border');
 
 // Model selector
-registerColor('model-trigger-hover', {
-  light: '#e5e5e5',
-  dark: '#2c2c2a',
-}, 'Light Gray — pill hover');
-registerColor('model-trigger-text', {
-  light: 'var(--text-secondary)',
-  dark: 'var(--text-secondary)',
-}, 'Stone — model name + effort name');
-registerColor('model-trigger-meta', {
-  light: 'var(--text-tertiary)',
-  dark: 'var(--text-tertiary)',
-}, 'Silver — middle dot separator (·)');
-registerColor('model-trigger-arrow', {
-  light: 'var(--text-secondary-cross)',
-  dark: 'var(--text-secondary-cross)',
-}, 'Silver');
-registerColor('thinking-body-text', {
-  light: 'var(--text-tertiary)',
-  dark: 'var(--text-tertiary)',
-}, 'Silver — one tier below title');
-registerColor('model-dropdown-bg', {
-  light: 'var(--surface-elevated)',
-  dark: 'var(--surface-elevated)',
-}, 'Card');
-registerColor('model-dropdown-border', {
-  light: 'var(--border-default)',
-  dark: 'var(--border-default)',
-}, 'Board — 下拉面板边框');
-registerColor('model-item-hover', {
-  light: 'var(--surface-hover)',
-  dark: 'var(--surface-hover)',
-}, 'Light Gray');
-registerColor('model-item-text', {
-  light: 'var(--text-primary)',
-  dark: 'var(--text-primary)',
-}, 'Near Black');
-registerColor('model-item-check', {
-  light: 'var(--accent-cta-bg-pure)',
-  dark: 'var(--accent-cta-bg-pure)',
-}, 'Pure Black');
-registerColor('model-item-desc', {
-  light: 'var(--text-secondary)',
-  dark: 'var(--text-secondary)',
-}, 'Stone — model description');
-registerColor('model-section-label', {
-  light: 'var(--text-secondary)',
-  dark: 'var(--text-secondary)',
-}, 'Stone — "Effort" header');
+registerColor('model-trigger-hover', GENERATED_DEFAULTS["model-trigger-hover"], 'Light Gray — pill hover');
+registerColor('model-trigger-text', GENERATED_DEFAULTS["model-trigger-text"], 'Stone — model name + effort name');
+registerColor('model-trigger-meta', GENERATED_DEFAULTS["model-trigger-meta"], 'Silver — middle dot separator (·)');
+registerColor('model-trigger-arrow', GENERATED_DEFAULTS["model-trigger-arrow"], 'Silver');
+registerColor('thinking-body-text', GENERATED_DEFAULTS["thinking-body-text"], 'Silver — one tier below title');
+registerColor('model-dropdown-bg', GENERATED_DEFAULTS["model-dropdown-bg"], 'Card');
+registerColor('model-dropdown-border', GENERATED_DEFAULTS["model-dropdown-border"], 'Board — 下拉面板边框');
+registerColor('model-item-hover', GENERATED_DEFAULTS["model-item-hover"], 'Light Gray');
+registerColor('model-item-text', GENERATED_DEFAULTS["model-item-text"], 'Near Black');
+registerColor('model-item-check', GENERATED_DEFAULTS["model-item-check"], 'Pure Black');
+registerColor('model-item-desc', GENERATED_DEFAULTS["model-item-desc"], 'Stone — model description');
+registerColor('model-section-label', GENERATED_DEFAULTS["model-section-label"], 'Stone — "Effort" header');
 // 统一模型选择器(model-selector-unified §1.3 / §1.5)
 registerColor('favorite-star', GENERATED_DEFAULTS["favorite-star"], 'Gold — 收藏 ☆ 点亮态');
 // 推理强度档位绝对色:同一档在 Light / Dark 下必须是同一个颜色(档色表达「这一档有多强」,
@@ -2896,38 +2815,17 @@ registerColor('settings-back-text', GENERATED_DEFAULTS["settings-back-text"], 'N
 registerColor('settings-back-hover', GENERATED_DEFAULTS["settings-back-hover"], 'Near Black — subtle hover');
 
 // Settings - inner sidebar menu items
-registerColor('settings-menu-text', {
-  light: 'var(--text-primary)',
-  dark: 'var(--text-primary)',
-}, 'Near Black — unselected label (用户改稿 2026-07-21:与设置标题同色,不再用二级灰)');
-registerColor('settings-menu-text-selected', {
-  light: 'var(--text-primary)',
-  dark: 'var(--text-primary)',
-}, '卡片内选中态前景');
+registerColor('settings-menu-text', GENERATED_DEFAULTS["settings-menu-text"], 'Near Black — unselected label (用户改稿 2026-07-21:与设置标题同色,不再用二级灰)');
+registerColor('settings-menu-text-selected', GENERATED_DEFAULTS["settings-menu-text-selected"], '卡片内选中态前景');
 registerColor('settings-menu-bg-selected', {
   light: '#E2E2DE',
   dark: '#333333',
 }, '卡片内选中态背景');
-registerColor('settings-menu-border-selected', {
-  light: 'var(--border-transparent-mixed)',
-  dark: 'var(--border-transparent-mixed)',
-}, '卡片内选中态边框');
-registerColor('settings-menu-bg-hover', {
-  light: '#ececea',
-  dark: '#2c2c2a',
-}, 'Subtle hover');
-registerColor('settings-section-title', {
-  light: 'var(--text-primary)',
-  dark: 'var(--text-primary)',
-}, 'Near Black — section heading');
-registerColor('settings-section-desc', {
-  light: 'var(--text-tertiary-mid)',
-  dark: 'var(--text-tertiary-mid)',
-}, 'Mid Gray — description body');
-registerColor('settings-section-sublabel', {
-  light: 'var(--text-tertiary-mid)',
-  dark: 'var(--text-tertiary-mid)',
-}, 'Mid Gray — "Theme" sublabel');
+registerColor('settings-menu-border-selected', GENERATED_DEFAULTS["settings-menu-border-selected"], '卡片内选中态边框');
+registerColor('settings-menu-bg-hover', GENERATED_DEFAULTS["settings-menu-bg-hover"], 'Subtle hover');
+registerColor('settings-section-title', GENERATED_DEFAULTS["settings-section-title"], 'Near Black — section heading');
+registerColor('settings-section-desc', GENERATED_DEFAULTS["settings-section-desc"], 'Mid Gray — description body');
+registerColor('settings-section-sublabel', GENERATED_DEFAULTS["settings-section-sublabel"], 'Mid Gray — "Theme" sublabel');
 
 // Settings - User card (elevated on Surface)
 registerColor('settings-profile-card-bg', GENERATED_DEFAULTS["settings-profile-card-bg"], 'Card');
@@ -2937,54 +2835,21 @@ registerColor('settings-profile-avatar-text', GENERATED_DEFAULTS["settings-profi
 registerColor('settings-profile-name', GENERATED_DEFAULTS["settings-profile-name"], 'Near Black');
 
 // Settings - API Key input (pill input on Card)
-registerColor('settings-input-bg', {
-  light: 'var(--surface-card-ivory)',
-  dark: 'var(--surface-card-ivory)',
-}, 'Card');
-registerColor('settings-input-border', {
-  light: 'var(--border-default)',
-  dark: 'var(--border-default)',
-}, 'Board');
+registerColor('settings-input-bg', GENERATED_DEFAULTS["settings-input-bg"], 'Card');
+registerColor('settings-input-border', GENERATED_DEFAULTS["settings-input-border"], 'Board');
 registerColor('settings-input-border-focus', {
   light: 'var(--focus-ring)',
   dark: 'var(--focus-ring)',
 }, 'Focus Blue — 输入与下拉控件焦点边框');
-registerColor('settings-input-text', {
-  light: 'var(--text-primary)',
-  dark: 'var(--text-primary)',
-}, 'Near Black');
-registerColor('settings-input-placeholder', {
-  light: 'var(--text-placeholder)',
-  dark: 'var(--text-placeholder)',
-}, 'Placeholder — 收口至 --text-placeholder slot');
-registerColor('settings-eye-icon', {
-  light: 'var(--text-tertiary-stone)',
-  dark: 'var(--text-tertiary-stone)',
-}, 'Stone');
-registerColor('settings-eye-icon-hover', {
-  light: 'var(--text-primary)',
-  dark: 'var(--text-primary)',
-}, 'Near Black');
-registerColor('settings-trash-icon', {
-  light: 'var(--text-secondary)',
-  dark: 'var(--text-secondary)',
-}, 'Stone — API Key clear button');
-registerColor('settings-trash-icon-hover', {
-  light: 'var(--text-primary)',
-  dark: 'var(--text-primary)',
-}, 'Near Black');
-registerColor('settings-source-meta', {
-  light: 'var(--text-secondary-cross)',
-  dark: 'var(--text-secondary-cross)',
-}, 'Silver — "Source: ..." meta');
-registerColor('settings-source-link', {
-  light: '#262626',
-  dark: '#d4d4d4',
-}, 'Near Black — "Open Console" link');
-registerColor('settings-error-text', {
-  light: 'var(--error-flat)',
-  dark: 'var(--error-flat)',
-}, 'Functional only');
+registerColor('settings-input-text', GENERATED_DEFAULTS["settings-input-text"], 'Near Black');
+registerColor('settings-input-placeholder', GENERATED_DEFAULTS["settings-input-placeholder"], 'Placeholder — 收口至 --text-placeholder slot');
+registerColor('settings-eye-icon', GENERATED_DEFAULTS["settings-eye-icon"], 'Stone');
+registerColor('settings-eye-icon-hover', GENERATED_DEFAULTS["settings-eye-icon-hover"], 'Near Black');
+registerColor('settings-trash-icon', GENERATED_DEFAULTS["settings-trash-icon"], 'Stone — API Key clear button');
+registerColor('settings-trash-icon-hover', GENERATED_DEFAULTS["settings-trash-icon-hover"], 'Near Black');
+registerColor('settings-source-meta', GENERATED_DEFAULTS["settings-source-meta"], 'Silver — "Source: ..." meta');
+registerColor('settings-source-link', GENERATED_DEFAULTS["settings-source-link"], 'Near Black — "Open Console" link');
+registerColor('settings-error-text', GENERATED_DEFAULTS["settings-error-text"], 'Functional only');
 
 // Settings - StatusBadge (pill on Card) — grayscale per-status ladder
 registerColor('settings-badge-bg', GENERATED_DEFAULTS["settings-badge-bg"], 'Card');
