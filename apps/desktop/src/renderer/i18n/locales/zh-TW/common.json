@@ -1883,6 +1883,12 @@
       "harnessUpdateAvailable": "有更新",
       "harnessCheck": "檢查更新",
       "harnessCheckedAt": "上次檢查：{{time}}",
+      "upstreamLatest": {
+        "label": "上游最新版本",
+        "loading": "檢查中…",
+        "unavailable": "暫不可用",
+        "newer": "有新版本"
+      },
       "logsDirLabel": "日誌目錄",
       "openLogsDir": "開啟",
       "openLogsDirTooltip": "在系統檔案管理器中開啟日誌目錄",
@@ -10487,6 +10493,8 @@
       "usageLimitAutoContinueTitle": "用量上限重置後，如果你還沒處理，這個任務會自動繼續",
       "usageLimitAutoContinueCancel": "取消",
       "usageLimitAutoContinueCancelTitle": "取消自動繼續，錯誤與重試仍保留",
+      "continueAfterReset": "重置後繼續",
+      "continueAfterResetTitle": "建立一次性自動化，在用量重置後繼續目前工作",
       "codexOrganizationUsageLimitWithReset": "目前連線的是企業 Codex 帳號，已達到用量上限，預計於 {{resetAt}} 恢復。",
       "codexOrganizationUsageLimit": "目前連線的是企業 Codex 帳號，已達到用量上限。請等待用量上限重置，或切換其他可用帳號後再重試。",
       "codexUsageLimitWithReset": "目前連線的 Codex 帳號已達到用量上限，預計於 {{resetAt}} 恢復。",

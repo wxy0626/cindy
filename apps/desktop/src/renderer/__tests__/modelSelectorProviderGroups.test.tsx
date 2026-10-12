@@ -1072,35 +1072,32 @@ describe('ModelSelector composer pill 引擎小标', () => {
     ];
   };
 
-  it('传 engineMarkVendor 时用打头小标取代 harness 名字文本与渠道图标', () => {
+  it('传 engineMarkVendor 时用小标取代 harness 名字文本', () => {
     renderSelector({
       engineMarkVendor: 'codex',
       agentIdentity: { vendorKey: 'codex', state: 'current' },
     });
     const trigger = triggerOf();
-    expect(trigger.querySelector('[data-composer-engine-lead="codex"]')).toBeTruthy();
-    // mark 已随 2026-09-06 裁决移到打头位:lead span 同时携带 engine-mark 属性,
-    // 尾部不再有第二个 mark 节点 —— 改为断言「mark 只出现一次且就在 lead 位」。
-    expect(trigger.querySelectorAll('[data-composer-engine-mark="codex"]')).toHaveLength(1);
+    expect(trigger.querySelector('[data-composer-engine-mark="codex"]')).toBeTruthy();
     // 名字文本不再出现在 pill 上(但仍留在 title / aria-label 里,读屏与 hover 不丢信息)。
     expect(trigger.textContent).not.toContain('Codex');
     expect(trigger.getAttribute('title')).toContain('Codex');
     expect(trigger.getAttribute('aria-label')).toContain('Codex');
   });
 
-  it('小标打头、其后依次是模型名与深度档字(2026-09-06 用户裁决)', () => {
+  it('小标紧跟模型名之后、深度档字之前(图标与档字成组收尾)', () => {
     withRealModel();
     renderSelector({
       engineMarkVendor: 'codex',
       agentIdentity: { vendorKey: 'codex', state: 'current' },
     });
     const trigger = triggerOf();
-    const mark = trigger.querySelector('[data-composer-engine-lead="codex"]') as HTMLElement;
+    const mark = trigger.querySelector('[data-composer-engine-mark="codex"]') as HTMLElement;
     const modelName = within(trigger).getByText('Opus 4.8');
     const effort = within(trigger).getByText('最高');
     // Node.DOCUMENT_POSITION_FOLLOWING = 4
-    expect(mark.compareDocumentPosition(modelName) & 4).toBeTruthy();
-    expect(modelName.compareDocumentPosition(effort) & 4).toBeTruthy();
+    expect(modelName.compareDocumentPosition(mark) & 4).toBeTruthy();
+    expect(mark.compareDocumentPosition(effort) & 4).toBeTruthy();
   });
 
   it('窄工具条下先截模型名,小标与档字保留', () => {
@@ -1111,16 +1108,15 @@ describe('ModelSelector composer pill 引擎小标', () => {
       compactToolbar: true,
     });
     const trigger = triggerOf();
-    expect(trigger.querySelector('[data-composer-engine-lead="codex"]')).toBeTruthy();
+    expect(trigger.querySelector('[data-composer-engine-mark="codex"]')).toBeTruthy();
     expect(within(trigger).getByText('最高')).toBeTruthy();
     expect(within(trigger).getByText('Opus 4.8').className).toContain('truncate');
   });
 
-  it('只传 agentIdentity(不传 engineMarkVendor)时同样派生小标打头(original 形态同吃)', () => {
+  it('不传 engineMarkVendor 的入口维持名字文本形态(其余 7 个消费者不受影响)', () => {
     renderSelector({ agentIdentity: { vendorKey: 'codex', state: 'current' } });
     const trigger = triggerOf();
-    expect(trigger.querySelector('[data-composer-engine-lead="codex"]')).toBeTruthy();
-    expect(trigger.textContent).not.toContain('Codex');
-    expect(trigger.getAttribute('title')).toContain('Codex');
+    expect(trigger.querySelector('[data-composer-engine-mark]')).toBeNull();
+    expect(trigger.textContent).toContain('Codex');
   });
 });

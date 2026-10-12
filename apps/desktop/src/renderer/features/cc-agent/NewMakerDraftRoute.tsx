@@ -808,8 +808,8 @@ export function NewMakerDraftRoute() {
    * 并清掉 —— 持久化之后那等于一切引擎只能记住最后一次选择。
    */
   const draftFavoriteAnchor = useDraftFavoriteAnchor(normalizeDbAgentKind(draft.vendor));
-  const persistedAgentKind = normalizeDbAgentKind(draft.vendor);
-  const authVendor = persistedAgentKind;
+  const persistedAgentKind: 'cc' | 'codex' | 'pi' = normalizeDbAgentKind(draft.vendor);
+  const authVendor: 'cc' | 'codex' | 'pi' = persistedAgentKind;
   const capabilityAgentKind = dbToMakerAgentKind(persistedAgentKind);
 
   // 品牌区跟随当前主题；icon / logo 的固定布局统一由 ThemeBrandLockup 负责。
@@ -2179,7 +2179,6 @@ export function NewMakerDraftRoute() {
   const carryDraftFavoriteAnchorToSession = useCallback(
     (
       newSessionId: string,
-      /** 草稿页选中的引擎（DB 形态）。 */
       engine: 'cc' | 'codex' | 'pi',
       model: string,
       providerId: string | null,
@@ -2413,7 +2412,7 @@ export function NewMakerDraftRoute() {
   const handleRemoteProjectAdded = useCallback(
     async (target: RemoteProjectTarget) => {
       // vendor 由外层 VendorSegmentedSwitcher (draft.vendor) 单一决策 —— dialog 不再让用户选。
-      const draftVendor = normalizeDbAgentKind(draft.vendor);
+      const draftVendor: 'cc' | 'codex' | 'pi' = normalizeDbAgentKind(draft.vendor);
 
       if (target.kind === 'device-link') {
         // device-link:**不**像 SSH 立即建会话(会在被控端留空会话)。改为把当前草稿指向该被控
@@ -4070,16 +4069,10 @@ export function NewMakerDraftRoute() {
           // agent 启动时看到的工作区已是迁移后的状态。fail-soft：检测错误只 warn，不阻塞 send。
           try {
             const wd = effectiveWorkingDir;
-            // 跨 Agent 迁移检测仅支持 cc/codex 两个方向(main 侧 detector 限定);
-            // pi fail-closed 跳过,不做类型放宽。
-            if (
-              wd &&
-              !isRemoteProjectDraft &&
-              (persistedAgentKind === 'cc' || persistedAgentKind === 'codex')
-            ) {
+            if (wd && !isRemoteProjectDraft && persistedAgentKind !== 'pi') {
               const r = await crossAgentConvertService.detect(
                 wd,
-                persistedAgentKind === 'cc' ? 'claude-code' : 'codex',
+                persistedAgentKind === 'cc' ? 'claude-code' : persistedAgentKind,
               );
               if (r.items.length > 0) {
                 // 阻塞等弹窗关闭（用户点不要 / 完成转换 / 失败）—— 都视为流程结束

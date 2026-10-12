@@ -9117,7 +9117,9 @@ export function ChatInput({
                 )}
                 {/* 「+」只负责合成打开统一建议面板；内容与输入 @ 完全共用。 */}
                 <ExtraDirsButton
-                  extraDirsCount={(extraDirs ?? []).length + (writableDirs ?? []).length}
+                  extraDirsCount={
+                    countUserExtraDirs(extraDirs ?? []) + countUserExtraDirs(writableDirs ?? [])
+                  }
                   hasReferenceDirs={
                     !settingsLocked &&
                     (onExtraDirsChange !== undefined || onWritableDirsChange !== undefined)

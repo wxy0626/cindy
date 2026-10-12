@@ -43,7 +43,7 @@ describe('UserInfoSection — outer wrapper takes over full-row hover', () => {
 
   it('visible user card uses the rounded tokenized capsule style', () => {
     expect(source).toContain(
-      'flex min-h-10 items-center rounded-full border border-[var(--sidebar-user-card-border)] bg-[var(--sidebar-user-card-bg)] px-[7px] py-1.5',
+      'flex h-10 items-center rounded-full border border-[var(--sidebar-user-card-border)] bg-[var(--sidebar-user-card-bg)] px-[7px]',
     );
   });
 
@@ -79,12 +79,9 @@ describe('UserInfoSection — version label', () => {
     expect(source).toContain("t('sidebar.user.regionCodeDev')");
     expect(source).not.toContain("'Global'");
     expect(source).not.toMatch(/'CN'|'Dev'/);
-    expect(source).toContain('const accountDetailLabel = isDevelopmentBuild ? developmentAccountLabel : appVersionLabel;');
-    expect(source).toContain('user?.accountLabel?.trim()');
-    expect(source).toContain('const gitRevision = appDisplayVersion.split');
-    expect(source).toContain('Git 版本只作为开发标签的悬停提示');
-    expect(source).toContain('text={gitVersionLabel ?? developmentLabel}');
-    expect(source).toContain('side="top" delay={0}');
+    expect(source).toMatch(
+      /const appVersionLabel = appRegionLabel\s*\n\s*\? `\$\{appRegionLabel\} · \$\{appDisplayVersion\}`\s*\n\s*: appDisplayVersion;/,
+    );
     expect(source).not.toContain('XD.Inc');
     expect(source).toContain("import { useCindyVersions } from '@/lib/useCindyVersions';");
     expect(source).toContain('const versions = useCindyVersions();');
@@ -93,16 +90,16 @@ describe('UserInfoSection — version label', () => {
     expect(source).toContain('title={visibleVersionLabelDetail}');
   });
 
-  it('renders Beta on the account button without reusing the development version', () => {
-    expect(source).toContain('useBetaChannelSettings');
+  it('shows the Beta label only after the persisted channel state has loaded', () => {
+    expect(source).toContain(
+      "import { useBetaChannelSettings } from '@/hooks/useBetaChannelSettings';",
+    );
+    expect(source).toContain(
+      'const showBetaLabel = !betaChannelState.loading && betaChannelState.enableBeta;',
+    );
     expect(source).toContain('data-testid="sidebar-beta-channel-label"');
-    expect(source).toContain('bg-[#3566a8]');
-    expect(source).toContain('const betaLabel =');
-    expect(source).toContain("? 'Beta' : null");
-    expect(source).not.toContain('`Beta ${semanticVersion}`');
-    expect(source).toContain('data-testid="sidebar-development-label"');
-    expect(source).toContain('<button');
-    expect(source).not.toContain('bg-[#2a2a23]');
+    expect(source).not.toContain('beta-channel-badge');
+    expect(source).toContain("t('settings.betaChannel.badge')");
   });
 });
 
@@ -222,7 +219,7 @@ describe('UserInfoSection — inner main button no longer owns hover background'
     expect(locale.sidebar.user.moreLabel).toBe('更多，当前用户：{{name}}');
   });
 
-  it('keeps Settings then a destructive logout entry at the bottom of the More menu', () => {
+  it('keeps Settings at the bottom of the More menu and leaves logout in Settings', () => {
     expect(source).toContain("t('sidebar.user.menuSettings')");
     expect(source).toContain('{renderSavedAccountItems()}');
     expect(source).toContain('accountsReadyForOwner &&');
@@ -230,44 +227,14 @@ describe('UserInfoSection — inner main button no longer owns hover background'
     expect(source.indexOf('{renderSavedAccountItems()}')).toBeLessThan(
       source.indexOf("t('sidebar.user.menuSettings')"),
     );
+    expect(source).not.toContain("t('sidebar.user.menuLogout')");
+    expect(source).not.toContain('useLogout');
+    expect(source).not.toContain('<LogOut');
     expect(source).toContain("mode === 'local'");
     expect(source.indexOf("t('login.signIn')")).toBeLessThan(
       source.indexOf("t('sidebar.user.menuSettings')"),
     );
-    // 账号菜单底部是「设置」→「退出登录」;退出条目固定在设置之后,
-    // 且两种会话态(local/cloud)统一用「退出登录」文案,不做分支。
-    expect(source.indexOf("t('sidebar.user.menuSettings')")).toBeLessThan(
-      source.indexOf("t('settings.logout.button')"),
-    );
-    expect(source).toContain('<LogOut');
-    expect(source).toContain("t('settings.logout.button')");
-    expect(source).not.toContain("t('settings.userProfile.local.exit')");
-    // 退出走组件内的 handleExitSession(local→exitLocalMode,cloud→logout),
-    // 不引入 useLogout hook(那个只处理 cloud 态)。
-    expect(source).not.toContain('useLogout');
     expect(source).not.toContain('AccountSwitcherDialog');
-  });
-
-  it('requires a destructive confirmation dialog before exiting the session', () => {
-    // 退出不可逆,必须过二次确认:弹窗四要素 + destructive 变体。
-    expect(source).toContain('const handleExitSession = async () => {');
-    expect(source).toContain('await confirmDialog.confirm({');
-    expect(source).toContain("title: t('logic.confirm.logoutTitle')");
-    expect(source).toContain("description: t('logic.confirm.logoutDescription')");
-    expect(source).toContain("confirmText: t('logic.confirm.logoutConfirm')");
-    expect(source).toContain("cancelText: t('logic.confirm.cancel')");
-    expect(source).toContain("confirmVariant: 'destructive'");
-    // 取消(返回 false)必须直接返回,不能继续走退出逻辑。
-    expect(source).toContain('if (!confirmed) return;');
-    // 弹窗不可用时中止,而不是无弹窗静默退出。
-    expect(source).toContain('if (!confirmDialog) return;');
-    // 确认弹窗必须出现在真正的退出调用之前。
-    expect(source.indexOf('await confirmDialog.confirm({')).toBeLessThan(
-      source.indexOf('await exitLocalMode()'),
-    );
-    expect(source.indexOf('await confirmDialog.confirm({')).toBeLessThan(
-      source.indexOf('await logout()'),
-    );
   });
 
   it('shows saved accounts directly only when there is more than one', () => {

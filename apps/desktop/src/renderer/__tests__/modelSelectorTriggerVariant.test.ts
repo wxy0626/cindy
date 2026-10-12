@@ -976,9 +976,7 @@ describe('ModelSelector trigger variants', () => {
       let trigger = screen.getByRole('button', {
         name: /Current: Claude Code · GPT-5\.6-Terra, effort: medium/,
       });
-      // 2026-09-06 起 mark 打头:pill 视觉文本不含引擎名,身份走图标(title/aria 仍保留)。
-      expect(trigger.querySelector('[data-composer-engine-lead="cc"]')).toBeTruthy();
-      expect(trigger.textContent).not.toContain('Claude Code');
+      expect(trigger.textContent).toContain('Claude Code');
       expect(trigger.textContent).toContain('GPT-5.6-Terra');
       expect(trigger.getAttribute('title')).toBe('Claude Code · GPT-5.6-Terra');
 
@@ -1180,7 +1178,7 @@ describe('ModelSelector trigger variants', () => {
       let trigger = screen.getByRole('button', {
         name: /Current: Claude Code · Opus 4\.8/,
       });
-      expect(trigger.querySelector('[data-composer-engine-lead="cc"]')).toBeTruthy();
+      expect(trigger.textContent).toContain('Claude Code');
 
       act(() => {
         makerChatStore.noteAgentSwitchIntent(sessionId, 'codex', {
@@ -1195,10 +1193,7 @@ describe('ModelSelector trigger variants', () => {
         name: /Next message: Codex · GPT-5\.5, effort: medium/,
       });
       expect(trigger.textContent).toContain('GPT-5.5');
-      expect(trigger.querySelector('[data-composer-engine-lead="codex"]')).toBeTruthy();
-      // 切换中(pending)也不写引擎名字文本(2026-09-11):身份由 lead mark 表达,
-      // 「Next message: Codex」只留在 aria-label / title。
-      expect(trigger.textContent).not.toContain('Codex');
+      expect(trigger.textContent).toContain('Next: Codex');
       expect(trigger.getAttribute('aria-label')).not.toContain('Current');
       // 切换失败时 intent 会保留供重试；重复渲染仍明确标成“下条消息”，不会隐藏身份。
       view.rerender(React.createElement(IntentTrigger, { refresh: 2 }));
@@ -1207,9 +1202,8 @@ describe('ModelSelector trigger variants', () => {
           name: /Next message: Codex · GPT-5\.5, effort: medium/,
         }),
       ).toBeTruthy();
-      // providerId=null 时 pill 不再画来源图标(2026-09-06 起引擎 mark 打头、渠道图标
-      // 退位);引擎身份由 engine-lead 表达,来源归属由面板行回答。
-      expect(trigger.querySelector('[data-composer-engine-lead="codex"]')).toBeTruthy();
+      // providerId=null 仍应按目标模型的默认可连来源解析 icon。
+      expect(trigger.textContent).toContain('Z');
       expect(trigger.textContent).not.toContain('newChat.modelSelector.source.connect');
     } finally {
       view.unmount();

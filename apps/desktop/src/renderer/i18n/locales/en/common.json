@@ -1908,6 +1908,12 @@
       "harnessUpdateAvailable": "Update available",
       "harnessCheck": "Check for updates",
       "harnessCheckedAt": "Last checked: {{time}}",
+      "upstreamLatest": {
+        "label": "Latest upstream version",
+        "loading": "Checking…",
+        "unavailable": "Unavailable",
+        "newer": "Newer available"
+      },
       "logsDirLabel": "Logs directory",
       "openLogsDir": "Open",
       "openLogsDirTooltip": "Open the logs directory in the system file manager",
@@ -10549,6 +10555,8 @@
       "usageLimitAutoContinueTitle": "If you haven't acted by the time the usage limit resets, this task continues automatically",
       "usageLimitAutoContinueCancel": "Cancel",
       "usageLimitAutoContinueCancelTitle": "Cancel automatic continuation. The error and Retry stay available.",
+      "continueAfterReset": "Continue After Reset",
+      "continueAfterResetTitle": "Create a one-time Automation to continue this task after usage resets",
       "codexOrganizationUsageLimitWithReset": "The connected Codex account is managed by your organization and has reached its usage limit. Usage is expected to reset at {{resetAt}}.",
       "codexOrganizationUsageLimit": "The connected Codex account is managed by your organization and has reached its usage limit. Wait for the limit to reset, or switch to another available account before retrying.",
       "codexUsageLimitWithReset": "The connected Codex account has reached its usage limit. Usage is expected to reset at {{resetAt}}.",

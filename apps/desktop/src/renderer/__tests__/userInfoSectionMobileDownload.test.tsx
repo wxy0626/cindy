@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   authState,
+  betaChannelState,
   confirm,
   runningSnapshot,
   listAccounts,
@@ -19,6 +20,7 @@ const {
     dataOwnerId: 'owner-a' as string | null,
     isCanary: false,
   },
+  betaChannelState: { enableBeta: false, isCustomized: false, loading: false },
   confirm: vi.fn(),
   runningSnapshot: new Map<string, { isRunning: boolean }>(),
   listAccounts: vi.fn(),
@@ -64,9 +66,7 @@ vi.mock('@/hooks/useUpdateBannerDismiss', () => ({
 }));
 
 vi.mock('@/hooks/useBetaChannelSettings', () => ({
-  useBetaChannelSettings: () => ({
-    state: { enableBeta: false, isCustomized: false, loading: false },
-  }),
+  useBetaChannelSettings: () => ({ state: betaChannelState }),
 }));
 
 vi.mock('@/hooks/useLogout', () => ({
@@ -115,10 +115,6 @@ beforeEach(() => {
   authState.user = { name: 'Cindy user', avatar: null };
   authState.mode = 'cloud';
   authState.dataOwnerId = 'owner-a';
-  authState.isCanary = false;
-  confirm.mockReset().mockResolvedValue(true);
-  runningSnapshot.clear();
-  navigate.mockClear();
   listAccounts.mockReset().mockResolvedValue({
     mutationAllowed: true,
     accounts: [
@@ -169,13 +165,14 @@ beforeEach(() => {
       },
     ],
   });
-  switchAccount.mockReset();
+  switchAccount.mockReset().mockResolvedValue(undefined);
+  betaChannelState.enableBeta = false;
+  betaChannelState.loading = false;
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
     value: {
       appDisplayVersion: '1.0.0',
       appDisplayVersionDetail: '1.0.0-test',
-      appSemanticVersion: '1.0.0',
     },
   });
 });
@@ -183,9 +180,13 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('UserInfoSection mobile download entry', () => {
-  it('does not show a Beta label beside the expanded app version', () => {
+  it('shows the Beta label beside the expanded app version when the channel is enabled', () => {
+    betaChannelState.enableBeta = true;
     render(<UserInfoSection isCollapsed={false} />);
-    expect(screen.queryByTestId('sidebar-beta-channel-label')).toBeNull();
+
+    expect(screen.getByTestId('sidebar-beta-channel-label').textContent).toBe(
+      'settings.betaChannel.badge',
+    );
     expect(screen.getByRole('button', { name: 'sidebar.user.moreLabel' })).toBeTruthy();
   });
 

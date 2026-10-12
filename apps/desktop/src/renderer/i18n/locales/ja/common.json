@@ -1883,6 +1883,12 @@
       "harnessUpdateAvailable": "更新あり",
       "harnessCheck": "更新を確認",
       "harnessCheckedAt": "最終確認：{{time}}",
+      "upstreamLatest": {
+        "label": "上流の最新バージョン",
+        "loading": "確認中…",
+        "unavailable": "利用できません",
+        "newer": "新しいバージョンあり"
+      },
       "logsDirLabel": "ログディレクトリ",
       "openLogsDir": "開く",
       "openLogsDirTooltip": "システムのファイルマネージャーでログディレクトリを開く",
@@ -10488,6 +10494,8 @@
       "usageLimitAutoContinueTitle": "使用量の上限がリセットされるまでに操作がなければ、このタスクを自動で続行します",
       "usageLimitAutoContinueCancel": "キャンセル",
       "usageLimitAutoContinueCancelTitle": "自動続行をキャンセル（エラーと再試行は残ります）",
+      "continueAfterReset": "リセット後に続行",
+      "continueAfterResetTitle": "使用量リセット後にこのタスクを続行するワンタイム自動化を作成",
       "codexOrganizationUsageLimitWithReset": "接続中の Codex アカウントは組織によって管理されており、利用上限に達しました。{{resetAt}} にリセットされる見込みです。",
       "codexOrganizationUsageLimit": "接続中の Codex アカウントは組織によって管理されており、利用上限に達しました。上限のリセットを待つか、別の利用可能なアカウントに切り替えてから再試行してください。",
       "codexUsageLimitWithReset": "接続中の Codex アカウントは利用上限に達しました。{{resetAt}} にリセットされる見込みです。",

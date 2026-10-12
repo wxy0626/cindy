@@ -1325,6 +1325,8 @@ function ModelSelectorContentView({
   // 调用方给的引擎集合是**草稿当前落点**那台电脑上已注册的;浏览另一台时不套用(fail-open)。
   const unifiedAgents = (browsingSelectedCatalog ? requestedUnifiedAgents : undefined) ??
     (vendorKey && agentKind && !onUnifiedSelect && !sessionEngineFilter ? [agentKind] : undefined);
+  const browseTargetLabel =
+    browseVendor === 'codex' ? 'Codex' : browseVendor === 'pi' ? 'Pi' : 'Claude Code';
   const enqueueAgentSwitch = (
     targetAgentKind: 'claude-code' | 'codex' | 'pi',
     targetModelId: string,
@@ -3255,7 +3257,7 @@ function ModelSelectorContentView({
   const searchField = (
     <div
       className={cn(
-        'search-capsule-control flex items-center gap-2 rounded-full px-3 py-[7px] transition-colors',
+        'flex items-center gap-2 rounded-full border border-[var(--model-dropdown-border)] px-3 py-[7px] transition-colors',
         interactionDisabled
           ? 'cursor-not-allowed bg-[var(--surface-elevated-soft)]'
           : 'bg-[var(--surface)]',
@@ -3699,6 +3701,11 @@ function ModelSelectorContentView({
             width={304}
             className="mx-auto"
           />
+          {browsing && (
+            <div className="px-2 pb-0.5 text-12 text-[var(--text-tertiary)]">
+              {t('newChat.modelSelector.agentSwitch.hint', { agent: browseTargetLabel })}
+            </div>
+          )}
           <div className="mx-1 h-px bg-[var(--model-dropdown-border)]" />
         </>
       )}
@@ -4343,28 +4350,18 @@ export function ModelSelector({
   // 正常会话在侧栏 + 浏览器 split-pane 下也必须让长模型名承担收缩。
   const isCompactToolbar = compactToolbar && !isFieldTrigger;
   const isUltraCompactToolbar = ultraCompactToolbar && isCompactToolbar;
-  // ── composer pill 的引擎小标(model-selector-unified §1.1;2026-09-06 用户裁决)──
-  // Agent 身份可用时一律用引擎 mark 表达,且 mark **打头**:pill = agent 图标 +
-  // 模型名 + 深度档,渠道图标与 harness 名字文本都退位。engineMarkVendor(统一面板
-  // 时代入参)之外,从 agentIdentity 同口径派生 —— original 形态的 pill 也吃同一套。
-  // 身份未加载(agentIdentity undefined 且没传 engineMarkVendor)时不画,绝不拿
-  // vendorKey 的 Claude Code 回退冒充(见 ChatInput composerEngineMarkVendor 注释)。
-  const engineMarkVendorEffective = engineMarkVendor ?? agentIdentity?.vendorKey ?? null;
-  const engineMarkOption = engineMarkVendorEffective
-    ? agentOptionOf(engineMarkVendorEffective)
-    : null;
+  // ── composer pill 的引擎小标(model-selector-unified §1.1)─────────────────────
+  // 传了 engineMarkVendor 就走新形态:harness 名字文本让位给尾部的一枚 mark,和深度档字
+  // 紧挨着收尾(与面板行右侧三元组同构)。没传的入口一个像素都不变。
+  const engineMarkOption = engineMarkVendor ? agentOptionOf(engineMarkVendor) : null;
   // 引擎小标 + 深度是 pill 的**定宽身份位**:窄工具条下也要留着,先让模型名截断
   // (Chris 2026-08-12 裁决)。只有 ultra-compact(整段文字都收起、只剩图标)才一并隐藏。
   const showTriggerTail = engineMarkOption ? !isUltraCompactToolbar : !isCompactToolbar;
-  // 2026-09-06 用户裁决:首位图标 = 用户在用的 harness mark(不再限 badge 形态),
-  // 渠道图标与 harness 名字文本一并去掉;渠道归属由面板里的分栏题头回答。
-  // 设置类字段触发器(field)维持原样:来源图标 + 模型名的 select 语义不受影响。
-  const engineLeadsTrigger = engineMarkOption !== null && !isFieldTrigger;
   const engineMarkNode = engineMarkOption ? (
     // aria-hidden:引擎名已经在 button 的 aria-label / title 里(displayIdentityLabel 仍带
     // agentIdentityLabel),这里再念一遍是重复。data 属性供接线测试定位。
     <span
-      data-composer-engine-mark={engineMarkVendorEffective}
+      data-composer-engine-mark={engineMarkVendor}
       className="flex shrink-0 items-center"
       aria-hidden="true"
     >
@@ -4379,10 +4376,30 @@ export function ModelSelector({
       />
     </span>
   ) : null;
-  // 引擎名字文本已从 pill 视觉全面退位(2026-09-06 裁决收稳态,2026-09-11 裁决连
-  // 切换中(pending)也不写):agentIdentity 存在时引擎 mark 必存在(同源自
-  // vendorKey),图标即身份;「即将切到 X」措辞只留在 title / aria-label。
-  // 此前的 agentIdentityPrefix 文本节点因此不可达,已移除。
+  const agentIdentityPrefix =
+    agentIdentityLabel &&
+    !isCompactToolbar &&
+    (!engineMarkOption || agentIdentity?.state === 'pending') ? (
+      <>
+        <span
+          className={cn(
+            'shrink-0 font-normal text-[var(--model-trigger-meta)]',
+            isCreateAgentVariant ? 'text-12' : dense ? 'text-12' : 'text-13',
+          )}
+        >
+          {agentIdentityLabel}
+        </span>
+        <span
+          className={cn(
+            'shrink-0 font-normal text-[var(--model-trigger-meta)]',
+            isCreateAgentVariant ? 'text-12' : dense ? 'text-12' : 'text-13',
+          )}
+          aria-hidden="true"
+        >
+          ·
+        </span>
+      </>
+    ) : null;
   // 保留 useMorphPopover 作用域开关(仅 composer 工具条 opt-in;settings/CreateWorker 用 Radix 回退),
   // 但去掉 !isCreateAgentVariant —— 新建对话框工具条也走脱身上浮 morph,与会话内统一(2026-07-22)。
   const morphEnabled = useMorphPopover && !isFieldTrigger;
@@ -4411,7 +4428,7 @@ export function ModelSelector({
         isFieldTrigger
           ? cn(
               // pill 而非 8px:DESIGN.md §4 Select & Dropdown 规定单行 select trigger 同单行输入,胶囊形。
-              'settings-dropdown-trigger w-full rounded-full border border-[var(--border-default)] bg-[var(--settings-input-bg)] px-3',
+              'w-full rounded-full border border-[var(--border-default)] bg-[var(--settings-input-bg)] px-3',
               dense ? 'h-9' : 'h-10',
               'hover:bg-[var(--surface-hover-soft)]',
             )
@@ -4480,6 +4497,7 @@ export function ModelSelector({
             logoKind={disconnectedProvider?.logoKind}
             colorClass="text-[var(--error-fg)]"
           />
+          {agentIdentityPrefix}
           <span
             className={cn(
               'min-w-0 font-normal text-[var(--text-primary)]',
@@ -4526,8 +4544,7 @@ export function ModelSelector({
           {!currentModel && remoteModelLoadFailed && (
             <CircleAlert size={dense ? 12 : 13} className="shrink-0 text-[var(--error-fg)]" />
           )}
-          {/* 图标统一规则(2026-09-06 用户裁决):composer 工具条首位放**引擎 mark**
-              (engineLeadsTrigger,渠道图标让位);没有引擎身份时回落模型条目 icon /
+          {/* 图标统一规则:模型条目 icon(AI Gateway / 目录设定)优先、缺省回落
               当前真正路由的来源标(activeSourceId)——客户端不按 model id 猜厂牌。 */}
           {activeSourceId && agentDevice ? (
             // Agent 在另一台电脑:Logo 原大小原位置不变，右上角外侧叠信号波纹。
@@ -4561,6 +4578,7 @@ export function ModelSelector({
               }
             />
           ) : null}
+          {agentIdentityPrefix}
           <span
             className={cn(
               'min-w-0 font-normal',
@@ -4583,10 +4601,10 @@ export function ModelSelector({
           >
             {displayLabel}
           </span>
-          {/* 引擎小标 + 深度 = pill 的收尾身份组(2026-08-12 旧形态,现仅 field 触发器
-              理论可达)。工具条形态 mark 已在首位(engineLeadsTrigger),尾部不再重复;
-              深度前保留「·」分隔 —— mark 打头时「名字 深度」贴着读会粘成一个词。 */}
-          {showTriggerTail && !engineLeadsTrigger && engineMarkNode}
+          {/* 引擎小标 + 深度 = pill 的收尾身份组(新形态,见 engineMarkVendor)。
+              旧形态没有 mark,深度前保留「·」分隔;有 mark 时图标本身就是分隔,再加点
+              会读成「模型 · 引擎 · 深度」三段。 */}
+          {showTriggerTail && engineMarkNode}
           {effortLabel && showTriggerTail && (
             <>
               {/* 固定表单入口尾部没有引擎 mark 作视觉分隔时,

@@ -31,9 +31,7 @@ describe('pinned project sidebar integration', () => {
   it('keeps all-pinned projects available while omitting their pinned child rows', () => {
     expect(sidebarSource).toContain('const groupsWithPinnedProjects = useProjectGroups(');
     expect(sidebarSource).toContain('const notHidden = visibleSidebarProjects(');
-    // 本地实现在 notHidden 之上加了「归档视图隐藏空项目」的 statusVisibleProjects，
-    // 守卫返回的是它（语义与上游一致，仅中间变量改名）。
-    expect(sidebarSource).toContain('if (filter.projectsAsSet === null) return statusVisibleProjects;');
+    expect(sidebarSource).toContain('if (filter.projectsAsSet === null) return notHidden;');
     expect(sidebarSource).toContain(
       'sessions: matchingSessions.filter((session) => session.pinnedAt == null)',
     );
