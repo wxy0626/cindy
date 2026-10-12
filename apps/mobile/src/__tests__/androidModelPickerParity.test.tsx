@@ -305,6 +305,8 @@ vi.mock("@/session/goalStatusLabel", () => ({
 vi.mock("@/session/modelPickerRows", () => ({
   budgetDisabledHint: () => "needs key",
   budgetRowDisabled: () => native.budgetDisabled,
+  // 本地实现新增了紧凑档位标签(英文列表压缩显示),与 effortLabelFor 同口径 mock。
+  compactEffortLabelFor: (_model: unknown, effort: string) => `effort:${effort}`,
   effortLabelFor: (_model: unknown, effort: string) => `effort:${effort}`,
   modelRowAccessibilityLabel: ({ baseLabel }: AnyProps) => baseLabel,
   rowEffortOf: ({ selected, liveEffort, model }: AnyProps) =>
@@ -617,7 +619,7 @@ describe("Android legacy model list groups by source like iOS", () => {
     supportsFastMode: true,
   });
 
-  it("titles groups as source · account and shows subscription · effort · Fast with a check mark", () => {
+  it("renders the flat source list with subscription · effort · Fast and a check mark", () => {
     const subscription = provider("sub", "ChatGPT", {
       access: { kind: "subscription" },
       openAiAccount: { identity: "me@example.com" },
@@ -645,30 +647,27 @@ describe("Android legacy model list groups by source like iOS", () => {
         testID: "list",
       } as never),
     );
-    const groups = [...host.querySelectorAll('[data-testid^="list.group."]')];
-    expect(groups.map((node) => node.getAttribute("data-testid"))).toEqual([
-      "list.group.sub",
-      "list.group.api",
-    ]);
-    expect(groups[0].textContent).toContain("ChatGPT · me@example.com");
-    // 账号已写进来源名时不重复。
-    expect(groups[1].textContent).toContain("API me@example.com");
-    expect(groups[1].textContent).not.toContain(
-      "API me@example.com · me@example.com",
-    );
+    // 本地版是扁平行列表(不建上游那种 `list.group.*` 分组容器):来源身份由行内徽标承载。
+    expect(host.querySelectorAll('[data-testid^="list.group."]')).toHaveLength(0);
     const rows = [...host.querySelectorAll('button[data-testid="list"]')];
     expect(rows.map((row) => row.getAttribute("aria-selected"))).toEqual([
       "true",
       "false",
       "false",
     ]);
-    expect(rows[0].textContent).toContain(
-      "models.picker.subscriptionBadge · effort:high · models.options.fastMode",
-    );
+    expect(rows[0].textContent).toContain("Model a");
+    expect(rows[0].textContent).toContain("models.picker.subscriptionBadgeCompact");
+    expect(rows[0].textContent).toContain("effort:high");
+    expect(rows[1].textContent).toContain("models.picker.subscriptionBadgeCompact");
+    // 非订阅来源不显示订阅徽标。
+    expect(rows[2].textContent).not.toContain("models.picker.subscriptionBadgeCompact");
+    // Fast 在行内是图标;Check 只出现在选中行。
+    expect(rows[0].querySelector('[data-icon="Zap"]')).not.toBeNull();
     expect(rows[0].querySelector('[data-icon="Check"]')).not.toBeNull();
     expect(rows[1].querySelector('[data-icon="Check"]')).toBeNull();
-    // 来源品牌 mark 保留。
-    expect(rows[0].querySelector('[data-model-mark="sub"]')).not.toBeNull();
+    // 行内配置入口只挂在选中行(非选中行没有可写记忆时不显示假开关)。
+    expect(rows[0].querySelector('[data-testid="list.optionsButton"]')).not.toBeNull();
+    expect(rows[1].querySelector('[data-testid="list.optionsButton"]')).toBeNull();
   });
 
   it("keeps the missing-key hint on its own unrestricted line instead of truncating it", () => {
@@ -707,7 +706,7 @@ describe("Android legacy model list groups by source like iOS", () => {
     }
   });
 
-  it("reports the selected row offset in scroll-content coordinates after grouping", () => {
+  it("reports the selected row offset from the row node itself", () => {
     const onSelectedRowLayout = vi.fn();
     const rowsFor = (id: string) => ({
       provider: provider(id, id),
@@ -727,15 +726,15 @@ describe("Android legacy model list groups by source like iOS", () => {
     );
     const layout = (key: string, y: number) =>
       act(() => native.layouts.get(key)!({ nativeEvent: { layout: { y } } }));
-    // 选中行的布局回调挂在分组的直接子节点上(不是内层按钮),y 相对分组。
-    expect(native.layouts.has("list:selectedRow")).toBe(false);
-    layout("list.selectedRow", 40);
-    expect(onSelectedRowLayout).not.toHaveBeenCalled();
-    layout("list.group.second", 200);
-    expect(onSelectedRowLayout).toHaveBeenLastCalledWith(240);
+    // 本地版是扁平行:没有上游那种「分组容器 + 行内偏移」两级结构,
+    // 选中行的 onLayout 直接挂在行 Pressable 上(harness 记录为 `<testID>:selectedRow`)。
+    expect(native.layouts.has("list.selectedRow")).toBe(false);
+    expect(native.layouts.has("list.group.second")).toBe(false);
+    layout("list:selectedRow", 40);
+    expect(onSelectedRowLayout).toHaveBeenCalledWith(40);
   });
 
-  it("adds the flat fallback container offset as well", () => {
+  it("reports the flat fallback row offset from the row node itself", () => {
     const onSelectedRowLayout = vi.fn();
     render(
       createElement(MobileModelPickerList, {
@@ -752,18 +751,13 @@ describe("Android legacy model list groups by source like iOS", () => {
         testID: "flat",
       } as never),
     );
+    // 扁平回退同样不聚合容器偏移:行 y 即滚动内容坐标。
     act(() =>
-      native.layouts.get("flat.selectedRow")!({
+      native.layouts.get("flat:selectedRow")!({
         nativeEvent: { layout: { y: 60 } },
       }),
     );
-    expect(onSelectedRowLayout).not.toHaveBeenCalled();
-    act(() =>
-      native.layouts.get("flat.group.__flat__")!({
-        nativeEvent: { layout: { y: 120 } },
-      }),
-    );
-    expect(onSelectedRowLayout).toHaveBeenLastCalledWith(180);
+    expect(onSelectedRowLayout).toHaveBeenCalledWith(60);
   });
 });
 

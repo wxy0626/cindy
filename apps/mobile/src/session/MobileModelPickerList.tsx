@@ -127,11 +127,13 @@ const makeStyles = (c: ThemeColors) =>
       flexShrink: 1,
       fontSize: typeScale.footnote,
       fontWeight: fontWeight.regular,
+      lineHeight: lineHeight.caption,
       minWidth: 0,
     },
     disabledHint: {
       color: c.textTertiary,
       fontSize: typeScale.micro,
+      lineHeight: lineHeight.micro,
       marginTop: 1,
     },
     subscriptionBadge: {
@@ -144,6 +146,7 @@ const makeStyles = (c: ThemeColors) =>
       color: c.textSecondary,
       fontSize: typeScale.micro,
       fontWeight: fontWeight.semibold,
+      lineHeight: lineHeight.micro,
     },
     optionsButton: {
       alignItems: 'center',
@@ -155,6 +158,7 @@ const makeStyles = (c: ThemeColors) =>
     empty: {
       color: c.textTertiary,
       fontSize: typeScale.footnote,
+      lineHeight: lineHeight.caption,
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.md,
       textAlign: 'center',
@@ -316,7 +320,8 @@ export function MobileModelPickerList({
                   </View>
                 ) : null}
                 {rowDisabled ? (
-                  <Text numberOfLines={1} style={styles.disabledHint}>{budgetDisabledHint()}</Text>
+                  // 缺 key 提示独占一行、不参与上面的单行元信息截断。
+                  <Text style={styles.disabledHint} testID={`${testID}.disabledHint`}>{budgetDisabledHint()}</Text>
                 ) : null}
               </View>
               {selected ? <Check color={colors.textPrimary} size={iconSize.lg} strokeWidth={iconStroke.medium} /> : null}

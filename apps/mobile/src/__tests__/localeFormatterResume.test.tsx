@@ -10,7 +10,12 @@ vi.mock('react-native', () => ({ AppState: { addEventListener: (_event: string, 
   return { remove: native.remove };
 } } }));
 vi.mock('@/i18n/appLanguage', () => ({ setManualLocaleOverride: vi.fn() }));
-vi.mock('@/i18n/index', () => ({ detectSystemLocale: () => 'en', i18n: { changeLanguage: vi.fn() } }));
+vi.mock('@/i18n/index', () => ({
+  detectSystemLocale: () => 'en',
+  i18n: { changeLanguage: vi.fn() },
+  // 本地默认语言为中文;LocaleProvider 首帧用它初始化,不 mock 会在渲染期取到 undefined。
+  DEFAULT_LOCALE: 'zh-CN',
+}));
 vi.mock('@/i18n/languagePreferenceStore', () => ({ readLanguagePreference: async () => 'system', saveLanguagePreference: vi.fn() }));
 import { LocaleProvider } from '@/i18n/useLocale';
 

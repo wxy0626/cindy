@@ -233,9 +233,17 @@ describe('mobileRealtimeAsrProvider', () => {
         },
       },
     });
-    expect(buildSessionUpdateMessage(
+    // 本地双语口径只映射 zh / en;日语等其余语言不下发 language,回落到上游默认。
+    const japanese = buildSessionUpdateMessage(
       'gpt-realtime-whisper',
       'Japanese',
+      24000,
+      'openai-transcription-manual',
+    ) as { session: { audio: { input: { transcription: Record<string, unknown> } } } };
+    expect(japanese.session.audio.input.transcription).toEqual({ model: 'gpt-realtime-whisper' });
+    expect(buildSessionUpdateMessage(
+      'gpt-realtime-whisper',
+      'English',
       24000,
       'openai-transcription-manual',
     )).toMatchObject({
@@ -243,7 +251,7 @@ describe('mobileRealtimeAsrProvider', () => {
         audio: {
           input: {
             transcription: {
-              language: 'ja',
+              language: 'en',
             },
           },
         },

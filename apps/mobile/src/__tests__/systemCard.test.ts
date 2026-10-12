@@ -184,16 +184,21 @@ describe('compact and context-rebuild notices', () => {
 describe('formatMobileSystemCard — 中断自动重连状态', () => {
   const info = { error: 'socket hang up', attempt: 2, maxAttempts: 5, sessionTotal: 3 };
   it('shows live progress, reason, current attempt, and session total', () => {
+    // 本地默认语言是 zh-CN,断言走 i18n key,避免把默认语言写死成英文原句。
     expect(formatMobileSystemCard('auto-resume', { ...info, live: true })).toMatchObject({
-      title: 'Reconnecting 2/5…',
-      subtitle: 'Attempt 2/5 · 3 reconnects in this session',
+      title: i18n.t('message.systemCard.autoResume.pendingWithProgress', { attempt: 2, total: 5 }),
+      subtitle: i18n.t('message.systemCard.autoResume.details', { attempt: 2, total: 5, count: 3 }),
       body: 'socket hang up',
     });
   });
   it('uses persisted outcome while keeping silent-stop records on their original copy', () => {
     expect(['succeeded', 'failed', undefined].map((outcome) =>
       formatMobileSystemCard('auto-resume', outcome ? { ...info, outcome } : {}).title,
-    )).toEqual(['Reconnected', 'Reconnect failed', 'Connection interrupted — resumed automatically']);
+    )).toEqual([
+      i18n.t('message.systemCard.autoResume.succeeded'),
+      i18n.t('message.systemCard.autoResume.failed'),
+      i18n.t('message.systemCard.autoResume.separator'),
+    ]);
   });
 });
 

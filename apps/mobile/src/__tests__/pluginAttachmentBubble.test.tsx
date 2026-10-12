@@ -3,6 +3,11 @@ import { act, createElement, useImperativeHandle, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
+import { i18n } from '@/i18n';
+
+// 本地默认语言是 zh-CN:文案断言统一走 i18n key,不写死英文原句。
+const t = (key: string, options?: Record<string, unknown>) => i18n.t(key, options);
+
 const viewportHarness = vi.hoisted(() => ({ list: null as any, finishReveal: null as any, renders: 0, expanded: false }));
 
 // Keep the production list, bubble gate, invocation header, and message model.
@@ -93,7 +98,11 @@ describe('attachment-only user plugin bubble', () => {
       const html = render(true, settled, true, kind);
       expect(html).toContain('message.userBubble');
       expect(html).toContain('Art');
-      expect(html).toContain(settled ? 'Called' : 'Calling…');
+      expect(html).toContain(
+        settled
+          ? i18n.t('message.pluginInvocation.status.called')
+          : i18n.t('message.pluginInvocation.status.running'),
+      );
     }
   });
   it('keeps partner attachment messages free of plugin shells', () => {
@@ -112,8 +121,8 @@ describe('partner work feedback', () => {
     const items = buildMobileMessageRenderItems(messages, { isSessionStreaming: true }).filter(item => item.type === 'work_group');
     expect(items).toHaveLength(1);
     const live = renderToStaticMarkup(<MessageRenderer items={items} companion isSessionStreaming companionWorkingLabel="Saving memory…" />);
-    expect(live).toContain('Expand Saving memory…');
-    expect(live).not.toContain('Expand Working…');
+    expect(live).toContain(t('message.renderer.expandRow', { label: 'Saving memory…' }));
+    expect(live).not.toContain(t('message.renderer.expandRow', { label: 'Working…' }));
     const ordinary = renderToStaticMarkup(<MessageRenderer items={items} isSessionStreaming companionWorkingLabel="Saving memory…" />);
     expect(ordinary).not.toContain('Saving memory…');
     const done = items.map(item => ({ ...item, isStreaming: false }));
@@ -147,7 +156,7 @@ describe('running work group expansion', () => {
   it('keeps the Host lines visible after expanding until detail rows arrive', () => {
     const waiting = render(true);
     expect(waiting).toContain('message.workLine');
-    expect(waiting).toContain('Collapse ');
+    expect(waiting).toContain(t('message.renderer.collapseRow', { label: '' }).trim());
     expect(waiting).not.toContain('pnpm test');
     const loaded = render(false);
     expect(loaded).not.toContain('message.workLine');
