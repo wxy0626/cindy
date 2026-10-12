@@ -29,6 +29,11 @@ if (!command) {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const env = withDesktopDevNodeOptions({ ...process.env, XDT_DESKTOP_DEV_MODE: 'local' });
+// 本地 dev 直接吃正式 Cindy 数据目录（用户 2026-10-12 决策：以本地为准）。
+// 显式设 XDT_ALLOW_OFFICIAL_PROFILE_MIGRATION=0 可恢复共享目录迁移拦截。
+if (env.XDT_ALLOW_OFFICIAL_PROFILE_MIGRATION === undefined) {
+  env.XDT_ALLOW_OFFICIAL_PROFILE_MIGRATION = '1';
+}
 const startupConfig = applyDesktopDevStartupConfig({ argv: rawArgs, env, mode: 'local' });
 const args = stripDesktopDevRegionArgs(rawArgs);
 // local + cn 是本地运行桌面端但连接 CN 云端；startupConfig 已注入

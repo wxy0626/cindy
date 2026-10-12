@@ -10,7 +10,10 @@ export function shouldRefuseOfficialProfileWriterMigration(input: {
   isPackaged: boolean;
   officialSharedProfile: boolean;
   pendingCount: number;
+  /** 用户显式放行共享目录迁移时不再拦截（本地 dev 默认放行）。 */
+  explicitlyAllowed?: boolean;
 }): boolean {
+  if (input.explicitlyAllowed) return false;
   return !input.isPackaged && input.officialSharedProfile && input.pendingCount > 0;
 }
 

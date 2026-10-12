@@ -101,6 +101,7 @@ export async function runMigrations(db: Database.Database, dbFilePath: string): 
       isPackaged: app.isPackaged,
       officialSharedProfile: process.env.XDT_OFFICIAL_SHARED_PROFILE === '1',
       pendingCount: pending.length,
+      explicitlyAllowed: process.env.XDT_ALLOW_OFFICIAL_PROFILE_MIGRATION === '1',
     })
   ) {
     throw new Error(

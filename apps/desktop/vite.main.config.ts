@@ -110,6 +110,11 @@ export default defineConfig(({ mode }) => {
       // CJS 输出会把 import.meta.url 降级成 `{}.url`，导致 vendored browser runtime
       // 顶层 createRequire(import.meta.url) 在 Electron 启动时直接崩溃。用实体名
       // define，并在每个 chunk 顶部由 banner 初始化为当前文件的 file URL。
+      //
+      // 同一处 rolldown interop 还会把 `import process from "node:process"` 降成
+      // `require("node:process")` 并丢掉 `.default`——vfile 顶层 `process.cwd()`
+      // 因此抛 "Cannot read properties of undefined"，sessions:list 整条失败。
+      // banner 里补一个幂等 self-default（require 命中同一单例，所有 chunk 复用）。
       'import.meta.url': '__CINDY_IMPORT_META_URL__',
     },
     build: {
@@ -118,7 +123,8 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           banner:
-            'const __CINDY_IMPORT_META_URL__ = require("url").pathToFileURL(__filename).href;',
+            'const __CINDY_IMPORT_META_URL__ = require("url").pathToFileURL(__filename).href;\n' +
+            'try { const __cindyProcess = require("node:process"); if (!__cindyProcess.default) __cindyProcess.default = __cindyProcess; } catch {}',
           // rolldown 实验开关（2026-09-13）：rolldown 默认拆 chunk + 动态 import，
           // 而 plugin-vite / Electron 期望单文件 CJS 入口——实测多 chunk 产物会
           // 挂在 Electron 启动早期（进程起来但无任何日志）。dev +

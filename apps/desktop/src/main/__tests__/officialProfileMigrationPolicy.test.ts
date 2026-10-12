@@ -44,6 +44,17 @@ describe('shouldRefuseOfficialProfileWriterMigration', () => {
       }),
     ).toBe(false);
   });
+
+  it('显式放行时不再拦截共享目录迁移', () => {
+    expect(
+      shouldRefuseOfficialProfileWriterMigration({
+        isPackaged: false,
+        officialSharedProfile: true,
+        pendingCount: 5,
+        explicitlyAllowed: true,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('officialProfileWriterMigrationMessage', () => {
