@@ -164,12 +164,16 @@ async function verifyStillWithinRoot(
   realRoot: string,
 ): Promise<boolean> {
   try {
-    const [pathStat, realFilePath] = await Promise.all([
-      fs.promises.stat(filePath, { bigint: true }),
-      fs.promises.realpath(filePath),
-    ]);
+    const pathStat = await fs.promises.stat(filePath, { bigint: true });
     if (!sameInode(pathStat, handleStat)) return false;
-    return isRealPathWithinRoot(realFilePath, realRoot);
+    // Windows 打包应用会把 AppData\Roaming 重定向到 LocalCache\Roaming:句柄式
+    // realpath(异步)解析出物理路径,组件式的 fs.realpathSync 解析出逻辑路径,
+    // 同一文件两种表示不同。调用方两种都有(锁文件用异步根、ghost/市场读取用
+    // fs.realpathSync 根),只认一种会让合法文件被误判为"根外"而读失败。
+    // 只要任一表示落在根内即视为通过:目录被换成根外链接时两种解析都会跑到
+    // 根外,拒绝语义不变。
+    if (isRealPathWithinRoot(fs.realpathSync(filePath), realRoot)) return true;
+    return isRealPathWithinRoot(await fs.promises.realpath(filePath), realRoot);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException)?.code;
     if (code !== 'ENOENT' && code !== 'ENOTDIR' && code !== 'ELOOP') {
