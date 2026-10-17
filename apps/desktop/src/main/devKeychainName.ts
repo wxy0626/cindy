@@ -41,7 +41,13 @@
  * abort 决策时终止启动。
  */
 
-import { BRAND_IDENTITY } from '@cindy/maker-shared/brand-identity';
+/**
+ * 钥匙串身份名 = Electron safeStorage 条目名 `<app.name> Safe Storage` 的组成部分，
+ * 与 app.name / productName 一起属于**稳定标识符**：不随展示名或 exe 名改动。
+ * 改名会让同一 profile 下已加密的凭证无法解密，并让既有身份标记变得不可识别。
+ */
+const DEFAULT_KEYCHAIN_IDENTITY_NAME = 'Cindy';
+const DEV_KEYCHAIN_IDENTITY_NAME = 'CindyDev';
 
 /**
  * 沙箱 profile 内的钥匙串身份标记文件名(userData 根下,纯文本存条目身份名;
@@ -184,8 +190,8 @@ export function resolveDevKeychainDecision(input: {
   io: KeychainIdentityIo;
 }): DevKeychainDecision {
   if (input.isPackaged || !input.hasDirOverride) return { kind: 'keep-default' };
-  const devName = BRAND_IDENTITY.executableNameByRegion.dev;
-  const defaultName = BRAND_IDENTITY.executableName;
+  const devName = DEV_KEYCHAIN_IDENTITY_NAME;
+  const defaultName = DEFAULT_KEYCHAIN_IDENTITY_NAME;
   // 两种模式共用同一状态机,唯一差别是空 profile 时认领哪个身份:认领模式
   // (--isolated + 纪元派生目录)认领 CindyDev,观察模式(裸覆写等非认领形态)
   // 认领默认身份。观察模式对空 profile 若直接 keep-default 而不落标记,与并发

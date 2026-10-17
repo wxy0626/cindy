@@ -1,5 +1,6 @@
 @echo off
 setlocal
+title Watchdog-dev
 
 set "PROJECT_DIR=E:\AI\cindy-harness\cindy"
 set "NODE_EXE=D:\AI\NODEJS~1\node.exe"
@@ -15,7 +16,7 @@ if not exist "%NODE_EXE%" (
   exit /b 1
 )
 cd /d "%PROJECT_DIR%"
-echo Starting Cindy development version...
+echo Starting Watchdog development version...
 echo Project: %PROJECT_DIR%
 echo.
 rem Start and wait for ready; no nested restart wrapper to avoid competing restart chains.
@@ -35,7 +36,7 @@ if not "%EXIT_CODE%"=="0" (
   pause
   exit /b %EXIT_CODE%
 )
-echo Cindy development version startup command completed.
+echo Watchdog development version startup command completed.
 rem The app has already exited cleanly at this point; do not run external cleanup
 rem commands here because a hung shell helper would keep the terminal tab open.
 exit
