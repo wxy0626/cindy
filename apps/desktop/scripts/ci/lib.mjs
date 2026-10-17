@@ -60,26 +60,28 @@ export const RELEASE_DIR = path.join(DESKTOP_ROOT, 'release');
  *   - macOS .app     <packaged>/<PACKAGED_APP_NAME>.app(Mach-O 同名)
  *   - Linux 二进制   <packaged>/<PACKAGED_APP_NAME>
  * ⚠️ 值必须与 packages/maker-shared/src/brandIdentity.ts 的
- * BRAND_IDENTITY.executableName(= apps/desktop/package.json productName)一致
- * ——.mjs 无法 import TS 单点,只能镜像字面量;一致性由
- * scripts/__tests__/brand-identity-sync.test.mjs 断言兜底。
+ * BRAND_IDENTITY.executableName 一致——.mjs 无法 import TS 单点,只能镜像
+ * 字面量;一致性由 scripts/__tests__/brand-identity-sync.test.mjs 断言兜底。
+ * 注意 exe 名(2026-10-18 起 'Watchdog')与 apps/desktop/package.json 的
+ * productName('Cindy')**故意不同**:productName 属稳定标识符,决定 app.name /
+ * userData 目录 / 钥匙串条目名,不随展示名与 exe 名改动。
  * ⚠️ 只描述「本地构建产物路径」。OSS/CDN 渠道前缀与发布产物文件名
  * (xdt-maker-<version>-Setup.exe / .dmg / .zip 等)仍留在老值:新渠道 bucket
  * 未就绪,发布目标另议,不随本次翻转。
  */
-export const PACKAGED_APP_NAME = 'Cindy';
+export const PACKAGED_APP_NAME = 'Watchdog';
 
 /**
  * 按区域取打包产物基名(exe / .app / 安装目录 / 快捷方式全部跟随)。
- * cn/global 同值 'Cindy'(2026-07-26 显示名统一决策,放弃文件层双装隔离),
- * dev 独立。镜像 brandIdentity.ts 的 executableNameByRegion,一致性由
- * scripts/__tests__/brand-identity-sync.test.mjs 断言兜底。
+ * cn/global 同值 'Watchdog'(2026-07-26 显示名统一决策,放弃文件层双装隔离),
+ * dev 独立('WatchdogDev')。镜像 brandIdentity.ts 的 executableNameByRegion,
+ * 一致性由 scripts/__tests__/brand-identity-sync.test.mjs 断言兜底。
  * PACKAGED_APP_NAME 保留为正式版共同基线值,供未传 region 的 legacy 脚本使用。
  */
 export const PACKAGED_APP_NAME_BY_REGION = Object.freeze({
-  cn: 'Cindy',
-  global: 'Cindy',
-  dev: 'CindyDev',
+  cn: 'Watchdog',
+  global: 'Watchdog',
+  dev: 'WatchdogDev',
 });
 
 export function packagedAppName(region = 'global') {
@@ -109,18 +111,21 @@ export function releaseArtifactBasename(region = 'global') {
 // CDN_BASE / OSS_BUCKET / OSS_PREFIX / OSS_REGION 由 scripts/shared/oss.mjs 提供并在顶部 re-export。
 
 /**
- * 渠道冻结硬闸(2026-07-17 身份翻转):老 /xdt-maker 渠道已冻结,存量 0.0.x
- * 用户的更新器按 --exe-name xdt-maker.exe 工作——把 Cindy 布局(Cindy.exe)
- * 的产物/manifest 发上老前缀,会让所有存量安装的自动更新当场断裂。
+ * 渠道冻结硬闸(2026-07-17 身份翻转;2026-10-18 展示名再翻转为 Watchdog):
+ * 老 /xdt-maker 渠道已冻结,存量 0.0.x 用户的更新器按 --exe-name xdt-maker.exe
+ * 工作——把新身份布局(<PACKAGED_APP_NAME>.exe)的产物/manifest 发上老前缀,
+ * 会让所有存量安装的自动更新当场断裂。
  * 在任何 desktop 发布/上传动作前调用;新渠道 bucket 就绪并把 OSS 前缀切走
  * 之前,发布一律拒绝。确需覆盖(如演练)显式设 XDT_ALLOW_LEGACY_CHANNEL_RELEASE=1。
  */
 export function assertNotPublishingCindyToLegacyChannel(ossPrefix) {
   if (process.env.XDT_ALLOW_LEGACY_CHANNEL_RELEASE === '1') return;
-  if (PACKAGED_APP_NAME === 'Cindy' && ossPrefix === 'xdt-maker') {
+  // 判据只留渠道前缀:身份常量恒为「新布局」,把它作为条件会让这道闸随改名
+  // 静默失效(条件永假 = 从不拦截),等于在发布路径上留一个空守卫。
+  if (ossPrefix === 'xdt-maker') {
     throw new Error(
-      '[channel-freeze] 拒绝把 Cindy 身份的产物发布到已冻结的 /xdt-maker 渠道:'
-      + '存量用户更新器会因 exe 布局变化(Cindy.exe)当场断裂。'
+      '[channel-freeze] 拒绝把新身份的产物发布到已冻结的 /xdt-maker 渠道:'
+      + `存量用户更新器会因 exe 布局变化(${PACKAGED_APP_NAME}.exe)当场断裂。`
       + '等新渠道 OSS 前缀就绪后再发布;演练可设 XDT_ALLOW_LEGACY_CHANNEL_RELEASE=1 覆盖。',
     );
   }

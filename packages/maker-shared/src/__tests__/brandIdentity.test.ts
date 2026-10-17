@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BRAND_NAME } from '../branding.js';
+import { BRAND_DEV_NAME, BRAND_NAME, resolveBrandDisplayName } from '../branding.js';
 import {
   BRAND_IDENTITY,
   DEFAULT_CINDY_REGION,
@@ -21,6 +21,15 @@ import {
  * 运行时才爆炸。
  */
 describe('BRAND_IDENTITY invariants', () => {
+  it('系统展示名按正式版与开发版区分', () => {
+    expect(BRAND_NAME).toBe('Watchdog');
+    expect(BRAND_DEV_NAME).toBe('Watchdog-dev');
+    expect(resolveBrandDisplayName('global', false)).toBe('Watchdog');
+    expect(resolveBrandDisplayName('cn', false)).toBe('Watchdog');
+    expect(resolveBrandDisplayName('global', true)).toBe('Watchdog-dev');
+    expect(resolveBrandDisplayName('dev', false)).toBe('Watchdog-dev');
+  });
+
   it('displayName 与 branding.ts 的 BRAND_NAME 同源', () => {
     expect(BRAND_IDENTITY.displayName).toBe(BRAND_NAME);
   });
@@ -37,7 +46,7 @@ describe('BRAND_IDENTITY invariants', () => {
   });
 
   it('executableName / userDataDirName 是安全的文件名段(允许首字母大写)', () => {
-    // executableName 首字母大写是产品决策(Cindy.exe,同 Discord/Slack 惯例):
+    // executableName 首字母大写是产品决策(Watchdog.exe,同 Discord/Slack 惯例):
     // Windows 进程匹配大小写不敏感,mac Mach-O 名对用户不可见;OSS key 等大小写
     // 敏感场景一律走小写的 cdnPrefix,不用本字段。userDataDirName 同理
     // (Electron productName 惯例)。区域值不含空格(owner 决策,双装路径安全)。
@@ -56,7 +65,7 @@ describe('BRAND_IDENTITY invariants', () => {
   it('系统身份与数据目录两区互不相同;exe 名两区同值(显示名统一决策)', () => {
     // userData 目录 / appId 撞名会让两区共库、共系统身份,必须保持分离。
     // exe 名(安装目录 / .app / 快捷方式)2026-07-26 起 cn/global 同值
-    // 'Cindy':owner 决策显示名统一,放弃文件层双装隔离(见
+    // 'Watchdog':owner 决策显示名统一,放弃文件层双装隔离(见
     // executableNameByRegion doc)。cdnPrefix 两区共用是 owner 决策:
     // 发布渠道靠不同 OSS bucket 区分,不靠路径前缀。
     expect(BRAND_IDENTITY.executableNameByRegion.cn)
@@ -143,10 +152,11 @@ describe('区域解析与派生', () => {
   });
 
   it('brandExecutableName / brandUserDataDirName 按区域取值,默认 global', () => {
-    expect(brandExecutableName()).toBe('Cindy');
+    expect(brandExecutableName()).toBe('Watchdog');
     // global 与 cn 同值(2026-07-26 显示名统一决策);dev 仍独立。
-    expect(brandExecutableName('global')).toBe('Cindy');
-    expect(brandExecutableName('dev')).toBe('CindyDev');
+    expect(brandExecutableName('global')).toBe('Watchdog');
+    expect(brandExecutableName('dev')).toBe('WatchdogDev');
+    // userData 目录不随展示名 / exe 名改动(稳定标识符,见 brandIdentity.ts)。
     expect(brandUserDataDirName()).toBe('CindyGlobal');
     expect(brandUserDataDirName('global')).toBe('CindyGlobal');
     expect(brandUserDataDirName('cn')).toBe('Cindy');

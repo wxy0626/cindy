@@ -117,7 +117,7 @@ function collectBuildMeta() {
 }
 
 function verifyPackagedSourceMetadata({ appName, platform, arch, expectedCommit }) {
-  const packagedDir = path.join(DESKTOP_ROOT, 'out', `${appName}-${platform}-${arch}`);
+  const packagedDir = path.join(DESKTOP_ROOT, 'build', `${appName}-${platform}-${arch}`);
   const metadataPath =
     platform === 'darwin'
       ? path.join(packagedDir, `${appName}.app`, 'Contents', 'Resources', 'cindy-source.json')
@@ -166,7 +166,7 @@ async function fetchCdnBaselineVersion(platformKey, region) {
 // ── 通用步骤 ────────────────────────────────────────────────────────────────
 
 function cleanOutDir() {
-  const outDir = path.join(DESKTOP_ROOT, 'out');
+  const outDir = path.join(DESKTOP_ROOT, 'build');
   if (!fs.existsSync(outDir)) return;
   console.log('==> Cleaning previous build output...');
   try {
@@ -242,7 +242,7 @@ function isPhysicalArm64Mac() {
 /** 跳过 smoke 启动前,用 lipo 确认 packaged 主二进制确实是目标架构。 */
 function verifyMacBinaryArch(appName, arch) {
   const exePath = path.join(
-    DESKTOP_ROOT, 'out', `${appName}-darwin-${arch}`, `${appName}.app`, 'Contents', 'MacOS', appName,
+    DESKTOP_ROOT, 'build', `${appName}-darwin-${arch}`, `${appName}.app`, 'Contents', 'MacOS', appName,
   );
   const archInfo = execFileSync('lipo', ['-archs', exePath], { encoding: 'utf8' }).trim();
   const want = arch === 'arm64' ? 'arm64' : 'x86_64';
@@ -281,8 +281,8 @@ function findSetupExe(makeBaseDir) {
 }
 
 async function finishWindows({ artifactDir, baseName, appName, versionless, allowUnsigned, noSign }) {
-  const makeBaseDir = path.join(DESKTOP_ROOT, 'out', 'make');
-  const packagedDir = path.join(DESKTOP_ROOT, 'out', `${appName}-win32-x64`);
+  const makeBaseDir = path.join(DESKTOP_ROOT, 'build', 'make');
+  const packagedDir = path.join(DESKTOP_ROOT, 'build', `${appName}-win32-x64`);
   const setupExe = findSetupExe(makeBaseDir);
   if (!setupExe) {
     console.error(`ERROR: No Setup.exe found under ${makeBaseDir}`);
@@ -387,7 +387,7 @@ async function finishDarwin({
   macSigningIdentity,
   webAuthnProvisioningProfile,
 }) {
-  const packagedDir = path.join(DESKTOP_ROOT, 'out', `${appName}-darwin-${arch}`);
+  const packagedDir = path.join(DESKTOP_ROOT, 'build', `${appName}-darwin-${arch}`);
   const appPath = path.join(packagedDir, `${appName}.app`);
   if (!fs.existsSync(appPath)) {
     console.error(`ERROR: ${appPath} not found`);
@@ -464,7 +464,7 @@ async function finishDarwin({
 }
 
 async function finishLinux({ artifactDir, baseName, arch }) {
-  const makeBaseDir = path.join(DESKTOP_ROOT, 'out', 'make');
+  const makeBaseDir = path.join(DESKTOP_ROOT, 'build', 'make');
   const debPath = findInstallerArtifact(makeBaseDir, 'deb');
   if (!debPath) {
     console.error(`ERROR: No .deb found under ${makeBaseDir}`);
@@ -575,7 +575,7 @@ async function main() {
   const results = [];
 
   // 逐 arch 完整走「make → 校验 → smoke → 归集 → build-info」;mac 缺省会连打
-  // arm64 + x64(cleanOutDir 每轮清 out/,上一轮产物已归集进 release/artifacts)。
+  // arm64 + x64(cleanOutDir 每轮清 build/,上一轮产物已归集进 release/artifacts)。
   for (const arch of archs) {
     const platformKey = `${platform}-${arch}`;
 
@@ -608,8 +608,8 @@ async function main() {
     // drizzle 资源校验(平台差异只在 packaged 内路径)。
     const drizzleOut =
       platform === 'darwin'
-        ? path.join(DESKTOP_ROOT, 'out', `${appName}-darwin-${arch}`, `${appName}.app`, 'Contents', 'Resources', 'drizzle')
-        : path.join(DESKTOP_ROOT, 'out', `${appName}-${platformKey}`, 'resources', 'drizzle');
+        ? path.join(DESKTOP_ROOT, 'build', `${appName}-darwin-${arch}`, `${appName}.app`, 'Contents', 'Resources', 'drizzle')
+        : path.join(DESKTOP_ROOT, 'build', `${appName}-${platformKey}`, 'resources', 'drizzle');
     verifyPackagedDrizzle(drizzleOut);
 
     if (skipSmoke) {

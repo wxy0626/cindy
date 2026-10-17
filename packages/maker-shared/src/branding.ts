@@ -14,5 +14,16 @@
  * 稳定标识符边界由本模块常量和相关测试维护，不随展示名迁移。
  */
 
-/** 产品对用户 / LLM 展示的品牌名（唯一规范写法，不要再派生其它变体）。 */
-export const BRAND_NAME = 'Cindy';
+/** 产品对用户 / LLM 展示的正式品牌名；界面与提示词字段统一读取此常量。 */
+export const BRAND_NAME = 'Watchdog';
+
+/** 开发版系统提示名；与正式名分开，便于托盘和任务栏区分运行实例。 */
+export const BRAND_DEV_NAME = `${BRAND_NAME}-dev`;
+
+/** 按运行构建返回系统悬停提示使用的品牌名。 */
+export function resolveBrandDisplayName(
+  region: 'cn' | 'global' | 'dev',
+  isDevelopmentBuild: boolean,
+): string {
+  return isDevelopmentBuild || region === 'dev' ? BRAND_DEV_NAME : BRAND_NAME;
+}

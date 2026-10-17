@@ -67,22 +67,24 @@ export interface BrandIdentity {
   readonly displayName: string;
   /**
    * 可执行文件基名(Windows 加 .exe;mac Mach-O 名同源派生)。
-   * 首字母大写是产品决策(Cindy.exe,同 Discord/Slack 惯例);Windows 进程
+   * 首字母大写是产品决策(Watchdog.exe,同 Discord/Slack 惯例);Windows 进程
    * 匹配大小写不敏感,产物 / OSS key 命名走小写的 `cdnPrefix`,互不影响。
    * ⚠️ 这是 **cn / dev 基线值**;2026-07-18 支持同机双装后,打包与运行时
    * 一律走 `brandExecutableName(region)` 取区域值,本字段仅供 dev 链路
    * (restart 脚本镜像)与 legacy 消费点使用。
+   * ⚠️ **不是** apps/desktop/package.json 的 productName:后者固定 'Cindy',
+   * 决定 app.name / userData 目录 / 钥匙串条目名,属稳定标识符(见该文件 doc)。
    */
   readonly executableName: string;
   /**
    * 按区域派生的可执行文件基名(exe / mac .app 包名 / 安装目录 / NSIS
-   * 快捷方式全部跟随)。2026-07-26 owner 决策:cn 与 global 同值 'Cindy',
-   * 让 global 包在 Dock / Finder / 菜单栏 / Windows 快捷方式等全部位置显示
-   * Cindy——代价是 cn/global 同机双装时安装目录 / .app / .lnk 同名互抢
-   * (第二个安装覆盖第一个的文件与快捷方式,更新器按 exe 名杀进程会波及另一
-   * 区域),该场景明确放弃支持;appId 与 userData 目录仍按区域分离,系统身份
-   * 与数据互不影响。dev 保持独立名(CindyDev,可与正式包并存)。区域名不含
-   * 空格(部分系统对带空格路径的兼容性差,owner 决策)。
+   * 快捷方式全部跟随)。2026-07-26 owner 决策:cn 与 global 同值,
+   * 仅统一文件层身份;安装目录 / .app / .lnk 同名互抢,第二个安装会覆盖
+   * 第一个的文件与快捷方式,更新器按 exe 名杀进程也会波及另一区域,因此该
+   * 场景明确放弃支持。用户看到的产品名由 BRAND_NAME 与
+   * resolveBrandDisplayName() 管理,不能从此字段推导。dev 保持独立文件名
+   * (WatchdogDev),可与正式包并存。区域名不含空格(部分系统对带空格路径的
+   * 兼容性差,owner 决策)。
    */
   readonly executableNameByRegion: Readonly<Record<CindyRegion, string>>;
   /**
@@ -135,12 +137,16 @@ export interface BrandIdentity {
 }
 
 /**
- * 当前生效的身份档案(Cindy,2026-07-17 翻转)。
- * 旧 xdt-maker 值全部下沉 legacy 数组。
+ * 当前生效的 OS / 磁盘 / 协议身份档案。展示名 `displayName` 跟随 BRAND_NAME
+ * (Watchdog);托盘与窗口悬停名的开发版后缀由 resolveBrandDisplayName() 派生。
+ * **展示层身份(displayName / executableName / 快捷键名 / 安装包名)已全部翻转为
+ * Watchdog**;而 appId、userData 目录、深链 scheme、db 前缀、updaterName 属
+ * **稳定标识符**,继续是 Cindy 系值——改名这些会让存量用户的凭证、加密密文与
+ * 数据目录全部失联,与展示名无关。旧 xdt-maker 值全部下沉 legacy 数组。
  *
  * 区域差异字段:appId、userDataDirName 按区域派生(cn/global 是两个可并存
  * 的系统身份,数据分库);executableName 自 2026-07-26 起 cn/global 同值
- * (显示统一为 Cindy,放弃文件层双装隔离,见 executableNameByRegion doc),
+ * (cn/global 共用文件名,放弃文件层双装隔离,见 executableNameByRegion doc),
  * 仅 dev 保持独立名;深链 scheme、展示名 BRAND_NAME、cdnPrefix、dbFilePrefix、
  * updaterName 两区共用(scheme 共用是 owner 决策:双装时后注册者赢,单装用户
  * 无感;cdnPrefix 共用因发布渠道靠不同 OSS bucket 区分;db 前缀因 userData
@@ -148,13 +154,13 @@ export interface BrandIdentity {
  */
 export const BRAND_IDENTITY: BrandIdentity = Object.freeze({
   displayName: BRAND_NAME,
-  executableName: 'Cindy',
+  executableName: 'Watchdog',
   executableNameByRegion: Object.freeze({
-    cn: 'Cindy',
-    // 2026-07-26 与 cn 同值(见字段 doc):global 包全部可见位置显示 Cindy,
+    cn: 'Watchdog',
+    // 2026-07-26 与 cn 同值(见字段 doc):这是文件与进程身份,展示名另由 BRAND_NAME 管理;
     // 放弃 cn/global 同机双装的文件层隔离;appId / userData 仍分区。
-    global: 'Cindy',
-    dev: 'CindyDev',
+    global: 'Watchdog',
+    dev: 'WatchdogDev',
   }),
   appIdByRegion: Object.freeze({
     cn: 'com.xd.cindycn',

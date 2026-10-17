@@ -39,10 +39,10 @@ const DESKTOP_ROOT = path.resolve(__dirname, '..');
  * BRAND_IDENTITY.executableName 及 ci/lib.mjs 的 PACKAGED_APP_NAME 一致
  * (本脚本刻意零外部依赖,不 import lib.mjs;一致性由
  * scripts/__tests__/brand-identity-sync.test.mjs 断言兜底)。
- * 区域化:产物基名按区域派生(cn/global 'Cindy' / dev 'CindyDev'),由调用方
+ * 区域化:产物基名按区域派生(cn/global 'Watchdog' / dev 'WatchdogDev'),由调用方
  * (ci/lib.mjs runSmokeTest)经 --app-name= 传入覆盖,本默认值服务 global / 手跑。
  */
-const PACKAGED_APP_NAME = 'Cindy';
+const PACKAGED_APP_NAME = 'Watchdog';
 
 // ── Arg parsing ───────────────────────────────────────────────────────────
 
@@ -87,7 +87,7 @@ console.log(`[smoke] platform=${platform} arch=${arch}`);
 function resolveExePath() {
   const baseDir = outDir
     ? path.resolve(outDir)
-    : path.join(DESKTOP_ROOT, 'out', `${appName}-${platform}-${arch}`);
+    : path.join(DESKTOP_ROOT, 'build', `${appName}-${platform}-${arch}`);
   if (!fs.existsSync(baseDir)) {
     console.error(`[smoke] ERROR: packaged dir not found: ${baseDir}`);
     console.error(`[smoke]        run 'pnpm --filter ./apps/desktop package' first, or pass --out-dir=<path>`);
