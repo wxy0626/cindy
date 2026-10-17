@@ -102,7 +102,7 @@ describe('mobileVoiceDictionaryCache', () => {
   it('拉取失败沿用上次缓存,不抛错', async () => {
     await refreshMobileVoiceDictionary(HOST, async () => ({
       ok: true,
-      entries: [{ text: 'Watchdog', frequency: 1 }],
+      entries: [{ text: 'Cindy', frequency: 1 }],
     }));
 
     // 桌面离线 / 隧道抛错。
@@ -127,7 +127,7 @@ describe('mobileVoiceDictionaryCache', () => {
   });
 
   it('短时间内不重复拉取,force 可以强制刷新', async () => {
-    const fetchSnapshot = vi.fn(async () => ({ ok: true as const, entries: [{ text: 'Watchdog' }] }));
+    const fetchSnapshot = vi.fn(async () => ({ ok: true as const, entries: [{ text: 'Cindy' }] }));
     await refreshMobileVoiceDictionary(HOST, fetchSnapshot);
     await refreshMobileVoiceDictionary(HOST, fetchSnapshot);
     expect(fetchSnapshot).toHaveBeenCalledTimes(1);
@@ -137,7 +137,7 @@ describe('mobileVoiceDictionaryCache', () => {
   });
 
   it('不同被控桌面的词典互不串味', async () => {
-    await refreshMobileVoiceDictionary(HOST, async () => ({ ok: true, entries: [{ text: 'Watchdog' }] }));
+    await refreshMobileVoiceDictionary(HOST, async () => ({ ok: true, entries: [{ text: 'Cindy' }] }));
     await refreshMobileVoiceDictionary('desktop-2', async () => ({
       ok: true,
       entries: [{ text: 'Orca' }],
@@ -154,7 +154,7 @@ describe('mobileVoiceDictionaryCache', () => {
     }));
     await refreshMobileVoiceDictionary('desktop-2', async () => ({
       ok: true,
-      entries: [{ text: 'Watchdog' }],
+      entries: [{ text: 'Cindy' }],
     }));
     expect(readCachedMobileVoiceDictionary(HOST)).toHaveLength(1);
 
@@ -222,14 +222,14 @@ describe('mobileVoiceDictionaryCache', () => {
       ok: true,
       entries: [
         { text: '  ' },
-        { text: 'Watchdog', frequency: -5, aliases: [{ text: '' }, { text: 'sindy', count: 0 }] },
+        { text: 'Cindy', frequency: -5, aliases: [{ text: '' }, { text: 'sindy', count: 0 }] },
         null,
         'not-an-object',
       ] as never,
     }));
 
     expect(readCachedMobileVoiceDictionary(HOST)).toEqual([
-      { text: 'Watchdog', frequency: 1, aliases: [{ text: 'sindy', count: 1 }] },
+      { text: 'Cindy', frequency: 1, aliases: [{ text: 'sindy', count: 1 }] },
     ]);
   });
 });
@@ -285,7 +285,7 @@ describe('账号分区', () => {
 
   it('索引读不出来时不删索引 —— 否则剩下的快照永远清不掉', async () => {
     setMobileVoiceDictionaryAccountScope('user-a');
-    await refreshMobileVoiceDictionary(HOST, async () => ({ ok: true, entries: [{ text: 'Watchdog' }] }));
+    await refreshMobileVoiceDictionary(HOST, async () => ({ ok: true, entries: [{ text: 'Cindy' }] }));
     // 索引损坏。
     storage.set('xdt.mobileVoiceDictionary.v2.hosts', '{not json');
 
@@ -415,7 +415,7 @@ describe('版本向量的入站校验', () => {
   it('非规范 HLC 的时间戳被丢掉,不会在字典序比较里永远胜出', async () => {
     await refreshMobileVoiceDictionary(HOST, async () => ({
       ok: true,
-      entries: [{ text: 'Watchdog' }],
+      entries: [{ text: 'Cindy' }],
       stateVector: { 'node-a': '~~~~', 'node-b': 42, 'node-c': '' },
     } as never));
 
@@ -426,7 +426,7 @@ describe('版本向量的入站校验', () => {
   it('时间戳自带的 nodeId 与键对不上时丢弃该项', async () => {
     await refreshMobileVoiceDictionary(HOST, async () => ({
       ok: true,
-      entries: [{ text: 'Watchdog' }],
+      entries: [{ text: 'Cindy' }],
       stateVector: { 'node-a': STAMP_A, 'node-b': STAMP_A },
     }));
 
@@ -437,7 +437,7 @@ describe('版本向量的入站校验', () => {
   it('合法向量原样保留并能落盘恢复', async () => {
     await refreshMobileVoiceDictionary(HOST, async () => ({
       ok: true,
-      entries: [{ text: 'Watchdog' }],
+      entries: [{ text: 'Cindy' }],
       stateVector: { 'node-a': STAMP_A },
     }));
     __resetMobileVoiceDictionaryCacheForTests();

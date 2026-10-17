@@ -134,7 +134,7 @@ const showPage = (bindings: ReturnType<typeof pageBindings>) => act(async () => 
 it('wires the page: title while entry validation runs, Back to the roster, and the working breath', async () => {
   const bindings = pageBindings(); bindings.companionEntry.ready = false;
   await showPage(bindings);
-  expect(host.textContent).toContain('Cindy');
+  expect(host.textContent).toContain('Watchdog');
   expect(button('companion.settings').disabled).toBe(true);
   expect(h.profile.online).toBe(true); // Synchronizing is not an offline connection.
   bindings.companionEntry.ready = true; bindings.companionWorkingLabel = 'Thinking…';

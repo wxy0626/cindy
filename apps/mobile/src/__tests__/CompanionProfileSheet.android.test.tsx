@@ -85,7 +85,7 @@ it('lays out the iOS identity, entry groups, icons and host-ordered management a
   expect(avatar.getAttribute('data-size')).toBe('48');
   // Identity only: no navigation target and no subtitle line.
   expect(avatar.closest('button')).toBeNull();
-  expect(container.textContent).toContain('Cindy'); expect(container.textContent).not.toContain('Teammate on Mac');
+  expect(container.textContent).toContain('Watchdog'); expect(container.textContent).not.toContain('Teammate on Mac');
   const rows = buttons().map(node => node.dataset.testid ?? '').filter(id => /^companionProfile\.[a-z]+$/.test(id));
   expect(rows).toEqual(['profile', 'memory', 'models', 'skills', 'artifacts', 'search', 'permissions'].map(id => `companionProfile.${id}`));
   const icons = Object.fromEntries(rows.map(id => [id.split('.')[1], byTest(id)!.dataset.icon]));

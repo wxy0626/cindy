@@ -94,7 +94,7 @@ describe('buildMobileVoiceDictionaryEntryViews', () => {
   it('按频次降序,并列时按文本稳定排序', () => {
     const views = buildMobileVoiceDictionaryEntryViews([snap([
       { text: 'Orca', frequency: 2 },
-      { text: 'Watchdog', frequency: 9 },
+      { text: 'Cindy', frequency: 9 },
       { text: 'Alpha', frequency: 2 },
     ])]);
     expect(views.map((view) => view.text)).toEqual(['Cindy', 'Alpha', 'Orca']);
@@ -121,7 +121,7 @@ describe('buildMobileVoiceDictionaryEntryViews', () => {
   it('丢弃空文本并按归一化主键去重', () => {
     const views = buildMobileVoiceDictionaryEntryViews([snap([
       { text: '  ' },
-      { text: 'Watchdog', frequency: 5 },
+      { text: 'Cindy', frequency: 5 },
       { text: 'cindy', frequency: 1 },
     ])]);
     expect(views.map((view) => view.text)).toEqual(['Cindy']);
@@ -137,8 +137,8 @@ describe('buildMobileVoiceDictionaryEntryViews', () => {
 describe('buildMobileVoiceDictionaryEntryViews — 多台电脑取最新那份', () => {
   it('用最新快照,不与旧快照取并集', () => {
     const views = buildMobileVoiceDictionaryEntryViews([
-      { entries: [{ text: 'Watchdog' }, { text: 'Orca' }], fetchedAt: 1_000 },
-      { entries: [{ text: 'Watchdog' }], fetchedAt: 5_000 },
+      { entries: [{ text: 'Cindy' }, { text: 'Orca' }], fetchedAt: 1_000 },
+      { entries: [{ text: 'Cindy' }], fetchedAt: 5_000 },
     ]);
     expect(views.map((view) => view.text)).toEqual(['Cindy']);
   });
@@ -146,15 +146,15 @@ describe('buildMobileVoiceDictionaryEntryViews — 多台电脑取最新那份',
   it('在别处删掉的词不会被离线电脑的旧缓存复活', () => {
     // 这正是并集的致命处:用户在在线电脑上删了 Orca,离线电脑的三天前缓存还留着它,
     // 并集会让它在手机上永远删不掉。
-    const stale = { entries: [{ text: 'Watchdog', frequency: 9 }, { text: 'Orca', frequency: 4 }], fetchedAt: 1_000 };
-    const fresh = { entries: [{ text: 'Watchdog', frequency: 2 }], fetchedAt: 9_000 };
+    const stale = { entries: [{ text: 'Cindy', frequency: 9 }, { text: 'Orca', frequency: 4 }], fetchedAt: 1_000 };
+    const fresh = { entries: [{ text: 'Cindy', frequency: 2 }], fetchedAt: 9_000 };
     const views = buildMobileVoiceDictionaryEntryViews([stale, fresh]);
     expect(views.map((view) => view.text)).toEqual(['Cindy']);
   });
 
   it('最新快照为空时就显示空 —— 那代表词典真的被清空了', () => {
     const views = buildMobileVoiceDictionaryEntryViews([
-      { entries: [{ text: 'Watchdog' }], fetchedAt: 1_000 },
+      { entries: [{ text: 'Cindy' }], fetchedAt: 1_000 },
       { entries: [], fetchedAt: 9_000 },
     ]);
     expect(views).toEqual([]);
@@ -162,7 +162,7 @@ describe('buildMobileVoiceDictionaryEntryViews — 多台电脑取最新那份',
 
   it('只有一台拉到过时就用它,顺序与来源无关', () => {
     const never = { entries: [], fetchedAt: 0 };
-    const ok = { entries: [{ text: 'Watchdog' }, { text: 'Orca' }], fetchedAt: 3_000 };
+    const ok = { entries: [{ text: 'Cindy' }, { text: 'Orca' }], fetchedAt: 3_000 };
     expect(buildMobileVoiceDictionaryEntryViews([never, ok]).map((v) => v.text).sort())
       .toEqual(['Cindy', 'Orca']);
     expect(buildMobileVoiceDictionaryEntryViews([ok, never]).map((v) => v.text).sort())
@@ -273,7 +273,7 @@ describe('词条主键', () => {
 
   it('归一化之后为空的词条被丢掉,不会产生空 key', () => {
     const views = buildMobileVoiceDictionaryEntryViews([
-      { entries: [{ text: '   ' }, { text: 'Watchdog' }], fetchedAt: 1_000 },
+      { entries: [{ text: '   ' }, { text: 'Cindy' }], fetchedAt: 1_000 },
     ]);
     expect(views.map((view) => view.text)).toEqual(['Cindy']);
   });

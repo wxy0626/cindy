@@ -254,7 +254,7 @@ describe('buildMixedHomeRows / buildGroupedHomeRows', () => {
     const namedMixed = buildMixedHomeRows(named, { dialogueTitle: '对话' });
     expect(namedMixed.map((row) => row.kind === 'session' ? [row.item.session.id, row.sourceLabel] : row.kind)).toEqual([
       ['chat-new', '对话'],
-      ['s1', 'Cindy'],
+      ['s1', 'Watchdog'],
     ]);
     const grouped = buildGroupedHomeRows(named, { dialogueTitle: '对话' });
     expect(grouped.filter((row) => row.kind === 'session').map((row) => row.kind === 'session' ? row.sourceLabel : null))

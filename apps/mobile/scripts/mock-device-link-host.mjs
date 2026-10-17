@@ -424,7 +424,7 @@ async function handleInvoke(controllerId, channel, args) {
     case 'device-link:voice:credential-sync': {
       // 与 desktop dispatch 语义对齐:穿透 credential 同步已下线,手机语音改走
       // Cindy 官方托管服务;旧手机据此拿到可读错误而不是 CHANNEL_NOT_ALLOWED。
-      const err = new Error('手机语音输入已改用 Cindy 官方语音服务,请升级手机版。');
+      const err = new Error('手机语音输入已改用 Watchdog 官方语音服务,请升级手机版。');
       err.code = 'VOICE_CREDENTIAL_SYNC_REMOVED';
       throw err;
     }
