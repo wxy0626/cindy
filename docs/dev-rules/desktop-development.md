@@ -206,6 +206,17 @@ pnpm test:unit
   对应规则，不以本页命令替代专项验证。
 - 记录实际执行和结果；未执行的高相关检查必须说明原因。
 
+## 打包产物：单一目录、每次替换
+
+正式产物只有一个目录：`apps/desktop/build/`（由 `forge.config.ts` 的 `outDir` 指定），
+`pnpm build` 产出的 `build/<ProductName>-win32-x64/` 与 `build/make/` 都落在其中。
+
+- **不允许**在仓库里保留第二份产物目录（历史 `out/`、`dist/` 残留）；发现即删。
+- `prebuild` / `prepackage` 会自动执行 `scripts/clean-build-output.mjs`，先清理上一版
+  再打包，因此**每次构建替换旧产物，不叠加历史版本**。
+- 需要保留某一版安装包时，复制到仓库外归档，不要留在 `build/` 里靠文件名区分。
+- 验收新图标 / 新品牌名时，直接检查 `build/` 下的 exe 与安装包；它们就是最新且唯一的一份。
+
 ## Windows 窗口恢复实验
 
 Windows 偶发黑屏/灰屏的后台节流对照实验见
