@@ -2020,6 +2020,22 @@ const config: ForgeConfig = {
         fs.rmSync(distDir, { recursive: true, force: true });
         console.log('[forge:postMake] removed intermediate dist/ (artifacts live in build/)');
       }
+      // 打包会整体重建 build/，程序目录里的 .lnk 正本随之消失；这里重建正本并同步桌面副本。
+      // 复用 scripts/create-windows-shortcuts.cjs（内部通过 electron shell API 写 lnk）。
+      if (process.platform === 'win32') {
+        const shortcutScript = path.join(__dirname, '..', '..', 'scripts', 'create-windows-shortcuts.cjs');
+        const packagedDir = path.join(__dirname, 'build', `${CINDY_EXE}-win32-${process.arch}`);
+        if (fs.existsSync(shortcutScript) && fs.existsSync(path.join(packagedDir, `${CINDY_EXE}.exe`))) {
+          const result = spawnSync(process.execPath, [shortcutScript, '--packaged-dir', packagedDir], {
+            stdio: 'inherit',
+          });
+          if (result.status !== 0) {
+            console.warn(`[forge:postMake] shortcut helper exited with status ${result.status}`);
+          }
+        } else {
+          console.warn(`[forge:postMake] skipped shortcuts: ${packagedDir} not found`);
+        }
+      }
     },
   },
   makers,
