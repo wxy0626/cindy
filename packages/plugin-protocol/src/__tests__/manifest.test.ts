@@ -1794,7 +1794,7 @@ describe('cindy 详单:media/text/embed/search 类目与 oneshotModel 校验', (
   const base = {
     schemaVersion: 2,
     id: 'cindy-full',
-    name: 'Cindy Full',
+    name: 'Watchdog Full',
     version: '1.0.0',
     entry: 'main.js',
     slots: ['cindy'],

@@ -309,7 +309,7 @@ describe('claimLegacyOwnerNamespace', () => {
     expect(hasExclusiveSharedLegacyUserDataAccess(root, (pid) => pid === 4242)).toBe(false);
   });
 
-  it('keeps deferring when a reused pid now belongs to another Cindy process', async () => {
+  it('keeps deferring when a reused pid now belongs to another Watchdog process', async () => {
     const root = await tempRoot();
     const startedAtMs = 1_000_000;
     await fs.writeFile(path.join(root, 'slack-hook.json'), 'legacy-hook');

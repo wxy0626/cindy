@@ -20,7 +20,7 @@ describe('mergePiUserSettingsPassthrough (#3643)', () => {
     const merged = JSON.parse(mergePiUserSettingsPassthrough(built, existing));
     expect(merged.shellPath).toBe('C:/Program Files/Git/bin/bash.exe');
     expect(merged.shellCommandPrefix).toBe('shopt -s expand_aliases');
-    // Cindy 自有键不被旧文件覆盖:transport 恒为新生成的 sse。
+    // Watchdog 自有键不被旧文件覆盖:transport 恒为新生成的 sse。
     expect(merged.transport).toBe('sse');
     expect(merged.retry).toEqual(JSON.parse(built).retry);
   });
@@ -50,7 +50,7 @@ describe('mergePiUserSettingsPassthrough (#3643)', () => {
     expect(merged.shellPath).toBeUndefined();
     // 白名单之外的键(defaultTools 会与 bridge 工具面冲突)不透传。
     expect(merged.defaultTools).toBeUndefined();
-    // Cindy 自有 compaction 以新生成内容为准。
+    // Watchdog 自有 compaction 以新生成内容为准。
     expect(merged.compaction).toEqual(JSON.parse(built).compaction);
   });
 

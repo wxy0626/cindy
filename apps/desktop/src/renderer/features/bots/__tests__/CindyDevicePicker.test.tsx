@@ -34,13 +34,13 @@ it.each([true, false])(
     const i18n = createInstance();
     await i18n.init({ lng: 'en', resources: { en: { translation: en } } });
     const options = cindyDeviceOptions(
-      [{ id: 'cindy-default', name: 'Cindy', status: 'active' } as BotProfile],
+      [{ id: 'cindy-default', name: 'Watchdog', status: 'active' } as BotProfile],
       [
         {
           id: 'cindy-default',
           deviceId: 'remote',
           deviceName: 'Mac mini',
-          name: 'Cindy',
+          name: 'Watchdog',
           avatar: '',
           avatarColor: '',
           description: '',
@@ -107,13 +107,13 @@ describe('Cindy device menu with real translations', () => {
       interpolation: { escapeValue: false },
     });
     const options = cindyDeviceOptions(
-      [{ id: 'cindy-default', name: 'Cindy', status: 'active' } as BotProfile],
+      [{ id: 'cindy-default', name: 'Watchdog', status: 'active' } as BotProfile],
       [
         {
           id: 'cindy-default',
           deviceId: 'remote',
           deviceName: 'Mac mini',
-          name: 'Cindy',
+          name: 'Watchdog',
           avatar: '',
           avatarColor: '',
           description: '',

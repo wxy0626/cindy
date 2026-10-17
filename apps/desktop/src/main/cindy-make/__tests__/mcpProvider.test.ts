@@ -88,7 +88,7 @@ describe('cindy_make report_complete', () => {
     expect(JSON.parse(first.text)).toMatchObject({ ok: true });
   });
 
-  it('fails closed when the runtime context is not a Cindy Make task', async () => {
+  it('fails closed when the runtime context is not a Watchdog Make task', async () => {
     const reportCompletion = vi.fn(async () => undefined);
     const bridgeCtx: McpProviderContext = {
       agentKind: 'codex',

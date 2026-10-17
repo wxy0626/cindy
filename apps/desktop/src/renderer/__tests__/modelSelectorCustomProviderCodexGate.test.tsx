@@ -104,7 +104,7 @@ const providersRef = vi.hoisted(() => {
   const DEFAULT_PROVIDERS = [
     {
       id: 'xd',
-      name: 'Cindy AI',
+      name: 'Watchdog AI',
       source: 'builtin',
       agents: ['codex'],
       auth: { method: 'api-key' },

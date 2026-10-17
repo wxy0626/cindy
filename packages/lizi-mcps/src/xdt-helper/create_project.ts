@@ -19,7 +19,7 @@ export function registerCreateProjectTool(
     name: "create_project",
     category: "control",
     description:
-      "Add an existing local directory to Cindy’s project list and restore it if hidden. Does not create directories, initialize Git, create a task, or start an agent. Create any needed directory with your file tools first. Pass the returned working_dir to send_to_session to start work there. Repeating this call reuses the same project. Runs on the Cindy host; unavailable from SSH tasks.",
+      "Add an existing local directory to Watchdog’s project list and restore it if hidden. Does not create directories, initialize Git, create a task, or start an agent. Create any needed directory with your file tools first. Pass the returned working_dir to send_to_session to start work there. Repeating this call reuses the same project. Runs on the Watchdog host; unavailable from SSH tasks.",
     inputShape: {
       working_dir: z
         .string()
@@ -27,7 +27,7 @@ export function registerCreateProjectTool(
         .min(1)
         .max(4096)
         .describe(
-          "Absolute path of an existing directory on the local Cindy host.",
+          "Absolute path of an existing directory on the local Watchdog host.",
         ),
     },
     handler: async ({ working_dir }: { working_dir: string }) => {
@@ -35,12 +35,12 @@ export function registerCreateProjectTool(
       if (!context.sessionId)
         return errorPayload(
           "NO_SESSION_CONTEXT",
-          "No Cindy task is bound to this call.",
+          "No Watchdog task is bound to this call.",
         );
       if (context.remoteHostId)
         return errorPayload(
           "UNSUPPORTED_CAPABILITY",
-          "Project registration only supports local Cindy tasks.",
+          "Project registration only supports local Watchdog tasks.",
         );
       const result = await deps.createProject({
         callerSessionId: context.sessionId,

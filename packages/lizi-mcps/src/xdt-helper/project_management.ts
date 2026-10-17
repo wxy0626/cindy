@@ -60,12 +60,12 @@ export function registerProjectManagementTools(
     if (!context.sessionId)
       return errorPayload(
         "NO_SESSION_CONTEXT",
-        "No Cindy task is bound to this call.",
+        "No Watchdog task is bound to this call.",
       );
     if (context.remoteHostId)
       return errorPayload(
         "UNSUPPORTED_CAPABILITY",
-        "Project management only supports local Cindy tasks.",
+        "Project management only supports local Watchdog tasks.",
       );
     const result = await run(context.sessionId);
     return result.ok
@@ -76,7 +76,7 @@ export function registerProjectManagementTools(
     name: "list_projects",
     category: "control",
     description:
-      "List registered projects on the local Cindy host, including empty projects with no tasks. Returns working_dir, directory_name, custom display alias (null means default), hidden state and whether the directory exists. The sidebar may disambiguate identical directory names with parent paths; always identify targets by working_dir. Hidden projects are included by default so they can be restored. Use next_offset for the next page. Unlike list_workdirs, this reads the project list rather than task history. Unavailable from SSH tasks.",
+      "List registered projects on the local Watchdog host, including empty projects with no tasks. Returns working_dir, directory_name, custom display alias (null means default), hidden state and whether the directory exists. The sidebar may disambiguate identical directory names with parent paths; always identify targets by working_dir. Hidden projects are included by default so they can be restored. Use next_offset for the next page. Unlike list_workdirs, this reads the project list rather than task history. Unavailable from SSH tasks.",
     inputShape: {
       include_hidden: z.boolean().default(true),
       offset: z.number().int().min(0).default(0),
@@ -109,7 +109,7 @@ export function registerProjectManagementTools(
     name: "rename_project",
     category: "control",
     description:
-      'Change a registered local Cindy project’s display name. Only changes its Cindy alias, never the filesystem directory or task working directories. Pass name="" to restore its default directory-derived name. Find the exact working_dir with list_projects first. Does not change visibility.',
+      'Change a registered local Watchdog project’s display name. Only changes its Watchdog alias, never the filesystem directory or task working directories. Pass name="" to restore its default directory-derived name. Find the exact working_dir with list_projects first. Does not change visibility.',
     inputShape: {
       working_dir: workingDir,
       name: z
@@ -138,7 +138,7 @@ export function registerProjectManagementTools(
     name: "remove_project",
     category: "control",
     description:
-      "Remove a registered local project from Cindy’s sidebar. Existing tasks remain available as projectless chats; files, tasks and aliases are preserved. Does not archive or stop tasks. Find the exact working_dir with list_projects first. Repeating removal is safe. To restore the project, call create_project with the same working_dir.",
+      "Remove a registered local project from Watchdog’s sidebar. Existing tasks remain available as projectless chats; files, tasks and aliases are preserved. Does not archive or stop tasks. Find the exact working_dir with list_projects first. Repeating removal is safe. To restore the project, call create_project with the same working_dir.",
     inputShape: {
       working_dir: workingDir,
     },

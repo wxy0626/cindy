@@ -161,7 +161,7 @@ describe('Cindy Server Pi Gateway catalog authority', () => {
     expect(resolveCatalogPiGatewayModelApi(catalog, 'same-id')).toBeUndefined();
   });
 
-  it('fails closed when Cindy Server retires an exact XD Registry identity', () => {
+  it('fails closed when Watchdog Server retires an exact XD Registry identity', () => {
     const catalog = serverCatalog({
       gatewayModelId: 'moonshot/kimi-k3',
       routes: [{ providerId: 'moonshot-kimi-global', modelId: 'kimi-k3' }],

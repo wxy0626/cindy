@@ -388,7 +388,7 @@ describe("sender source labels", () => {
 });
 
 describe("IM source card", () => {
-  it("renders local IM rows as a left-aligned Cindy card with the localized platform name", () => {
+  it("renders local IM rows as a left-aligned Watchdog card with the localized platform name", () => {
     const html = render([
       msg("im", "clean text", {
         imSource: {
@@ -399,7 +399,7 @@ describe("IM source card", () => {
       }),
     ]);
     expect(html).toContain("message.hookSource");
-    expect(html).toContain("Cindy · 来自 飞书");
+    expect(html).toContain("Watchdog · 来自 飞书");
     expect(html).toContain("message.agentBubble");
     expect(html).not.toContain("message.userBubble");
   });
@@ -454,7 +454,7 @@ describe("IM source card", () => {
         hookSource: { im, userText: "question", channelName: "#general" },
       }),
     ]);
-    expect(html).toContain(`Cindy · 来自 ${platform}`);
+    expect(html).toContain(`Watchdog · 来自 ${platform}`);
     expect(html).toContain("#general");
   });
 });

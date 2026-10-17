@@ -221,7 +221,7 @@ function capabilitiesForSession(
       rewind: {
         supported: false,
         reason: 'platform-limited',
-        message: 'Update Cindy on the computer running the agent to rewind this task',
+        message: 'Update Watchdog on the computer running the agent to rewind this task',
       },
     };
   }
@@ -526,7 +526,7 @@ export class Maker {
       const existing = this.activeCodexThreadClaims.get(nextKey);
       if (existing && existing.token !== owner.token) {
         throw new Error(
-          `Codex thread ${threadId} is already active in another Cindy task. Close that task and try again.`,
+          `Codex thread ${threadId} is already active in another Watchdog task. Close that task and try again.`,
         );
       }
       this.activeCodexThreadClaims.set(nextKey, owner);

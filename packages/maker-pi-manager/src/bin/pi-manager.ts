@@ -135,7 +135,7 @@ export function splitFlag(arg: string): [string, string | undefined] {
 function printHelp(): void {
   console.error(
     [
-      'pi-manager — Cindy pi remote daemon',
+      'pi-manager — Watchdog pi remote daemon',
       '',
       'Commands:',
       '  pi-manager daemon --socket <path>             Run daemon in the foreground',

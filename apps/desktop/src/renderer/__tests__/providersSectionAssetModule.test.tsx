@@ -166,7 +166,7 @@ import { ProvidersSection } from '@/components/settings/ProvidersSection';
 function makeXd(): ProviderView {
   return {
     id: 'xd',
-    name: 'Cindy AI',
+    name: 'Watchdog AI',
     source: 'builtin',
     agents: ['claude-code', 'codex'],
     auth: { method: 'managed' },
@@ -175,7 +175,7 @@ function makeXd(): ProviderView {
       'claude-code': [
         {
           id: 'cindy-test-model',
-          name: 'Cindy Test Model',
+          name: 'Watchdog Test Model',
           contextWindow: 200000,
           efforts: ['high'],
           defaultEffort: 'high',

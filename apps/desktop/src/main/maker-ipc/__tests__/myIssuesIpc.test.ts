@@ -55,7 +55,7 @@ describe('handleMyIssuesList', () => {
 
   it('意外错误只回 unexpected,不泄漏路径与原文', async () => {
     const leaky = new Error(
-      "ENOENT: no such file or directory, open '/Users/someone/Library/Application Support/Cindy/owners/abc/submitted-issues.json'",
+      "ENOENT: no such file or directory, open '/Users/someone/Library/Application Support/Watchdog/owners/abc/submitted-issues.json'",
     );
     const res = await handleMyIssuesList({}, {
       list: async () => {

@@ -386,7 +386,7 @@ describe('codex gateway config', () => {
     const provider = (id: string) => Object.fromEntries(args.filter(v => v.startsWith(`model_providers.${id}.`))
       .map(v => { const [key, ...value] = v.slice(`model_providers.${id}.`.length).split('='); return [key, value.join('=')]; }));
     const gateway = provider('cindy_gateway');
-    expect(provider('cindy_summary')).toEqual({ ...gateway, name: '"Cindy Summary"' });
+    expect(provider('cindy_summary')).toEqual({ ...gateway, name: '"Watchdog Summary"' });
     expect(provider('cindy_codex').name).toBe('"OpenAI"');
   });
 
@@ -2096,7 +2096,7 @@ describe('chatBridgeCapabilitiesForRoute', () => {
       error: {
         type: 'server_error',
         code: 'cindy_codex_parent_route_unavailable',
-        message: 'Cindy could not resolve the parent Provider route for this spawned Codex agent.',
+        message: 'Watchdog could not resolve the parent Provider route for this spawned Codex agent.',
       },
     });
     expect(mockState.capturedRegistry?.get('thread-collab-orphan')).toBeUndefined();

@@ -199,7 +199,7 @@ describe('pi translator', () => {
         result: {
           content: [{
             type: 'text',
-            text: 'Cindy subagent launched. The agent is working in the background.',
+            text: 'Watchdog subagent launched. The agent is working in the background.',
           }],
         },
         isError: false,
@@ -1144,7 +1144,7 @@ describe('pi translator', () => {
     expect(JSON.parse((full!.data as { fullText: string }).fullText).content).toBe(content);
   });
 
-  it('rewrites context-mode doctor tool results to the Cindy-managed package path', () => {
+  it('rewrites context-mode doctor tool results to the Watchdog-managed package path', () => {
     const root = '/tmp/cindy/managed-packages/0/node_modules/context-mode';
     const ctx = createPiTranslateContext(noopLogger);
     ctx.rewriteToolResultText = (text) => rewriteContextModeDoctorPath(text, root);

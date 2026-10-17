@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { companionArtifactRows, loadCompanionProfile, parseCompanionProfileData, profileFormDirty } from '../session/companionProfileData';
 const ref = { collectionId: 'teammates', kind: 'bot', id: 'bot-a' };
-const raw = () => ({ ref, revision: 'v1', display: { title: 'Cindy' }, links: [], actions: [{ id: 'opaque-token', label: 'Save', fields: [{ id: 'name', kind: 'text', label: 'Name' }] }], blocks: [{ id: 'profile', primitive: 'form', fallbackMarkdown: 'Profile', data: { actionId: 'opaque-token', values: { name: 'Cindy', privateField: 'ignored' } } }] });
+const raw = () => ({ ref, revision: 'v1', display: { title: 'Watchdog' }, links: [], actions: [{ id: 'opaque-token', label: 'Save', fields: [{ id: 'name', kind: 'text', label: 'Name' }] }], blocks: [{ id: 'profile', primitive: 'form', fallbackMarkdown: 'Profile', data: { actionId: 'opaque-token', values: { name: 'Watchdog', privateField: 'ignored' } } }] });
 describe('companion profile finite resource primitives', () => {
   it('only binds fields explicitly advertised by the host', () => {
     const data = parseCompanionProfileData(raw(), ref);
-    expect(data.panels[0].values).toEqual({ name: 'Cindy' });
+    expect(data.panels[0].values).toEqual({ name: 'Watchdog' });
     expect(data.panels[0].action?.id).toBe('opaque-token');
-    expect(profileFormDirty(data.panels[0], { name: 'Cindy' })).toBe(false);
+    expect(profileFormDirty(data.panels[0], { name: 'Watchdog' })).toBe(false);
     expect(profileFormDirty(data.panels[0], { name: 'New' })).toBe(true);
   });
   it('keeps legacy hosts read-only and rejects wrong resource identities', () => {

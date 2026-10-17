@@ -378,7 +378,7 @@ describe('native e2e environment', () => {
     // 不再存在 mock 凭证或 credential override 面。
     expect(mockHost).toContain("case 'device-link:voice:credential-sync':");
     expect(mockHost).toContain("err.code = 'VOICE_CREDENTIAL_SYNC_REMOVED';");
-    expect(mockHost).toContain('手机语音输入已改用 Cindy 官方语音服务,请升级手机版。');
+    expect(mockHost).toContain('手机语音输入已改用 Watchdog 官方语音服务,请升级手机版。');
     expect(mockHost).not.toContain('mockVoiceCredential');
     expect(mockHost).not.toContain('voiceCredentialOverride');
     expect(mockHost).not.toContain('loadVoiceCredentialOverride');
@@ -444,7 +444,7 @@ describe('native e2e environment', () => {
     expect(realtimeAudio).toContain('new module.AudioStream({');
     expect(realtimeAudio).toContain("encoding: 'int16'");
     expect(realtimeAudio).toContain('convertExpoAudioPcm16(');
-    expect(realtimeAudio).toContain("throw new UnavailabilityError('Cindy mobile voice input', 'realtime microphone PCM capture')");
+    expect(realtimeAudio).toContain("throw new UnavailabilityError('Watchdog mobile voice input', 'realtime microphone PCM capture')");
     expect(realtimeAudio).toContain('EXPO_PUBLIC_XDT_MOBILE_E2E_MOCK_AUDIO');
   });
 

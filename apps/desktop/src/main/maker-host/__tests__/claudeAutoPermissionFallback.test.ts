@@ -540,7 +540,7 @@ describe('createClaudeAutoPermissionFallbackCoordinator', () => {
     expect(useCindyAutoReviewFallback).toHaveBeenCalledTimes(1);
     expect(deps.getSessionMeta).toHaveBeenCalledWith('session-1');
     expect(deps.logger.info).toHaveBeenCalledWith(
-      'auto permission classifier unavailable; session kept on Auto with Cindy fallback',
+      'auto permission classifier unavailable; session kept on Auto with Watchdog fallback',
       expect.objectContaining({ sessionId: 'session-1', status: 429 }),
     );
   });
@@ -558,7 +558,7 @@ describe('createClaudeAutoPermissionFallbackCoordinator', () => {
     await expect(fallback({ sessionId: 'session-1', status: 503 })).resolves.toBe(true);
 
     expect(deps.logger.info).toHaveBeenCalledWith(
-      'auto permission classifier unavailable; session kept on Auto with Cindy fallback',
+      'auto permission classifier unavailable; session kept on Auto with Watchdog fallback',
       expect.objectContaining({
         counters: expect.objectContaining({
           detected: 2,

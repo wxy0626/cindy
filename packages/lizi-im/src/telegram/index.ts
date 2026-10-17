@@ -144,7 +144,7 @@ const DEFAULT_EXPIRED_CARD_NOTICE = '卡片已过期';
 /** 非 owner 显式召唤(私聊/群 @/reply)的礼貌回应 — per-user 冷却防刷屏。 */
 const STRANGER_NOTICE_COOLDOWN_MS = 60_000;
 const DEFAULT_STRANGER_NOTICE =
-  '👋 我是一位主人的个人 Cindy 助理，只响应主人本人的指令~\nI am a personal Cindy assistant and only respond to my owner.';
+  '👋 我是一位主人的个人 Watchdog 助理，只响应主人本人的指令~\nI am a personal Watchdog assistant and only respond to my owner.';
 
 // 只保留一次性动作确认(填 token 关联成功 / 手动断开)。生命周期播报(上线/
 // 下线/离线致歉)已整体移除 —— bot 随桌面端频繁重启, 每次都播报会刷屏;

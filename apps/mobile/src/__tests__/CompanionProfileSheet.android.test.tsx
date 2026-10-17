@@ -46,11 +46,11 @@ import { CompanionCreateSheet, CompanionProfileSheet } from '@/session/Companion
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const ref = { collectionId: 'teammates', kind: 'bot', id: 'bot' };
-const resource = { ref, display: { title: 'Cindy', subtitle: 'Teammate on Mac' }, links: [], revision: 'v1' };
+const resource = { ref, display: { title: 'Watchdog', subtitle: 'Teammate on Mac' }, links: [], revision: 'v1' };
 const form = (id: string, fields: object[], values: Record<string, unknown> = {}, extra: object = {}) => ({ id, values, action: { id: `${id}-grant`, label: 'Save', fields }, ...extra });
 const managed = (id: string, label: string, extra: object = {}) => ({ id, values: {}, action: { id: `${id}-grant`, label, confirmation: { title: `${label}?`, body: `${label} body` }, ...extra } });
 const home = () => ({ resource, panels: [
-  form('profile', [{ id: 'name', label: 'Name', kind: 'text' }], { name: 'Cindy' }),
+  form('profile', [{ id: 'name', label: 'Name', kind: 'text' }], { name: 'Watchdog' }),
   { id: 'avatar', values: {}, entries: [{ id: 'avatar', title: 'Avatar', resourceId: 'settings:bot/avatar' }] },
   { ...form('skills', [{ id: 'skillNote', label: 'Skill note', kind: 'text' }]), text: '' },
   { id: 'connections', values: {}, entries: [{ id: 'refs', title: 'Referenced', resourceId: 'settings:bot/connections' }] },

@@ -1168,7 +1168,7 @@ export class RemoteHost {
         `Previously trusted: ${stored}\nPresented: ${presented}\n` +
         `This may be a server reinstall or an intercepted connection. Verify the new fingerprint ` +
         `with the server administrator through a trusted channel, then review the host key in ` +
-        `Cindy Settings > Remote. Cindy uses its own remote-ssh/known-hosts.json, not ` +
+        `Watchdog Settings > Remote. Watchdog uses its own remote-ssh/known-hosts.json, not ` +
         `~/.ssh/known_hosts. Changing your login key will not fix this error.`;
     }
     this.log.error('ssh host key mismatch — refusing connect', {

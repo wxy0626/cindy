@@ -461,7 +461,7 @@ describe('PiPackagesSection interaction state machine', () => {
   it('shows the Main-sanitized actionable mutation failure', async () => {
     installElectronApi({
       mutatePiPackage: vi.fn(async () => {
-        throw new Error('[PI_PACKAGE_MUTATION_FAILED] restart Cindy and refresh extensions');
+        throw new Error('[PI_PACKAGE_MUTATION_FAILED] restart Watchdog and refresh extensions');
       }),
     });
     render(<PiPackagesSection />);
@@ -470,7 +470,7 @@ describe('PiPackagesSection interaction state machine', () => {
     fireEvent.click(screen.getAllByRole('switch')[0]!);
 
     await waitFor(() => expect(toastMocks.error).toHaveBeenCalledWith(
-      'restart Cindy and refresh extensions',
+      'restart Watchdog and refresh extensions',
     ));
   });
 

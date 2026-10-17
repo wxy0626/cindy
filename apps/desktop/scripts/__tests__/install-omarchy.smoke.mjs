@@ -227,7 +227,7 @@ esac`);
       assert.ok(!fs.existsSync(prefixFor(home)));
     }
   });
-  await t.test('system installs, running Cindy, missing libraries and invalid inputs exit before download', () => {
+  await t.test('system installs, running Watchdog, missing libraries and invalid inputs exit before download', () => {
     const home = fixture('preflight');
     for (const [env, reason] of [
       [{ TEST_PACMAN_STATUS: '0' }, /pacman.AUR/],
@@ -274,7 +274,7 @@ esac`);
         }
         assert.ok(fs.existsSync(`${gate}.ready`), `older download is paused: ${output}`);
         const downloads = fs.readFileSync(path.join(home, 'downloads'), 'utf8');
-        fails(run(home, v3), /Another Cindy bootstrap is in progress/);
+        fails(run(home, v3), /Another Watchdog bootstrap is in progress/);
         assert.equal(fs.readFileSync(path.join(home, 'downloads'), 'utf8'), downloads);
       } finally {
         fs.rmSync(gate, { force: true });

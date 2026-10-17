@@ -973,7 +973,7 @@ describe('useCodexAuth lifecycle', () => {
       isChatGptConnectionConnected(
         {
           kind: 'authenticated',
-          identity: 'API Key · Cindy AI',
+          identity: 'API Key · Watchdog AI',
           authSource: 'api-key',
         },
         true,

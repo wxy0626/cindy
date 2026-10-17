@@ -61,7 +61,7 @@ describe('maker:event hot path ordering', () => {
     expect(() => refresh('departing-task')).not.toThrow();
     expect(getSession).not.toHaveBeenCalled();
   });
-  it.each([undefined, null, { text: 'Restart Cindy before using Pi again.', isFinal: true }])(
+  it.each([undefined, null, { text: 'Restart Watchdog before using Pi again.', isFinal: true }])(
     'strips Host recovery metadata from the boundary copy with data %j',
     (data) => {
       // Execute the actual boundary function without booting Desktop/register side effects.

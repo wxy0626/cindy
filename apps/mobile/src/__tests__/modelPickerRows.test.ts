@@ -62,7 +62,7 @@ describe('providerDisplayTitle / formatPriceLine / buildRowMetaLine', () => {
   it('内置供应商用桌面 zh-CN 标题,自定义回退 name', () => {
     expect(providerDisplayTitle({ id: 'anthropic', name: 'x' })).toBe('Anthropic');
     expect(providerDisplayTitle({ id: 'openai', name: 'x' })).toBe('OpenAI');
-    expect(providerDisplayTitle({ id: 'xd', name: 'x' })).toBe('Cindy AI');
+    expect(providerDisplayTitle({ id: 'xd', name: 'x' })).toBe('Watchdog AI');
     expect(providerDisplayTitle({ id: 'my-proxy', name: '我的代理' })).toBe('我的代理');
   });
 
@@ -81,7 +81,7 @@ describe('providerDisplayTitle / formatPriceLine / buildRowMetaLine', () => {
       provider: { id: 'xd', name: 'XD Gateway' },
       model: { id: 'gpt-5.5', contextWindow: 272_000, supportsFastMode: true },
     });
-    expect(full).toBe('Cindy AI · 272K 上下文 · 快速');
+    expect(full).toBe('Watchdog AI · 272K 上下文 · 快速');
 
     const minimal = buildRowMetaLine({
       provider: null,
@@ -97,7 +97,7 @@ function xdProviderWithCost(
 ): ProviderView {
   return {
     id: 'xd',
-    name: 'Cindy AI',
+    name: 'Watchdog AI',
     agents: ['codex'],
     connected: true,
     models: { codex: [{ id: modelId, cost }] },

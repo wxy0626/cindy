@@ -45,7 +45,7 @@ describe('agent command list IPC boundary', () => {
     async (deviceLink) => {
       const deps = createDeps(deviceLink);
       const sensitive = new Error(
-        'SQLITE_IOERR opening /Users/chris/Library/Application Support/Cindy/private.db',
+        'SQLITE_IOERR opening /Users/chris/Library/Application Support/Watchdog/private.db',
       );
 
       const result = toAgentCommandListFailure(sensitive, deps);

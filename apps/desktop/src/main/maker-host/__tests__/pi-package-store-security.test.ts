@@ -4685,7 +4685,7 @@ describe('Pi package executable-code boundary', () => {
     });
     expect(listener).toHaveBeenCalledTimes(1);
     expect(loggerRuntime.warn).toHaveBeenCalledWith(
-      'Pi package mutation succeeded; Cindy list projection unavailable',
+      'Pi package mutation succeeded; Watchdog list projection unavailable',
       { action: 'set-enabled', failureCategory: 'projection-unavailable' },
     );
 
@@ -5163,7 +5163,7 @@ describe('Pi package executable-code boundary', () => {
     await mutateAuthorized(store, { action: 'install', source: unsafeSource });
 
     expect(loggerRuntime.warn).toHaveBeenCalledWith(
-      'Pi package installed; Cindy post-install analysis unavailable',
+      'Pi package installed; Watchdog post-install analysis unavailable',
       { action: 'install', failureCategory: 'projection-unavailable' },
     );
     const warnings = JSON.stringify(loggerRuntime.warn.mock.calls);

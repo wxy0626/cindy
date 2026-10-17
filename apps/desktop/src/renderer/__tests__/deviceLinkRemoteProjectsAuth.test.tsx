@@ -16,7 +16,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 import { useDeviceLinkRemoteProjects } from '@/features/device-link/useDeviceLinkRemoteProjects';
 
 const getSessionList = vi.fn(async () => {
-  throw new Error('[PERMISSION_DENIED] Device Link requires a Cindy account.');
+  throw new Error('[PERMISSION_DENIED] Device Link requires a Watchdog account.');
 });
 
 beforeEach(() => {

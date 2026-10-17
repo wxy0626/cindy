@@ -1776,7 +1776,7 @@ describe('nodeRuntimeBroker · 意外死亡诊断(2026-07-26)', () => {
     const pending = broker.handleRequest('node-ghost', rpcRequest('slow'));
     await vi.waitFor(() => expect(child.received).toHaveLength(1));
     child.stderr.write(
-      'Error: ENOENT /Users/jane/Library/Application Support/Cindy/plugins/demo/worker.cjs\n',
+      'Error: ENOENT /Users/jane/Library/Application Support/Watchdog/plugins/demo/worker.cjs\n',
     );
     await vi.waitFor(() => expect(warn).toHaveBeenCalled());
     child.emit('exit', 1, null);
@@ -2183,7 +2183,7 @@ describe('nodeRuntimeBroker · 权限与协议', () => {
     const init = child.received[0];
     expect(init).toMatchObject({
       method: 'initialize',
-      params: { clientInfo: { name: 'Cindy' } },
+      params: { clientInfo: { name: 'Watchdog' } },
     });
     broker.destroyAll();
   });

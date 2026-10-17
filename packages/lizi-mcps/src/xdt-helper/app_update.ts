@@ -36,10 +36,10 @@ export function registerAppUpdateTools(
 ): void {
   const resolveCaller = (): { error: ReturnType<typeof errorPayload> } | { caller: AppUpdateCaller } => {
     const context = deps.getSessionContext();
-    if (!context.sessionId) return { error: errorPayload('NO_SESSION_CONTEXT', '当前调用没有绑定 Cindy 任务。') };
-    if (context.remoteHostId) return { error: errorPayload('REMOTE_SESSION', '远程任务不能更新本机 Cindy；请在本机任务中操作。') };
+    if (!context.sessionId) return { error: errorPayload('NO_SESSION_CONTEXT', '当前调用没有绑定 Watchdog 任务。') };
+    if (context.remoteHostId) return { error: errorPayload('REMOTE_SESSION', '远程任务不能更新本机 Watchdog；请在本机任务中操作。') };
     if (!context.sessionInstanceId || !deps.callbacks.isCurrentSession(context.sessionId, context.sessionInstanceId)) {
-      return { error: errorPayload('STALE_SESSION', '当前任务实例已结束或不再有效，不能更新 Cindy。') };
+      return { error: errorPayload('STALE_SESSION', '当前任务实例已结束或不再有效，不能更新 Watchdog。') };
     }
     return { caller: { sessionId: context.sessionId, sessionInstanceId: context.sessionInstanceId } };
   };

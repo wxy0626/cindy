@@ -7,7 +7,7 @@ function resource() {
   return {
     ref: botSettingsRef('bot'),
     revision: '1',
-    display: { title: 'Cindy' },
+    display: { title: 'Watchdog' },
     links: [],
     actions: [action],
     blocks: [
@@ -16,7 +16,7 @@ function resource() {
         title: 'Profile',
         primitive: 'form',
         fallbackMarkdown: 'Read only',
-        data: { actionId: 'grant', values: { name: 'Cindy' } },
+        data: { actionId: 'grant', values: { name: 'Watchdog' } },
       },
     ],
   };
@@ -32,7 +32,7 @@ it('retains complete supported forms with translated confirmation text', () => {
     botSettingsRef('bot'),
   );
   expect(parsed.panels[0].action?.confirmation).toEqual(confirmation);
-  expect(parsed.panels[0].values).toEqual({ name: 'Cindy' });
+  expect(parsed.panels[0].values).toEqual({ name: 'Watchdog' });
 });
 it.each([
   { confirmation: { title: 'Confirm', body: 42 } },

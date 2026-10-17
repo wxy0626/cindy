@@ -110,7 +110,7 @@ describe('mobile settings overview', () => {
 
   it('keeps the device-link hello name and settings device name on one source', () => {
     expect(buildMobileDeviceName({ constantsDeviceName: ' Carol iPhone ', platform: 'ios' })).toBe('Carol iPhone');
-    expect(buildMobileDeviceName({ constantsDeviceName: '   ', platform: 'android' })).toBe('Cindy android');
+    expect(buildMobileDeviceName({ constantsDeviceName: '   ', platform: 'android' })).toBe('Watchdog android');
   });
 
   it('projects an account header plus about and debug sections for the settings screen', () => {

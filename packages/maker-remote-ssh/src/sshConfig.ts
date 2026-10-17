@@ -212,7 +212,7 @@ function expandIncludePath(value: string): IncludePathExpansionResult {
     const username = currentUserPattern[1]!;
     if (username !== os.userInfo().username) {
       return {
-        warning: `home directory for user "${username}" cannot be resolved by Cindy; Include was not expanded.`,
+        warning: `home directory for user "${username}" cannot be resolved by Watchdog; Include was not expanded.`,
       };
     }
     const remainder = currentUserPattern[2];
@@ -287,7 +287,7 @@ export async function readSshConfigDetailed(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       const warnings = options.managedConfigPath && await pathExists(options.managedConfigPath)
-        ? ['Cindy\'s SSH host file exists but is not reachable through a supported Include.']
+        ? ['Watchdog\'s SSH host file exists but is not reachable through a supported Include.']
         : [];
       return { hosts: [], diagnostic: null, warnings };
     }
@@ -304,7 +304,7 @@ export async function readSshConfigDetailed(
       ? Array.from(state.visited).some((item) => pathsEqual(item, managedComparable))
       : false;
     if (managedExists && !reachedManaged) {
-      state.warnings.push('Cindy\'s SSH host file exists but is not reachable through a supported Include.');
+      state.warnings.push('Watchdog\'s SSH host file exists but is not reachable through a supported Include.');
     }
   }
 
@@ -416,7 +416,7 @@ async function walkFile(
       };
       state.matches.push(declaration);
       scope = { kind: 'match', declaration };
-      state.warnings.push(`${location}: Match is not evaluated by Cindy.`);
+      state.warnings.push(`${location}: Match is not evaluated by Watchdog.`);
       continue;
     }
 
@@ -452,7 +452,7 @@ async function walkFile(
           await walkFile(includedPath, scope, state, depth + 1, true);
           if (repeatedManagedGlob) {
             state.warnings.push(
-              `${location}: Include glob reaches Cindy's SSH host file after it was already loaded.`,
+              `${location}: Include glob reaches Watchdog's SSH host file after it was already loaded.`,
             );
           }
         }
@@ -461,7 +461,7 @@ async function walkFile(
     }
 
     if (isCanonicalizationDirective(directive.keyword)) {
-      state.warnings.push(`${location}: hostname canonicalization is not evaluated by Cindy.`);
+      state.warnings.push(`${location}: hostname canonicalization is not evaluated by Watchdog.`);
       if (directive.keyword === 'canonicalizehostname' && scope.kind !== 'match') {
         state.directives.push({
           name: directive.keyword,
@@ -622,14 +622,14 @@ async function buildHosts(
       'canonicalizehostname',
     )?.toLowerCase();
     let unsupportedReason = state.incompleteUnconditionalInclude
-      ? 'Cindy could not completely expand an unconditional Include'
+      ? 'Watchdog could not completely expand an unconditional Include'
       : matchMayAffectHost
-        ? 'Cindy does not evaluate a Match block that may affect this SSH host'
+        ? 'Watchdog does not evaluate a Match block that may affect this SSH host'
         : conditionalIncludeMayAffectHost
-          ? 'Cindy does not expand a conditional Include that may affect this SSH host'
+          ? 'Watchdog does not expand a conditional Include that may affect this SSH host'
           : canonicalizeHostname !== undefined && canonicalizeHostname !== 'no'
             ? canonicalizeHostname === 'yes' || canonicalizeHostname === 'always'
-              ? 'Cindy does not implement OpenSSH hostname canonicalization'
+              ? 'Watchdog does not implement OpenSSH hostname canonicalization'
               : `unsupported CanonicalizeHostname value: ${canonicalizeHostname}`
             : unsupportedHostNameToken !== undefined
               ? `unsupported HostName token: ${unsupportedHostNameToken}`
@@ -646,7 +646,7 @@ async function buildHosts(
         return value !== undefined && value.toLowerCase() !== 'none';
       });
     if (unsupportedTransportDirectives.length > 0) {
-      unsupportedReason ??= `Cindy does not support ${unsupportedTransportDirectives.join(' / ')} transport configuration`;
+      unsupportedReason ??= `Watchdog does not support ${unsupportedTransportDirectives.join(' / ')} transport configuration`;
     }
     const unsupportedAgentDirectives = [
       'certificatefile',
@@ -655,10 +655,10 @@ async function buildHosts(
     ].filter((name) => matchingDirectives(state.directives, alias, name).length > 0);
     if (authMethod === 'agent' && unsupportedAgentDirectives.length > 0) {
       if (identitiesOnly) {
-        unsupportedReason ??= `Cindy cannot enforce IdentitiesOnly with ${unsupportedAgentDirectives.join(', ')}`;
+        unsupportedReason ??= `Watchdog cannot enforce IdentitiesOnly with ${unsupportedAgentDirectives.join(', ')}`;
       } else {
         state.warnings.push(
-          `Host ${alias}: ${unsupportedAgentDirectives.join(', ')} is not interpreted by Cindy; SSH Agent will be used.`,
+          `Host ${alias}: ${unsupportedAgentDirectives.join(', ')} is not interpreted by Watchdog; SSH Agent will be used.`,
         );
       }
     }
@@ -716,8 +716,8 @@ async function resolveCompleteFingerprintSet(
     if (resolved.fingerprints.length === 0) {
       return {
         unsupportedReason: usingDefaults
-          ? `default identity ${identityFile} exists but Cindy cannot resolve its public key`
-          : `IdentityFile ${identityFile} has no public key Cindy can resolve without reading the private key`,
+          ? `default identity ${identityFile} exists but Watchdog cannot resolve its public key`
+          : `IdentityFile ${identityFile} has no public key Watchdog can resolve without reading the private key`,
       };
     }
     for (const fingerprint of resolved.fingerprints) {
@@ -726,7 +726,7 @@ async function resolveCompleteFingerprintSet(
   }
   return fingerprints.length > 0
     ? { fingerprints }
-    : { unsupportedReason: 'IdentitiesOnly yes has no identity Cindy can pin in ssh-agent' };
+    : { unsupportedReason: 'IdentitiesOnly yes has no identity Watchdog can pin in ssh-agent' };
 }
 
 function matchingDirectives(
@@ -1365,7 +1365,7 @@ function assertManagedConfigOwnership(existing: string): string {
   if (!existing.trim()) return `${MANAGED_CONFIG_MARKER}\n`;
   if (!hasManagedConfigMarker(existing)) {
     const error = new Error(
-      'existing managed SSH config is not owned by Cindy; add the Cindy ownership marker or choose another file',
+      'existing managed SSH config is not owned by Watchdog; add the Watchdog ownership marker or choose another file',
     ) as Error & { code?: string };
     error.code = MANAGED_CONFIG_OWNERSHIP_REQUIRED_CODE;
     throw error;
@@ -1499,7 +1499,7 @@ function assertManagedConfigUnchanged(
 ): void {
   if (managedConfigToken(currentBytes) === expectedToken) return;
   const conflict = new Error(
-    'SSH config changed after Cindy validated it; reload before retrying.',
+    'SSH config changed after Watchdog validated it; reload before retrying.',
   ) as Error & { code?: string };
   conflict.code = MANAGED_CONFIG_CONCURRENT_MODIFICATION_CODE;
   throw conflict;
@@ -1540,7 +1540,7 @@ async function writeAtomicPreservingTarget(
     if (existingMode !== undefined) await fs.chmod(tempPath, existingMode);
     if (await readRawConfig(target) !== expectedContent) {
       const conflict = new Error(
-        'SSH config changed while Cindy was preparing an update; retry the operation.',
+        'SSH config changed while Watchdog was preparing an update; retry the operation.',
       ) as Error & { code?: string };
       conflict.code = MANAGED_CONFIG_CONCURRENT_MODIFICATION_CODE;
       throw conflict;

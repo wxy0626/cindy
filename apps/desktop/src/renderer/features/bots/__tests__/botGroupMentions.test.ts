@@ -48,8 +48,8 @@ describe('resolveBotGroupMentions', () => {
 
   it('routes a picked owner-qualified name to only that companion and keeps short-name mentions', () => {
     const sameName = [
-      { botId: 'chris-cindy', name: 'Cindy (Chris)', displayName: 'Cindy' },
-      { botId: 'alex-cindy', name: 'Cindy (Alex Chen)', displayName: 'Cindy' },
+      { botId: 'chris-cindy', name: 'Watchdog (Chris)', displayName: 'Cindy' },
+      { botId: 'alex-cindy', name: 'Watchdog (Alex Chen)', displayName: 'Cindy' },
     ];
     const picked = insertBotGroupMention('@Ci', { start: 0, end: 3 }, sameName[1].name);
     expect(resolveBotGroupMentions(picked.text, { members: sameName, allLabels: [] }).botIds).toEqual(['alex-cindy']);

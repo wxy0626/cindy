@@ -24,7 +24,7 @@ function session(id: string, patch: Partial<MobileHomeSessionLike> = {}): Mobile
   };
 }
 
-describe('Cindy Make home folder', () => {
+describe('Watchdog Make home folder', () => {
   it.each(['zh-CN', 'zh-TW', 'en', 'ja', 'ko'])('keeps one named folder in grouped and flat home views (%s)', async (locale) => {
     await i18n.changeLanguage(locale);
     const home = buildMobileHomePresentation({
@@ -39,7 +39,7 @@ describe('Cindy Make home folder', () => {
       const folders = rows.filter((row) => row.kind === 'cindy-make');
       expect(folders).toHaveLength(1);
       expect(isFolderHomeRow(folders[0])).toBe(true);
-      expect(folders[0].project).toMatchObject({ title: 'Cindy Make', workingDir: '', subtitle: 'My PC' });
+      expect(folders[0].project).toMatchObject({ title: 'Watchdog Make', workingDir: '', subtitle: 'My PC' });
       expect(folders[0].project.sessions.map((item) => item.session.id).sort()).toEqual(['feature', 'merge']);
       expect(rows).toHaveLength(2);
       const identities = buildHomeProjectMachineIdentities(home);
@@ -55,7 +55,7 @@ describe('Cindy Make home folder', () => {
     const home = buildMobileHomePresentation({ sessions });
     const rows = buildHomeSections(home, false, false, { groupCindyMake: false }).flatMap((section) => section.data);
     expect(rows).toHaveLength(sessions.length);
-    expect(rows.every((row) => row.kind === 'session' && row.sourceLabel === 'Cindy Make')).toBe(true);
+    expect(rows.every((row) => row.kind === 'session' && row.sourceLabel === 'Watchdog Make')).toBe(true);
     expect(rows.flatMap((row) => row.kind === 'session' ? [row.item.session.id] : []).sort())
       .toEqual(sessions.map((item) => item.id).sort());
   });
@@ -81,7 +81,7 @@ describe('Cindy Make home folder', () => {
     expect(sections[0].data.map((row) => row.kind === 'session' ? row.item.session.id : row.kind)).toEqual(['pinned']);
     const first = sections[1].data[0];
     expect(first.kind).toBe('cindy-make');
-    if (!isFolderHomeRow(first)) throw new Error('Expected the Cindy Make folder');
+    if (!isFolderHomeRow(first)) throw new Error('Expected the Watchdog Make folder');
     expect(first.project.sessions.map((item) => item.session.id)).toEqual(['waiting', 'running']);
     expect(first.project.pendingInteractionCount).toBe(1);
   });

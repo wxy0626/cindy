@@ -583,7 +583,7 @@ describe('PI durable subagent run store', () => {
         .resolves.toBe(true);
     });
 
-    it('still treats another Cindy utility process as a recycled pid', async () => {
+    it('still treats another Watchdog utility process as a recycled pid', async () => {
       stubAliveRunner();
       childProcess.spawnSync.mockImplementation(() => ({
         status: 0,

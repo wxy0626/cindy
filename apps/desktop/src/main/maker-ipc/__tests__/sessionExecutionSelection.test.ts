@@ -7,8 +7,8 @@ const metadata = (id: string) => ({ id, efforts: ['medium', 'high'], defaultEffo
 const routing = {
   availability: {
     codex: [{ id: 'openai', name: 'OpenAI', models: [caller.model] }],
-    pi: [{ id: 'xd', name: 'Cindy AI', models: [panel.model] }],
-    'claude-code': [{ id: 'xd', name: 'Cindy AI', models: [panel.model] }, { id: 'glm', name: 'GLM', models: ['glm-5.3'] }],
+    pi: [{ id: 'xd', name: 'Watchdog AI', models: [panel.model] }],
+    'claude-code': [{ id: 'xd', name: 'Watchdog AI', models: [panel.model] }, { id: 'glm', name: 'GLM', models: ['glm-5.3'] }],
   },
   resolveDefaultProviderIdForModel: (agent: string, model: string) =>
     routing.availability[agent as keyof typeof routing.availability]?.find(p => p.models.includes(model))?.id ?? null,

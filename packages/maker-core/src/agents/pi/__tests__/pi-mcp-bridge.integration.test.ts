@@ -599,7 +599,7 @@ describe.skipIf(!piAvailable)('PiAgent × cindy-bridge (real pi + MCP bridge + p
         server.registerTool(
           'start_session_task',
           {
-            description: 'Start a real independent Cindy Session task',
+            description: 'Start a real independent Watchdog Session task',
             inputSchema: {
               instruction: z.string(),
               title: z.string().optional(),
@@ -1341,7 +1341,7 @@ describe.skipIf(!piAvailable)('PiAgent × cindy-bridge (real pi + MCP bridge + p
 
       expect(permissionAsked).toBe(false);
       expect(echoCalls).toHaveLength(0);
-      expect(requestBodies.some((body) => body.includes('Unknown Cindy MCP tool'))).toBe(true);
+      expect(requestBodies.some((body) => body.includes('Unknown Watchdog MCP tool'))).toBe(true);
       const finalText = events
         .filter((event) => event.type === 'text')
         .map((event) => event.data as { text: string; isFinal?: boolean })

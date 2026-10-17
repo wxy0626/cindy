@@ -23,7 +23,7 @@ export function registerAsyncQuestionTool(
   registry.register({
     name: 'ask_user_question_async',
     category: 'cindy',
-    description: 'Ask optional questions in Cindy cards and immediately continue independent work. '
+    description: 'Ask optional questions in Watchdog cards and immediately continue independent work. '
       + 'This returns a pending receipt, not an answer. User answers arrive as same-turn input. '
       + 'Unanswered questions expire when execution ends; never infer a choice. '
       + 'Use your synchronous question tool when work must wait for the answer. Not for permissions or approvals.',

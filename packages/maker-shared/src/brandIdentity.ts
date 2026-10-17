@@ -58,7 +58,7 @@ export function resolveCindyRegion(raw?: string | null): CindyRegion {
   const v = raw?.trim().toLowerCase();
   if (!v) return DEFAULT_CINDY_REGION;
   if (v === 'cn' || v === 'global' || v === 'dev') return v;
-  throw new Error(`Invalid Cindy region: ${raw}; expected cn, global or dev`);
+  throw new Error(`Invalid Watchdog region: ${raw}; expected cn, global or dev`);
 }
 
 /** 标识符层身份配置的完整形状。字段语义见各注释;全部为纯数据,零运行时逻辑。 */

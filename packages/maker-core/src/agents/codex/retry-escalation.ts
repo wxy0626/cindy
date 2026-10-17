@@ -75,7 +75,7 @@ export function describeOutboundPath(fact: OutboundPathFact): string {
   if (fact.kind === 'proxy') {
     const from = fact.source === 'env' ? 'proxy env vars' : 'system proxy settings';
     return (
-      `Cindy's outbound path for ${fact.upstream}: via ${fact.proxy ?? '(unknown address)'} ` +
+      `Watchdog's outbound path for ${fact.upstream}: via ${fact.proxy ?? '(unknown address)'} ` +
       `(from ${from}). If that proxy is down or cannot reach the upstream, this is where it fails.`
     );
   }
@@ -85,36 +85,36 @@ export function describeOutboundPath(fact: OutboundPathFact): string {
     // 两种来源的修改位置不同 —— env 改变量值,system 改系统/PAC 里的那一条。
     if (fact.source === 'env') {
       return (
-        `Cindy's outbound path for ${fact.upstream}: direct connection — a proxy env var is set, ` +
-        `but its value is not a form Cindy can use (an https:// TLS-to-proxy or socks4:// URL), ` +
+        `Watchdog's outbound path for ${fact.upstream}: direct connection — a proxy env var is set, ` +
+        `but its value is not a form Watchdog can use (an https:// TLS-to-proxy or socks4:// URL), ` +
         `so it was rejected and the request went out directly. Use an http:// or socks5:// proxy URL.`
       );
     }
     return (
-      `Cindy's outbound path for ${fact.upstream}: direct connection — the system proxy ` +
-      `settings do list a proxy for this upstream, but in a form Cindy cannot use (an HTTPS/` +
+      `Watchdog's outbound path for ${fact.upstream}: direct connection — the system proxy ` +
+      `settings do list a proxy for this upstream, but in a form Watchdog cannot use (an HTTPS/` +
       `TLS-to-proxy entry, or SOCKS4), so the request went out directly. Switch that entry to ` +
-      `an HTTP or SOCKS5 proxy to route Cindy through it.`
+      `an HTTP or SOCKS5 proxy to route Watchdog through it.`
     );
   }
   if (fact.kind === 'direct') {
     if (fact.source === 'env') {
       return (
-        `Cindy's outbound path for ${fact.upstream}: direct connection — proxy env vars are set, ` +
+        `Watchdog's outbound path for ${fact.upstream}: direct connection — proxy env vars are set, ` +
         `but none of them applies to this upstream (NO_PROXY exempts it, or no variable covers ` +
         `its scheme), so the configured proxy is being bypassed. On a network that needs a proxy ` +
         `to reach the upstream, that bypass alone explains the failure.`
       );
     }
     return (
-      `Cindy's outbound path for ${fact.upstream}: direct connection — no proxy env var is set, ` +
+      `Watchdog's outbound path for ${fact.upstream}: direct connection — no proxy env var is set, ` +
       `and the system proxy resolver returned a direct route for this upstream (a system proxy ` +
       `may still be configured but bypassing this host). On a network that needs a proxy or VPN ` +
       `to reach the upstream, this explains the failure.`
     );
   }
   return (
-    `Cindy could not determine the outbound path for ${fact.upstream} ` +
+    `Watchdog could not determine the outbound path for ${fact.upstream} ` +
     `(${fact.reason ?? 'unknown reason'}) and fell back to a direct connection. ` +
     `That fallback is a guess, not a confirmed "no proxy" — on a network that needs a proxy it fails.`
   );

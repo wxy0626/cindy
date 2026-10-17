@@ -112,7 +112,7 @@ describe('typography token discipline', () => {
     expect(violations).toEqual([]);
   });
 
-  it('defaults all AppText TextInput carets and selections to the Cindy input caret token', () => {
+  it('defaults all AppText TextInput carets and selections to the Watchdog input caret token', () => {
     const source = readFileSync(
       join(ROOT, 'src/components/AppText.tsx'),
       'utf8',

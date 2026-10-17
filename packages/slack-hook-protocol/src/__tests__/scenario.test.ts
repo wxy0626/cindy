@@ -163,7 +163,7 @@ describe('协议场景: 真实 socket 上的完整生命周期', () => {
       desktopSock,
       makeHello({
         deviceId: 'dev-1',
-        deviceName: 'Cindy',
+        deviceName: 'Watchdog',
         workspaces: ['cindy'],
         agents: ['cc'],
       }),

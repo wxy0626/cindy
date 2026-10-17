@@ -68,7 +68,7 @@ export function existingReadyInstance(report = null) {
   )) ?? null;
 }
 
-/** 为 Cindy 开发链补足堆上限，同时保留调用方已有的 Node 参数。 */
+/** 为 Watchdog 开发链补足堆上限，同时保留调用方已有的 Node 参数。 */
 export function desktopDevChildEnv(env = process.env) {
   const existing = env.NODE_OPTIONS?.trim();
   const heapOption = '--max-old-space-size=8192';

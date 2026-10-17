@@ -134,7 +134,7 @@ async function assertSafeXlsxArchive(archive) {
   if (entryCount !== null && entryCount > MAX_XLSX_ZIP_ENTRIES) {
     const error = new Error('工作簿 ZIP 条目过多');
     error.code = 'FILE_TOO_LARGE';
-    error.hint = '这个工作簿包含过多 ZIP 条目,为保护 Cindy 已拒绝读取。请拆分工作簿或重新保存为普通 .xlsx。';
+    error.hint = '这个工作簿包含过多 ZIP 条目,为保护 Watchdog 已拒绝读取。请拆分工作簿或重新保存为普通 .xlsx。';
     throw error;
   }
   let zip;
@@ -154,7 +154,7 @@ async function assertSafeXlsxArchive(archive) {
     if (uncompressed > MAX_XLSX_UNCOMPRESSED_BYTES) {
       const error = new Error('工作簿解压后过大');
       error.code = 'FILE_TOO_LARGE';
-      error.hint = '这个工作簿的解压体积超过 128 MB,为保护 Cindy 已拒绝读取。请先拆分或重新保存文件。';
+      error.hint = '这个工作簿的解压体积超过 128 MB,为保护 Watchdog 已拒绝读取。请先拆分或重新保存文件。';
       throw error;
     }
   }
@@ -162,7 +162,7 @@ async function assertSafeXlsxArchive(archive) {
   if (ratio > MAX_XLSX_COMPRESSION_RATIO) {
     const error = new Error('工作簿压缩比异常');
     error.code = 'FILE_TOO_LARGE';
-    error.hint = '这个工作簿疑似是异常压缩包,为保护 Cindy 已拒绝读取。请用 Excel/WPS 重新另存为 .xlsx 后再试。';
+    error.hint = '这个工作簿疑似是异常压缩包,为保护 Watchdog 已拒绝读取。请用 Excel/WPS 重新另存为 .xlsx 后再试。';
     throw error;
   }
 }
@@ -285,7 +285,7 @@ function readXlsxInWorker(
       finish(() => reject(new DocsPathError(
         'READ_TIMEOUT',
         `读取工作簿超时(${XLSX_READ_TIMEOUT_MS}ms)`,
-        '这个工作簿解析时间过长,为保护 Cindy 已终止读取。请先拆分或重新保存文件。',
+        '这个工作簿解析时间过长,为保护 Watchdog 已终止读取。请先拆分或重新保存文件。',
       )));
     }, XLSX_READ_TIMEOUT_MS);
     worker.once('message', (message: { error?: { code?: string; message?: string; hint?: string; available?: string[] } } & SheetRead) => {

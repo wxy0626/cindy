@@ -12,7 +12,7 @@ export const PROVIDER_SHARE_RECEIVED_CATALOGS_CHANNEL = 'maker:provider-share:re
  * 分享者电脑的名字不给受邀者(provider-sharing.md §6)：生成链接与转交已收到的分享时，
  * `deviceName` 一律填这个占位。字段本身不能省，旧版受邀者与手机按必填解析，空了会丢掉整条分享。
  */
-export const PROVIDER_SHARE_NEUTRAL_DEVICE_NAME = 'Cindy';
+export const PROVIDER_SHARE_NEUTRAL_DEVICE_NAME = 'Watchdog';
 
 /**
  * 分享出去的目录里，供应商建了组时带上组里有几台电脑(`groupSize`)：受邀者只知道背后是个组、有几台，

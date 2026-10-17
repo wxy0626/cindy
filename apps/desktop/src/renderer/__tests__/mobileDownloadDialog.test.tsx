@@ -560,7 +560,7 @@ describe('MobileDownloadDialog', () => {
     expect(readyDot()).toBeNull();
   });
 
-  it('uses the official Cindy artwork and the shared dialog tokens', () => {
+  it('uses the official Watchdog artwork and the shared dialog tokens', () => {
     expect(source).toContain('@/../../resources/icon.png?url');
     expect(source).toContain("t('sidebar.mobileDownload.title')");
     expect(source).toContain('<Smartphone');

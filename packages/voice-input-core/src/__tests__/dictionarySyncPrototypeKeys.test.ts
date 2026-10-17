@@ -186,7 +186,7 @@ describe('原型链成员名作为词条', () => {
 describe('版本向量的键也来自不可信输入', () => {
   it('返回的是无原型字典 —— nodeId 叫 __proto__ 也不会读到原型链上的值', () => {
     const state = addManualEntry(createEmptySyncState(), createHlcClock('__proto__', 1_000), {
-      text: 'Cindy',
+      text: 'Watchdog',
       nowMs: 1_000,
     }).state;
 

@@ -40,7 +40,7 @@ describe('requireCodexOAuthLoginState', () => {
       requireCodexOAuthLoginState({
         authenticated: true,
         authSource: 'api-key',
-        identity: 'API Key · Cindy AI',
+        identity: 'API Key · Watchdog AI',
       }),
     ).toEqual({ authenticated: false, errorReason: 'no_oauth' });
   });

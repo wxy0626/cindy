@@ -125,7 +125,7 @@ describe('mobile native app config', () => {
     process.env.EXPO_PUBLIC_APP_VARIANT = 'beta';
     process.env.EXPO_PUBLIC_BETA_DEV = 'carol';
     expect(buildConfig({ config: appJson.expo }).name).toBe(
-      'Cindy Beta (carol)',
+      'Watchdog Beta (carol)',
     );
   });
 
@@ -601,7 +601,7 @@ describe('mobile native app config', () => {
     expect(audioPlugin).toEqual([
       'expo-audio',
       {
-        microphonePermission: 'Cindy needs microphone access for voice input in remote sessions.',
+        microphonePermission: 'Watchdog needs microphone access for voice input in remote sessions.',
         recordAudioAndroid: true,
         enableBackgroundPlayback: false,
         enableBackgroundRecording: false,
@@ -611,7 +611,7 @@ describe('mobile native app config', () => {
       'expo-image-picker',
       expect.objectContaining({
         microphonePermission:
-          'Cindy needs microphone access for voice input in remote sessions.',
+          'Watchdog needs microphone access for voice input in remote sessions.',
       }),
     ]);
     const foregroundOnlyPluginIndex = appJson.expo.plugins.indexOf(

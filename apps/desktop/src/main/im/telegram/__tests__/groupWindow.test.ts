@@ -103,7 +103,7 @@ describe('recordTelegramGroupMessage', () => {
   });
 
   it('bot 回流条目 isBot=1', async () => {
-    await recordTelegramGroupMessage(entry({ author: { name: 'Cindy', isBot: true } }));
+    await recordTelegramGroupMessage(entry({ author: { name: 'Watchdog', isBot: true } }));
     const row = sqlite.prepare('SELECT is_bot FROM hook_group_messages').get() as {
       is_bot: number;
     };

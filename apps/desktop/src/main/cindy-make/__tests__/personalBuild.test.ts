@@ -473,7 +473,7 @@ describe('personal source integration and packaging', () => {
               args[2],
               'apps/desktop/release/artifacts/global/unversioned',
               process.platform + '-' + process.arch,
-              'Cindy-Setup.exe',
+              'Watchdog-Setup.exe',
             );
             await writeFile(installer, 'modified after packaging');
           }
@@ -543,7 +543,7 @@ describe('personal source integration and packaging', () => {
         'apps',
         'desktop',
         'out',
-        'Cindy-' + process.platform + '-' + process.arch,
+        'Watchdog-' + process.platform + '-' + process.arch,
       );
       vi.spyOn(versionStore, 'retainPersonalVersion').mockImplementation(async (input) => {
         expect(h.locked()).toBe(true);

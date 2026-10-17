@@ -33,7 +33,7 @@ const models = Array.from({ length: 9 }, (_, i) => ({
 }));
 const provider: ProviderView = {
   id: 'xd',
-  name: 'Cindy AI',
+  name: 'Watchdog AI',
   source: 'builtin',
   connected: true,
   auth: { method: 'apiKey' },

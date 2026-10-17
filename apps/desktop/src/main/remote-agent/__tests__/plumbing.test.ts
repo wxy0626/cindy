@@ -80,7 +80,7 @@ describe('tunnel', () => {
       expect((await fetch(`${tunnel.url}/mcp/a?q=1`, { headers: { authorization: `Bearer ${tunnel.token}` } })).status).toBe(200);
       expect((await fetch(`${tunnel.url}/t/${tunnel.token}/mcp/b`)).status).toBe(200);
       expect(seen).toEqual(['/mcp/a?q=1', '/mcp/b']);
-      // Cindy 工具请求也算链路往来，结束后不再计入在途。
+      // Watchdog 工具请求也算链路往来，结束后不再计入在途。
       expect(tunnel.linkActivity()).toMatchObject({ httpInFlight: 0, lastActivityAt: expect.any(Number) });
     } finally {
       await tunnel.close();

@@ -101,7 +101,7 @@ describe('detectGroupTrigger', () => {
 
   it('text_mention 按 user id 认本 bot, 不看字面文本', () => {
     const m = msg({
-      text: 'Cindy 帮我看看',
+      text: 'Watchdog 帮我看看',
       entities: [
         {
           type: 'text_mention',
@@ -129,7 +129,7 @@ describe('detectGroupTrigger', () => {
 
   it('纯 text_mention 保留召唤结果，正文为空', () => {
     const m = msg({
-      text: 'Cindy',
+      text: 'Watchdog',
       entities: [
         {
           type: 'text_mention',

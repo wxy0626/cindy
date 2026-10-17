@@ -39,7 +39,7 @@ async function fixture() {
   await mkdir(userData);
   const profile: VersionProfile = { userData, appName: 'Cindy', region: 'global', passive: false };
   const source = path.join(root, process.platform === 'darwin' ? 'Cindy.app' : 'Cindy');
-  const { resources, executable } = runnableBundlePaths(source, 'Cindy');
+  const { resources, executable } = runnableBundlePaths(source, 'Watchdog');
   await mkdir(path.join(resources, 'drizzle'), { recursive: true });
   await mkdir(path.dirname(executable), { recursive: true });
   await writeFile(executable, 'executable A');

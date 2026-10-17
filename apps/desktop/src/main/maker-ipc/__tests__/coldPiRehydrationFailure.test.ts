@@ -82,7 +82,7 @@ describe('cold Pi rehydration failure diagnostics (#5508)', () => {
     expect(redactLocalPaths('cannot read C:\\Users\\alice\\AppData\\Roaming\\Cindy\\x.json')).toBe('cannot read <path>');
     expect(redactLocalPaths('cannot read ~/Library/Caches/Cindy/session.json')).toBe('cannot read <path>');
     // Segments with spaces are only redacted up to the first space; detail never carries raw messages anyway.
-    expect(redactLocalPaths('cannot read ~/Library/Application Support/Cindy')).toBe('cannot read <path> Support/Cindy');
+    expect(redactLocalPaths('cannot read ~/Library/Application Support/Watchdog')).toBe('cannot read <path> Support/Watchdog');
     expect(new ColdPiRehydrationError('bootstrap-failed', 'x', { detail: `pi binary at ${LOCAL_PATH}/pi` }).detail).toBe(
       'pi binary at <path>',
     );

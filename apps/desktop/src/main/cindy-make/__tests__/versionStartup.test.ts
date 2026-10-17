@@ -16,7 +16,7 @@ function waitForIo(assertion: () => unknown) {
 const h = vi.hoisted(() => ({
   profile: '',
   appPath: '',
-  name: 'Cindy',
+  name: 'Watchdog',
   packaged: false,
   spawn: vi.fn(),
   pty: vi.fn(),
@@ -229,7 +229,7 @@ function launchRequest(patch: Partial<import('../versionStartup').VersionLaunchR
   store.writeVersionJson(startup.versionRequestPath(h.profile, value.id), value);
   return value;
 }
-describe('one original version type for Dev and installed Cindy', () => {
+describe('one original version type for Dev and installed Watchdog', () => {
   it('does nothing beyond normal startup when no personal version exists', async () => {
     startup.prepareCindyVersionStartup();
     expect(await startup.dispatchCindyVersionStartup()).toBe(false);

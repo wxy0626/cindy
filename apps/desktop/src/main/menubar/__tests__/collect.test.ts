@@ -81,7 +81,7 @@ describe('source mapping', () => {
     ]);
   });
 
-  it('leaves local runtimes and the Cindy gateway out of pay-as-you-go', () => {
+  it('leaves local runtimes and the Watchdog gateway out of pay-as-you-go', () => {
     expect(paygSource(provider({ id: 'ollama', auth: { method: 'none' } } as never))).toBeNull();
     expect(paygSource(provider({ id: 'xd', auth: { method: 'apiKey' } } as never))).toBeNull();
     expect(paygSource(provider({ id: 'glm', name: 'GLM', auth: { method: 'apiKey' }, access: { kind: 'api' } } as never))).toMatchObject({

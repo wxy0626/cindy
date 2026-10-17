@@ -308,7 +308,7 @@ export function normalizeBuiltinToolForAutoReview(
  */
 function describeUnknownTool(toolName: string, input: unknown): string {
   const shape = describeInputShape(input);
-  return `Claude Code built-in tool "${toolName}" (not individually classified by Cindy). `
+  return `Claude Code built-in tool "${toolName}" (not individually classified by Watchdog). `
     + `Arguments withheld; structure only: ${shape}`;
 }
 

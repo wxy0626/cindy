@@ -970,7 +970,7 @@ async function inlineLocalResources(
 }
 
 const DESCRIPTION = [
-  '把 HTML 渲染成 PDF(用 Cindy 内置的 Chromium 排版,不需要用户装任何东西)。',
+  '把 HTML 渲染成 PDF(用 Watchdog 内置的 Chromium 排版,不需要用户装任何东西)。',
   '',
   '【何时用】需要精确版式的正式文档:报告、简历、发票、带图表的材料。',
   '推荐做法是先写一份自包含的 HTML(样式内联,不依赖外部 CSS 文件),再用本工具出 PDF。',

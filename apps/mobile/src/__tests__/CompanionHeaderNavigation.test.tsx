@@ -37,7 +37,7 @@ vi.mock('@/session/useTeammateNavigation', () => ({ useTeammateNavigation: () =>
 import { CompanionHeader } from '@/session/CompanionHeader';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root; let host: HTMLDivElement;
-const resource = { ref: { kind: 'bot', collectionId: 'bots', id: 'bot' }, display: { title: 'Cindy' } } as RemoteResource;
+const resource = { ref: { kind: 'bot', collectionId: 'bots', id: 'bot' }, display: { title: 'Watchdog' } } as RemoteResource;
 const button = (id: string) => host.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)!;
 beforeEach(() => {
   vi.clearAllMocks(); h.auth.accountGeneration = 1; h.profile = {}; h.todos = {}; h.screenOptions = [];
@@ -127,7 +127,7 @@ const PageHost = new Function('React', 'useState', 'useHostManagedSession', 'Com
   `${compiled}; return PageHost;`)({ createElement, Fragment }, useState, useHostManagedSession, CompanionHeader, StackScreen);
 const pageBindings = () => ({ auth: h.auth, deviceId: 'pc', sessionId: 'session-a', shareSelectionActive: false,
   companionEntry: { ready: true },
-  companionResource: { ref: { kind: 'bot', collectionId: 'bots', id: 'bot-a' }, display: { title: 'Cindy' } } as RemoteResource | null,
+  companionResource: { ref: { kind: 'bot', collectionId: 'bots', id: 'bot-a' }, display: { title: 'Watchdog' } } as RemoteResource | null,
   setSearchOpen: vi.fn(), goBackToHome: vi.fn(), companionWorkingLabel: null as string | null });
 const showPage = (bindings: ReturnType<typeof pageBindings>) => act(async () => { root.render(<PageHost bindings={bindings} />); });
 

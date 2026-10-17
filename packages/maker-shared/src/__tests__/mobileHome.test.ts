@@ -32,7 +32,7 @@ describe('mobileHome', () => {
       session('make-b', { source: 'cindy-make', workingDir: '/data/cindy/tasks/random-b' }),
       session('merge', { source: 'cindy-make-merge', workingDir: '/data/cindy/merge/random-c' }),
       session('no-dir', { source: 'cindy-make', workspaceKind: 'dialogue', workingDir: null }),
-      session('ordinary', { title: 'Cindy Make', workingDir: '/data/cindy/tasks/random-b' }),
+      session('ordinary', { title: 'Watchdog Make', workingDir: '/data/cindy/tasks/random-b' }),
     ].map((item) => ({ ...item, deviceLinkDeviceId: 'pc', deviceLinkDeviceName: 'My PC' }));
     const home = buildMobileHomePresentation({
       sessions,
@@ -44,7 +44,7 @@ describe('mobileHome', () => {
     const make = home.projects.find((project) => project.kind === 'cindy-make');
     expect(make).toMatchObject({
       key: 'cindy-make:pc',
-      title: 'Cindy Make',
+      title: 'Watchdog Make',
       subtitle: 'My PC',
       workingDir: '',
       sessionCount: 4,
@@ -725,7 +725,7 @@ describe('mobileHome', () => {
 
     expect(home.emptyKind).toBe('noDevice');
     expect(home.emptyNoDevice).toEqual({ reason: 'firstRun', devices: [] });
-    expect(home.emptyTitle).toBe('连接你电脑上的 Cindy');
+    expect(home.emptyTitle).toBe('连接你电脑上的 Watchdog');
     expect(home.emptyCopy).toContain('远程访问');
     expect(home.emptyCopy).toContain('运行在你的电脑上');
   });
@@ -750,7 +750,7 @@ describe('mobileHome', () => {
       ...patch,
     });
 
-    // 全部离线 → offline 引导(打开电脑上的 Cindy)。
+    // 全部离线 → offline 引导(打开电脑上的 Watchdog)。
     const offline = buildMobileHomePresentation({
       devices: [device('mac-a', 'offline', { statusDetail: '3 小时前在线' })],
       sessions: [],
@@ -759,7 +759,7 @@ describe('mobileHome', () => {
       reason: 'offline',
       devices: [{ deviceId: 'mac-a', name: 'mac-a', statusDetail: '3 小时前在线' }],
     });
-    expect(offline.emptyTitle).toBe('打开电脑上的 Cindy');
+    expect(offline.emptyTitle).toBe('打开电脑上的 Watchdog');
 
     // 在线但没开远程控制 → 精确到开关的一步引导,copy 指名设备。
     const remoteDisabled = buildMobileHomePresentation({

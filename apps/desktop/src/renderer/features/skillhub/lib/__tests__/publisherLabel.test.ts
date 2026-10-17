@@ -5,15 +5,15 @@ import { skillPublisherLabel } from '../publisherLabel';
 describe('skillPublisherLabel', () => {
   it('shows both the member publisher and organization owner', () => {
     expect(skillPublisherLabel({
-      publisherName: 'Cindy Publisher',
+      publisherName: 'Watchdog Publisher',
       authorName: 'Acme',
     })).toBe('Cindy Publisher · Acme');
   });
 
   it('does not duplicate a personal owner fallback', () => {
     expect(skillPublisherLabel({
-      publisherName: 'Cindy Publisher',
-      authorName: 'Cindy Publisher',
+      publisherName: 'Watchdog Publisher',
+      authorName: 'Watchdog Publisher',
     })).toBe('Cindy Publisher');
   });
 });

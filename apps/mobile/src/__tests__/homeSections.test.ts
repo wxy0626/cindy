@@ -248,7 +248,7 @@ describe('buildMixedHomeRows / buildGroupedHomeRows', () => {
       chats: [listItem('chat-new', '2026-06-06T00:00:00Z')],
       projects: [{
         ...projectGroup('proj-new', '2026-06-05T00:00:00Z', [listItem('s1', '2026-06-05T00:00:00Z')]),
-        title: 'Cindy',
+        title: 'Watchdog',
       }],
     });
     const namedMixed = buildMixedHomeRows(named, { dialogueTitle: '对话' });

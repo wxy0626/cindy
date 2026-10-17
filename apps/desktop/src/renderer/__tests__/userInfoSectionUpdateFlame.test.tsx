@@ -25,7 +25,7 @@ vi.mock('react-router-dom', () => ({
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { name: 'Cindy user', avatar: null },
+    user: { name: 'Watchdog user', avatar: null },
     mode: 'cloud',
     isCanary: false,
   }),

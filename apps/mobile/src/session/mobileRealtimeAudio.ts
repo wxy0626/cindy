@@ -134,7 +134,7 @@ export async function startMobileRealtimeAudio(
   if (expoAudioModule) {
     return startExpoAudioRealtimeAudio(expoAudioModule, options);
   }
-  throw new UnavailabilityError('Cindy mobile voice input', 'realtime microphone PCM capture');
+  throw new UnavailabilityError('Watchdog mobile voice input', 'realtime microphone PCM capture');
 }
 
 async function startCustomNativeRealtimeAudio(

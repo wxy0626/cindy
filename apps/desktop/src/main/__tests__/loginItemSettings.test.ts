@@ -43,7 +43,7 @@ function fixture(platform: NodeJS.Platform = 'win32', isPackaged = true, executa
         executableWillLaunchAtLogin: settings.openAtLogin === true,
         status: settings.openAtLogin ? 'enabled' : 'not-registered',
         launchItems: settings.openAtLogin
-          ? [{ name: 'Cindy', path: execPath, args: [], scope: 'user', enabled: true }]
+          ? [{ name: 'Watchdog', path: execPath, args: [], scope: 'user', enabled: true }]
           : [],
       };
     }),
@@ -74,7 +74,7 @@ describe('native login startup preference', () => {
     expect(app.setLoginItemSettings).toHaveBeenLastCalledWith({
       path: execPath,
       args: [],
-      name: 'Cindy',
+      name: 'Watchdog',
       openAtLogin: true,
       enabled: true,
     });
@@ -83,7 +83,7 @@ describe('native login startup preference', () => {
     expect(app.setLoginItemSettings).toHaveBeenLastCalledWith({
       path: execPath,
       args: [],
-      name: 'Cindy',
+      name: 'Watchdog',
       openAtLogin: false,
       enabled: false,
     });
@@ -108,8 +108,8 @@ describe('native login startup preference', () => {
       openAtLogin: true,
       launchItems: [
         { name: 'Other entry', path: execPath, args: [], scope: 'user', enabled: true },
-        { name: 'Cindy', path: execPath, args: [], scope: 'machine', enabled: true },
-        { name: 'Cindy', path: execPath, args: ['--other'], scope: 'user', enabled: true },
+        { name: 'Watchdog', path: execPath, args: [], scope: 'machine', enabled: true },
+        { name: 'Watchdog', path: execPath, args: ['--other'], scope: 'user', enabled: true },
       ],
     });
     expect(service.read().enabled).toBe(false);
@@ -129,7 +129,7 @@ describe('native login startup preference', () => {
     changeNative({
       executableWillLaunchAtLogin: true,
       launchItems: [
-        { name: 'Cindy', path: execPath, args: [], scope: 'user', enabled: false },
+        { name: 'Watchdog', path: execPath, args: [], scope: 'user', enabled: false },
         { name: 'Other entry', path: execPath, args: ['--other'], scope: 'user', enabled: true },
       ],
     });

@@ -1802,7 +1802,7 @@ describe('remote sessions share the same permission semantics', () => {
           '/feishu-delegate:message-feishu-coworkers',
         ],
         denialMessage:
-          'This downstream source was not explicitly selected. Use Cindy capability xd-feishu.',
+          'This downstream source was not explicitly selected. Use Watchdog capability xd-feishu.',
       },
       {
         toolNamePrefix: 'AskUserQuestion',

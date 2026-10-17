@@ -1904,7 +1904,7 @@ describe('PluginMarketService migration and defaultInstall', () => {
         publisherSigned: true,
         publisherVerified: true,
         reviewed: true,
-        publisherName: 'Cindy Plugin Market',
+        publisherName: 'Watchdog Plugin Market',
       }),
     );
     runtime.ghosts = [
@@ -2016,7 +2016,7 @@ describe('PluginMarketService migration and defaultInstall', () => {
         publisherSigned: true,
         publisherVerified: true,
         reviewed: true,
-        publisherName: 'Cindy Plugin Market',
+        publisherName: 'Watchdog Plugin Market',
       }),
     );
     runtime.ghosts = [
@@ -2029,7 +2029,7 @@ describe('PluginMarketService migration and defaultInstall', () => {
         publisherSigned: true,
         publisherVerified: true,
         reviewed: true,
-        publisherName: 'Cindy Plugin Market',
+        publisherName: 'Watchdog Plugin Market',
       },
       },
     ];
@@ -2072,7 +2072,7 @@ describe('PluginMarketService migration and defaultInstall', () => {
         publisherSigned: true,
         publisherVerified: true,
         reviewed: true,
-        publisherName: 'Cindy Plugin Market',
+        publisherName: 'Watchdog Plugin Market',
       },
       },
     ];

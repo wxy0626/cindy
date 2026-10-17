@@ -80,7 +80,7 @@ const baseProviders = [
   makeProvider('anthropic', { name: 'Anthropic' }),
   makeProvider('openai', { name: 'OpenAI' }),
   makeProvider('xai', { name: 'xAI' }),
-  makeProvider('xd', { name: 'Cindy AI', auth: { method: 'managed' } as ProviderView['auth'] }),
+  makeProvider('xd', { name: 'Watchdog AI', auth: { method: 'managed' } as ProviderView['auth'] }),
 ];
 
 function LocationProbe() {
@@ -292,7 +292,7 @@ describe('ConnectProviderCard', () => {
     localStorage.setItem('providerOnboarding.dismissedAt', new Date().toISOString());
     providersState.providers = [
       ...baseProviders.slice(0, 3),
-      makeProvider('xd', { name: 'Cindy AI', connected: true }),
+      makeProvider('xd', { name: 'Watchdog AI', connected: true }),
     ];
     renderCard();
 

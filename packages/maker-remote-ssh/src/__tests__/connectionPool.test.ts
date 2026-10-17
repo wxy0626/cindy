@@ -87,7 +87,7 @@ describe('ConnectionPool.hydrate', () => {
     next.identityFile = '/tmp/lab.key';
     next.sshAuthentication = {
       ...initial.sshAuthentication,
-      unsupportedReason: 'Cindy does not evaluate a Match block that may affect this SSH host',
+      unsupportedReason: 'Watchdog does not evaluate a Match block that may affect this SSH host',
     };
 
     await pool.hydrate([next]);

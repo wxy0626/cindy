@@ -104,7 +104,7 @@ describe('buildDesktopCapabilityRoutingPolicy', () => {
     )).toBe(false);
   });
 
-  it('drops the node_repl MCP route when Cindy Browser owns the capability but the companion was not provisioned', () => {
+  it('drops the node_repl MCP route when Watchdog Browser owns the capability but the companion was not provisioned', () => {
     const policy = buildDesktopCapabilityRoutingPolicy({
       cindyBrowserEnabled: true,
       codexBrowserUseAvailable: false,
@@ -122,7 +122,7 @@ describe('buildDesktopCapabilityRoutingPolicy', () => {
     }));
   });
 
-  it('keeps remote Chrome available without claiming the local Cindy Browser replacement', () => {
+  it('keeps remote Chrome available without claiming the local Watchdog Browser replacement', () => {
     const policy = buildDesktopCapabilityRoutingPolicy({
       cindyComputerAvailable: false,
       cindyBrowserEnabled: true,

@@ -201,9 +201,9 @@ export function isSystemPermissionDenialReason(reason: unknown): boolean {
 
 /** Model-visible text on the rejected tool result, never an extra conversation message. */
 export function formatPermissionDenial(source: 'auto' | 'user' | 'system', reason?: string): string {
-  const label = source === 'auto' ? 'Cindy Auto-review denied this tool call'
-    : source === 'user' ? 'User denied this tool call via Cindy'
-      : 'Cindy could not approve this tool call';
+  const label = source === 'auto' ? 'Watchdog Auto-review denied this tool call'
+    : source === 'user' ? 'User denied this tool call via Watchdog'
+      : 'Watchdog could not approve this tool call';
   const detail = reason?.trim().slice(0, 240);
   return detail ? `${label}: ${detail}` : `${label}.`;
 }

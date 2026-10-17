@@ -94,7 +94,7 @@ describe('registerByokImageChannels', () => {
         },
         {
           id: 'xd',
-          name: 'Cindy',
+          name: 'Watchdog',
           source: 'builtin',
           imageModels: [{ id: 'gpt-image-2', name: 'GPT Image 2' }],
         },

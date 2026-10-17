@@ -147,7 +147,9 @@ export function GhostPluginDetailView({
     ghost.trust.publisherSigned &&
     ghost.trust.publisherVerified &&
     ghost.trust.reviewed &&
-    ghost.trust.publisherName === 'Cindy Plugin Market';
+    // 改名前的官方发布者名同样放行：已安装插件的 trust 快照里存的是旧值。
+    (ghost.trust.publisherName === 'Watchdog Plugin Market'
+      || ghost.trust.publisherName === 'Cindy Plugin Market');
   const hasConfiguration =
     hasGithubConnection ||
     detail.hasMainView ||

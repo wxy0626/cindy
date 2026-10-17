@@ -448,7 +448,7 @@ describe('refreshLocalCatalogSnapshot', () => {
     try {
       await prefs.setModelVisibilityOwner('owner-a', 1, 'cloud');
       const provider: ProviderView = {
-        id: 'xd', name: 'Cindy AI', source: 'builtin', connected: true, agents: ['pi'],
+        id: 'xd', name: 'Watchdog AI', source: 'builtin', connected: true, agents: ['pi'],
         auth: { method: 'apiKey' }, routing: {}, models: { pi: [{
           id: 'recommended', name: 'Recommended', defaultEnabled: true,
           contextWindow: 200000, efforts: [], defaultEffort: null,

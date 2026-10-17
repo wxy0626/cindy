@@ -72,7 +72,7 @@ describe('resolveDevKeychainDecision', () => {
       'CindyDev',
       'SomethingElse\n',
       'CindyDev\n\n',
-      ' Cindy \n',
+      ' Watchdog \n',
       '\n',
     ]) {
       const d = resolveDevKeychainDecision({

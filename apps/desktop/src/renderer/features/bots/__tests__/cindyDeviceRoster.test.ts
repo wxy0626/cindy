@@ -26,7 +26,7 @@ describe('Cindy device roster', () => {
     expect(isCindyDeviceBot({ id: 'custom' })).toBe(false);
     const options = cindyDeviceOptions(
       [local],
-      [remote('remote', { id: 'custom', name: 'Cindy' })],
+      [remote('remote', { id: 'custom', name: 'Watchdog' })],
       [],
       {},
       'Local',

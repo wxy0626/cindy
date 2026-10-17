@@ -538,7 +538,7 @@ describe('createPeerUsageSync', () => {
     const h = harness({ listDevices, invoke });
     const sync = createPeerUsageSync(
       withPeerUsageAccessGate(() => {
-        if (!allowed) throw new Error('[PERMISSION_DENIED] Device Link requires a Cindy account.');
+        if (!allowed) throw new Error('[PERMISSION_DENIED] Device Link requires a Watchdog account.');
       }, h.deps),
     );
     await sync.sync();

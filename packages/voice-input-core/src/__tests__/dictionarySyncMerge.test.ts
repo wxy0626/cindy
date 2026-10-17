@@ -278,7 +278,7 @@ describe('dictionary sync — 频次守恒(防重复增长)', () => {
 
   it('手动添加的词条频次为 1,重复添加不再增长', () => {
     const clock = createHlcClock('a', 3_000);
-    const added = addManualEntry(createEmptySyncState(), clock, { text: 'Cindy', nowMs: 3_000 });
+    const added = addManualEntry(createEmptySyncState(), clock, { text: 'Watchdog', nowMs: 3_000 });
     const materialized = materializeDictionary(added.state);
     expect(materialized.entries).toHaveLength(1);
     expect(materialized.entries[0].frequency).toBe(1);
@@ -322,7 +322,7 @@ describe('dictionary sync — 别名合并', () => {
   it('别名等于词条本身时被丢弃', () => {
     const clock = createHlcClock('a', 5_000);
     const result = recordLearningEvent(createEmptySyncState(), clock, {
-      text: 'Cindy',
+      text: 'Watchdog',
       aliases: ['cindy', 'sindy'],
       stage: 'entry',
       nowMs: 5_000,

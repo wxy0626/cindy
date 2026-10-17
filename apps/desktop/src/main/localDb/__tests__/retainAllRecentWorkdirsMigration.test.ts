@@ -130,7 +130,7 @@ describe('0106 retain all recent workdirs migration', () => {
     expect(recentRows()).toEqual([{ path: '/workspace/project-a', last_used_at: 3_000 }]);
   });
 
-  it('excludes remote projects and Cindy-managed worktrees', () => {
+  it('excludes remote projects and Watchdog-managed worktrees', () => {
     seedSession({
       id: 'remote',
       path: '/workspace/remote',

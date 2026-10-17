@@ -100,7 +100,7 @@ export async function resolveAuth(host: HostConfig): Promise<ResolvedAuth> {
     // environment).
     if (host.sshAuthentication?.identitiesOnly
       && (!allowedFingerprints || allowedFingerprints.length === 0)) {
-      throwUnsupported('IdentitiesOnly yes has no public key Cindy can use to pin the agent');
+      throwUnsupported('IdentitiesOnly yes has no public key Watchdog can use to pin the agent');
     }
 
     let endpoint: string;
@@ -158,7 +158,7 @@ export async function resolveAuth(host: HostConfig): Promise<ResolvedAuth> {
 
 function throwUnsupported(reason: string): never {
   const error = new Error(
-    `SSH config authentication is outside Cindy's supported subset: ${reason}. `
+    `SSH config authentication is outside Watchdog's supported subset: ${reason}. `
     + 'Terminal ssh may still work with this configuration.',
   );
   (error as { code?: string }).code = SSH_CONFIG_AUTH_UNSUPPORTED_CODE;

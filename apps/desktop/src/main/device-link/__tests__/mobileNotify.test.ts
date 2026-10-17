@@ -153,7 +153,7 @@ it('uses final-message identity for completed replies, allowing distinct replies
   expect(dedupe.shouldSend('bot', 'done', 100_000, 'answer-2')).toBe(false);
 });
 it('sends plain text to APNs, not Markdown or image paths', () => {
-  const payload = { sessionId: 'bot', title: 'Cindy', kind: 'done' as const, selfDeviceId: 'home', fallbackBody: 'New reply' };
+  const payload = { sessionId: 'bot', title: 'Watchdog', kind: 'done' as const, selfDeviceId: 'home', fallbackBody: 'New reply' };
   expect(buildSessionNotifyPayload({ ...payload, detail: '**Report** [ready](https://example.com) `a_b`' }).body).toBe('Report ready a_b');
   expect(buildSessionNotifyPayload({ ...payload, detail: '![private](/private/file.png)' }).body).toBe('New reply');
 });

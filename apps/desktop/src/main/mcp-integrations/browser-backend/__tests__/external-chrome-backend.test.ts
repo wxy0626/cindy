@@ -915,7 +915,7 @@ describe('ExternalChromeBackend proxy lifecycle', () => {
   });
 
   it('refuses ordinary actions while a live browser has an unknown route', async () => {
-    // Cindy restarted and inherited a Chrome from a previous proxied start:
+    // Watchdog restarted and inherited a Chrome from a previous proxied start:
     // route is unknown, the process is alive. Running the action anyway would
     // attach to it, egress through the OLD proxy while this backend reports
     // direct, and the previous instance's request gate is gone. Only

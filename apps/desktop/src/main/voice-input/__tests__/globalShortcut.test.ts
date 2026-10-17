@@ -1441,7 +1441,7 @@ describe('voice input global shortcut registration', () => {
     // listener 不只会返回 { ok: false }，还会抛：dev 下 helper 源码缺失直接 throw、
     // swiftc 失败时 execFile 的 reject 带 stderr，两者都含内部绝对路径。不接住的话
     // handler 直接 reject，原始消息过桥给 renderer，errorCode 分支也走不到。
-    const INTERNAL_PATH = '/Users/someone/Library/Application Support/Cindy/voice-input/helper';
+    const INTERNAL_PATH = '/Users/someone/Library/Application Support/Watchdog/voice-input/helper';
 
     it('does not leak internal paths when the listener throws while setting a shortcut', async () => {
       setPlatform('darwin');
@@ -2161,7 +2161,7 @@ describe('voice input global shortcut registration', () => {
       it(`rejects ${channel} when the generic trusted-renderer gate fails`, async () => {
         setPlatform('darwin');
         mocks.assertTrustedAppRenderer.mockImplementation(() => {
-          throw new Error('[PERMISSION_DENIED] 此操作只能从 Cindy 主页面发起');
+          throw new Error('[PERMISSION_DENIED] 此操作只能从 Watchdog 主页面发起');
         });
         const { registerGlobalVoiceInputIpc } = await import('../global.js');
         registerGlobalVoiceInputIpc(mocks.ipcDeps);
@@ -2195,7 +2195,7 @@ describe('voice input global shortcut registration', () => {
       mocks.requestInputMonitoring.mockResolvedValue({
         ok: false,
         status: 'unknown',
-        error: 'spawn /Users/someone/Library/Application Support/Cindy/voice-input/helper ENOENT',
+        error: 'spawn /Users/someone/Library/Application Support/Watchdog/voice-input/helper ENOENT',
       });
       const { registerGlobalVoiceInputIpc } = await import('../global.js');
       registerGlobalVoiceInputIpc(mocks.ipcDeps);

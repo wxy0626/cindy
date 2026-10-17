@@ -19,7 +19,7 @@ describe('desktop process identity probes', () => {
 
   it.each(['', '{', 'null', '{}', '{"startedAtMs":0,"executablePath":"C:\\\\Cindy.exe"}',
     JSON.stringify({ ...windowsIdentity, executablePath: null }),
-    JSON.stringify({ ...windowsIdentity, executablePath: 'Cindy.exe' }),
+    JSON.stringify({ ...windowsIdentity, executablePath: 'Watchdog.exe' }),
   ])('keeps missing or malformed process evidence unknown: %s', async (stdout) => {
     expect(await readDesktopProcessIdentity(4242, 'win32', async () => ({ stdout }))).toBeNull();
   });

@@ -129,10 +129,22 @@ export const CINDY_OFFICIAL_GHOST_TRUST: GhostTrustInfo = Object.freeze({
   publisherSigned: true,
   publisherVerified: true,
   reviewed: true,
-  publisherName: 'Cindy Plugin Market',
+  publisherName: 'Watchdog Plugin Market',
 });
 
 export type GhostHostTrustOverride = 'cindy-official';
+
+/**
+ * 改名前的官方发布者名。已安装插件的 `.cindy-trust.json` 里存的是旧值，
+ * 改名不能把既有官方插件降级成第三方，因此校验同时接受新旧两个值；
+ * 新写入的一律用 CINDY_OFFICIAL_GHOST_TRUST.publisherName。
+ */
+const LEGACY_OFFICIAL_PUBLISHER_NAMES: ReadonlySet<string> = new Set(['Cindy Plugin Market']);
+
+function isOfficialPublisherName(name: string | undefined): boolean {
+  if (name === CINDY_OFFICIAL_GHOST_TRUST.publisherName) return true;
+  return typeof name === 'string' && LEGACY_OFFICIAL_PUBLISHER_NAMES.has(name);
+}
 
 /**
  * 判断一个已投影的 trust 是否确实来自完整官方 receipt。
@@ -149,7 +161,7 @@ export function isCindyOfficialTrustInfo(
     trust.publisherSigned === CINDY_OFFICIAL_GHOST_TRUST.publisherSigned &&
     trust.publisherVerified === CINDY_OFFICIAL_GHOST_TRUST.publisherVerified &&
     trust.reviewed === CINDY_OFFICIAL_GHOST_TRUST.reviewed &&
-    trust.publisherName === CINDY_OFFICIAL_GHOST_TRUST.publisherName
+    isOfficialPublisherName(trust.publisherName)
   );
 }
 

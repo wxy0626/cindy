@@ -140,7 +140,7 @@ describe('区域解析与派生', () => {
     expect(resolveCindyRegion('cn')).toBe('cn');
     expect(resolveCindyRegion('global')).toBe('global');
     expect(resolveCindyRegion('GLOBAL')).toBe('global');
-    expect(() => resolveCindyRegion('us')).toThrow(/Invalid Cindy region/);
+    expect(() => resolveCindyRegion('us')).toThrow(/Invalid Watchdog region/);
   });
 
   it('brandAppId / brandBundleIdPrefix 按区域取值,默认 global', () => {

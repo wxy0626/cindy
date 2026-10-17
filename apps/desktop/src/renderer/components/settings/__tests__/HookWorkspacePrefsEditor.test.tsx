@@ -111,7 +111,7 @@ const TELEGRAM_REBOUND: SlackHookView = {
       ...TELEGRAM_CONFIRMED.telegram.binding!,
       bindingId: 'binding-2',
       principalId: 'user-2',
-      principalName: 'Another Cindy User',
+      principalName: 'Another Watchdog User',
     },
   },
 };

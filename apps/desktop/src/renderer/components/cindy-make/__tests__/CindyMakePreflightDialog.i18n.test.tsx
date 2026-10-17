@@ -50,7 +50,7 @@ describe('Cindy Make close confirmation with real translations', () => {
       locale: 'en',
       resource: en,
       close: 'Dismiss',
-      title: 'Close Cindy Make?',
+      title: 'Close Watchdog Make?',
       keep: 'Keep Viewing',
       source: 'Source preparation is still running.',
       complete: 'Preparation is complete, but work has not started.',

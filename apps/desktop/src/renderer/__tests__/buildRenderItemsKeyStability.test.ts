@@ -57,7 +57,7 @@ const mkAssistant = (id: string, content = 'ok'): ChatMessage => ({
   content,
 });
 
-it('keeps persistent Cindy Make progress visible in the message timeline', () => {
+it('keeps persistent Watchdog Make progress visible in the message timeline', () => {
   const built = buildRenderItems([
     mkUser('u1', '之前的消息'),
     {

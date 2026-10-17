@@ -47,7 +47,7 @@ describe('account-scoped home navigation overrides', () => {
   });
   it('rejects malformed identities and never saves extra Session/profile fields', () => {
     expect(normalizeHomeNavigationPreferences({ mode: 'unknown', lastTeammate: { resourceId: 'id' } })).toEqual({});
-    expect(normalizeHomeNavigationPreferences({ mode: 'teammates', lastTeammate: { ...teammateIdentity(row()), sessionId: 'cached', name: 'Cindy' } }))
+    expect(normalizeHomeNavigationPreferences({ mode: 'teammates', lastTeammate: { ...teammateIdentity(row()), sessionId: 'cached', name: 'Watchdog' } }))
       .toEqual({ mode: 'teammates', lastTeammate: teammateIdentity(row()) });
   });
 });

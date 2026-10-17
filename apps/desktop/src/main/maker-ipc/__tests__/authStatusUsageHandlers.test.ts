@@ -827,7 +827,7 @@ describe('maker auth IPC handlers', () => {
     const triggerAgentLogin = vi.fn().mockResolvedValue({
       authenticated: true,
       authSource: 'api-key',
-      identity: 'API Key · Cindy AI',
+      identity: 'API Key · Watchdog AI',
     });
 
     registerMakerAuthHandlers(

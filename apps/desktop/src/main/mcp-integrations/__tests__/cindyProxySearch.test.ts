@@ -48,7 +48,7 @@ describe('cindyProxySearch', () => {
               content: [
                 {
                   type: 'web_search_result',
-                  title: 'Cindy',
+                  title: 'Watchdog',
                   url: 'https://example.test/cindy',
                 },
                 {
@@ -64,7 +64,7 @@ describe('cindyProxySearch', () => {
               citations: [
                 {
                   type: 'web_search_result_location',
-                  title: 'Cindy',
+                  title: 'Watchdog',
                   url: 'https://example.test/cindy',
                   cited_text: 'Cindy search result',
                 },
@@ -93,7 +93,7 @@ describe('cindyProxySearch', () => {
       fetchImpl,
     });
 
-    const result = await service.search({ query: 'Cindy', limit: 3 });
+    const result = await service.search({ query: 'Watchdog', limit: 3 });
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -125,7 +125,7 @@ describe('cindyProxySearch', () => {
       webSearchRequests: 2,
       results: [
         {
-          title: 'Cindy',
+          title: 'Watchdog',
           url: 'https://example.test/cindy',
           snippet: 'Cindy search result',
         },
@@ -154,7 +154,7 @@ describe('cindyProxySearch', () => {
         getApiKey: () => apiKey,
         fetchImpl,
       });
-      await expect(service.search({ query: 'Cindy', limit: 5 })).resolves.toMatchObject({
+      await expect(service.search({ query: 'Watchdog', limit: 5 })).resolves.toMatchObject({
         ok: false,
         errorCode: 'NOT_CONFIGURED',
         requestStarted: false,
@@ -195,7 +195,7 @@ describe('cindyProxySearch', () => {
           response(testCase.body, { status: testCase.status }),
         ) as unknown as typeof fetch,
       });
-      await expect(service.search({ query: 'Cindy', limit: 5 })).resolves.toMatchObject({
+      await expect(service.search({ query: 'Watchdog', limit: 5 })).resolves.toMatchObject({
         ok: false,
         errorCode: testCase.code,
         requestStarted: true,
@@ -217,7 +217,7 @@ describe('cindyProxySearch', () => {
         }),
       ) as unknown as typeof fetch,
     });
-    await expect(malformed.search({ query: 'Cindy', limit: 5 })).resolves.toMatchObject({
+    await expect(malformed.search({ query: 'Watchdog', limit: 5 })).resolves.toMatchObject({
       ok: false,
       errorCode: 'RESPONSE_INVALID',
     });
@@ -238,7 +238,7 @@ describe('cindyProxySearch', () => {
         fetchImpl: vi.fn(async () => response(body)) as unknown as typeof fetch,
       });
 
-      await expect(service.search({ query: 'Cindy', limit: 5 })).resolves.toMatchObject({
+      await expect(service.search({ query: 'Watchdog', limit: 5 })).resolves.toMatchObject({
         ok: true,
         results: [],
       });
@@ -273,7 +273,7 @@ describe('cindyProxySearch', () => {
         ) as unknown as typeof fetch,
       });
 
-      await expect(service.search({ query: 'Cindy', limit: 5 })).resolves.toMatchObject({
+      await expect(service.search({ query: 'Watchdog', limit: 5 })).resolves.toMatchObject({
         ok: false,
         errorCode: testCase.code,
         status: 200,
@@ -300,7 +300,7 @@ describe('cindyProxySearch', () => {
       log: { info: vi.fn(), warn },
     });
 
-    await expect(service.search({ query: 'Cindy', limit: 5 })).resolves.toMatchObject({
+    await expect(service.search({ query: 'Watchdog', limit: 5 })).resolves.toMatchObject({
       ok: false,
       errorCode: 'UPSTREAM_UNAVAILABLE',
       requestStarted: true,

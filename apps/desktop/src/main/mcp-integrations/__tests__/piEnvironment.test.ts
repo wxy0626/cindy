@@ -1042,7 +1042,7 @@ describe('piEnvironment per-session identity', () => {
       result?: { isError?: boolean; content?: { text?: string }[] };
     };
     expect(result.result?.isError).toBe(true);
-    expect(result.result?.content?.[0]?.text).toContain('verified Cindy session');
+    expect(result.result?.content?.[0]?.text).toContain('verified Watchdog session');
   });
 
   it('registers the worker bridge before the Pi session role is available', async () => {

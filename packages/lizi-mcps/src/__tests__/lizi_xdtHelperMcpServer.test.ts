@@ -386,8 +386,8 @@ describe("cindy_helper MCP server", () => {
         ]),
       );
       expect(tools.map((tool) => tool.name)).not.toContain("collaborate_with_bot");
-      expect(sessionTaskTool?.description).toContain("real independent Cindy Session task");
-      expect(sessionTaskTool?.description).toContain("never calls a Cindy Bot");
+      expect(sessionTaskTool?.description).toContain("real independent Watchdog Session task");
+      expect(sessionTaskTool?.description).toContain("never calls a Watchdog Bot");
       expect(sessionTaskTool?.description).toContain("A repository, multiple files, tools, or a deliverable alone is not a reason to delegate");
       expect(sessionTaskTool?.description).toContain("the user explicitly requests an independent task");
       expect(

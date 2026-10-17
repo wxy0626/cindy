@@ -77,7 +77,7 @@ const DESCRIPTION = [
   '2) Bug 和功能建议都遵循最小公开原则:默认概括、泛化用户提供的场景与示例,不要逐字复制用户消息、会话标题、真实姓名、账号、业务内容或其它可识别信息。只有复现问题确实需要且用户明确同意公开时,才保留最小必要片段。Bug 可以主动收集用户提供的错误摘要、经过脱敏的日志片段和必要截图说明,但先解释会公开到 GitHub,取得用户同意后再纳入正文。优先摘要而不是整段原始日志;不要提交令牌、密码、邮箱、个人路径、内部域名、私有代码或与问题无关的文件内容。本工具不能把对话里的图片传到 GitHub。禁止写「已提供截图」「截图见上」等让维护者以为 GitHub issue 里有图的话;用户给过图时,用文字描述图上可见内容。系统会在确认卡前自动隐藏部分常见敏感信息,但不能识别所有语义隐私,仍要让用户检查最终正文。',
   '2a) 用户明确同意后才传 include_related_logs=true;系统生成的「相关日志」模块会固定放在 issue 正文中,方便维护者识别故障上下文。不要把本地日志原文直接复制到 body。',
   '3) 本工具被调用后会在 App 内弹出系统确认卡片,用户可以编辑标题/正文并确认或取消;最终提交内容以用户确认的版本为准(返回的 final_title 可能与你传入的不同)。确认前不得创建 issue。',
-  '4) Cindy 官方 Bot 是默认且始终可用的提交身份,不要求用户安装插件或配置 GitHub。仅当系统实时验证到可用的 Cindy GitHub 账号时,确认卡才额外提供“用本人账号提交”的选项(受其 token 仓库权限约束)。用户确认身份后,提交失败不会静默切换身份。',
+  '4) Watchdog 官方 Bot 是默认且始终可用的提交身份,不要求用户安装插件或配置 GitHub。仅当系统实时验证到可用的 Watchdog GitHub 账号时,确认卡才额外提供“用本人账号提交”的选项(受其 token 仓库权限约束)。用户确认身份后,提交失败不会静默切换身份。',
   '5) errorCode 语义: USER_CANCELLED = 用户主动取消了本次提交,如实告知即可,不要换参数自动重试; CONFIRM_TIMEOUT = 确认卡片超时无人响应(用户可能不在电脑前),告知用户可以再说一声重新发起; AUTH_NOT_READY / NETWORK_ERROR / SERVER_ERROR / HOST_NOT_READY = 提交失败,如实转告原因,不存在任何绕过确认、权限或失败的提交途径。',
   '6) 系统自动附加「提交时的任务环境」快照(客户端版本 / 版本区域 / 提交客户端 OS / 当前任务的 Harness / 模型 ID / 界面语言);GitHub 作者就是确认卡片显示的身份——这些快照字段无需也无法由你填写。系统自动附加的 Harness / Model ID 是当前任务的快照,不一定是出问题的那个;不要复制进正文。用户说明的实际故障 Harness / 模型 / 推理强度,只在真正有助于定位时写入正文。版本区域是用户装的哪个区域构建(CN / Dev,默认的 global 构建不标注),构建期烘焙,你猜不到也不要写。',
   `7) 提交成功后告诉用户 issue 编号和链接,说明 ${BRAND_NAME} 是开源软件,并询问用户是否愿意继续参与:可以协助其通过源码复现、修复 Bug、开发功能、补测试并准备 PR。`,
@@ -100,7 +100,7 @@ const OPEN_SOURCE_FOLLOW_UP = {
   repository_url: 'https://github.com/makecindy/cindy',
   license: 'Apache-2.0',
   invitation:
-    'Cindy is open source. If the user is interested, offer help with reproducing the issue, editing the source, adding tests, and preparing a pull request.',
+    'Watchdog is open source. If the user is interested, offer help with reproducing the issue, editing the source, adding tests, and preparing a pull request.',
 } as const;
 
 export function registerSubmitGithubIssueTool(

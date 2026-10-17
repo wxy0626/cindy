@@ -25,7 +25,7 @@ export function parsePiManagementArgs(args: readonly string[]): PiManagementPars
   if (rest.length === 1 && ['--help', '-h'].includes(rest[0])) return { action: 'command', command: { kind: 'help', topic: verb } };
   if (rest.some(arg => ['-l', '--local', '-a', '--approve'].includes(arg))) return bad('Project-local Pi management is not supported by this entry. Existing project trust is unchanged.');
   rest = rest.filter(arg => !['--no-approve', '-na'].includes(arg));
-  if (verb === 'config') return bad('pi config requires an interactive terminal. Use Cindy Settings → Pi packages to manage installed resources.');
+  if (verb === 'config') return bad('pi config requires an interactive terminal. Use Watchdog Settings → Pi packages to manage installed resources.');
   if (verb === 'list') return rest.length ? bad('pi list does not accept these arguments.') : { action: 'command', command: { kind: 'list' } };
   if (verb === 'install' || verb === 'remove') return rest.length === 1 && !rest[0].startsWith('-')
     ? { action: verb, source: rest[0] } : bad('Pi install/remove requires exactly one package source.');
@@ -36,7 +36,7 @@ export function parsePiManagementArgs(args: readonly string[]): PiManagementPars
   if (rest.length === 2 && rest.includes('--extensions') && rest.some(arg => ['--self', 'self', 'pi'].includes(arg))) return { action: 'command', command: { kind: 'all', force } };
   if (force) return bad('--force is supported only for Pi core updates.');
   if (rest.length === 1 && rest[0] === '--extensions') return { action: 'command', command: { kind: 'extensions' } };
-  if (rest.length === 1 && rest[0] === '--models') return bad('pi update --models is not yet supported for Cindy-managed provider catalogs. Use the existing provider model refresh entry.');
+  if (rest.length === 1 && rest[0] === '--models') return bad('pi update --models is not yet supported for Watchdog-managed provider catalogs. Use the existing provider model refresh entry.');
   if (rest.length === 2 && rest[0] === '--extension' && !rest[1].startsWith('-')) return { action: 'update', source: rest[1] };
   if (rest.length === 1 && !rest[0].startsWith('-')) return { action: 'update', source: rest[0] };
   return bad('Unknown or conflicting Pi update arguments. Use pi update --help.');

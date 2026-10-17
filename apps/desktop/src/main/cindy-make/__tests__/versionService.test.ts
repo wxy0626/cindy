@@ -43,7 +43,7 @@ async function seedPersonal(target: string, commit: string) {
     id: target,
     profile: h.original.profile,
     title: 'Old task title',
-    version: `Cindy Make ${target.slice(0, 8)}`,
+    version: `Watchdog Make ${target.slice(0, 8)}`,
     commit,
     builtAt: '2026-09-22T12:00:00+08:00',
     platform: process.platform,

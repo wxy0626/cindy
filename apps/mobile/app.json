@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Cindy",
+    "name": "Watchdog",
     "slug": "xdt-maker-mobile",
     "scheme": "cindycn",
     "version": "0.1.0",
@@ -141,7 +141,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Cindy needs microphone access for voice input in remote sessions.",
+          "microphonePermission": "Watchdog needs microphone access for voice input in remote sessions.",
           "recordAudioAndroid": true,
           "enableBackgroundPlayback": false,
           "enableBackgroundRecording": false
@@ -150,15 +150,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Cindy needs photo library access to attach images to remote sessions.",
-          "cameraPermission": "Cindy needs camera access to attach photos to remote sessions.",
-          "microphonePermission": "Cindy needs microphone access for voice input in remote sessions."
+          "photosPermission": "Watchdog needs photo library access to attach images to remote sessions.",
+          "cameraPermission": "Watchdog needs camera access to attach photos to remote sessions.",
+          "microphonePermission": "Watchdog needs microphone access for voice input in remote sessions."
         }
       ],
       [
         "expo-media-library",
         {
-          "photosPermission": "Cindy needs photo library access to show recent photos and screenshots for quick attaching.",
+          "photosPermission": "Watchdog needs photo library access to show recent photos and screenshots for quick attaching.",
           "savePhotosPermission": false,
           "isAccessMediaLocationEnabled": false,
           "granularPermissions": []

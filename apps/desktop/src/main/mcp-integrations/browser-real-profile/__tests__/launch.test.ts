@@ -547,7 +547,7 @@ describe('wrapRuntimeWithRealProfile', () => {
     const pickCdpPort = vi.fn(async () => 18801);
     const wrapped = wrapRuntimeWithRealProfile(inner, {
       isEnabled: () => false,
-      getRuntimeDir: () => '/Users/dash/Library/Application Support/Cindy-dev2/browser-runtime',
+      getRuntimeDir: () => '/Users/dash/Library/Application Support/Watchdog-dev2/browser-runtime',
       applyConfig,
       pickCdpPort,
     });
@@ -663,7 +663,7 @@ describe('wrapRuntimeWithRealProfile', () => {
     const pickCdpPort = vi.fn(async () => 18801);
     const wrapped = wrapRuntimeWithRealProfile(inner, {
       isEnabled: () => false,
-      getRuntimeDir: () => '/Users/dash/Library/Application Support/Cindy-dev2/browser-runtime',
+      getRuntimeDir: () => '/Users/dash/Library/Application Support/Watchdog-dev2/browser-runtime',
       applyConfig,
       pickCdpPort,
     });

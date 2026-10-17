@@ -16,7 +16,7 @@ function fixture(runId = 'task-run') {
     originSessionId: 'origin',
     runId,
     request: 'fix scrolling',
-    title: 'Cindy Make: fix scrolling',
+    title: 'Watchdog Make: fix scrolling',
   };
   const report: MakeDoctorReport = {
     runId,

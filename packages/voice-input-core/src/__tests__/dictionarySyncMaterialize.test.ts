@@ -151,7 +151,7 @@ describe('dictionary sync — 物化语义', () => {
     const b = device('b', 4_000);
     learn(a, 'Cindy', 1_000);
     b.state = mergeSyncStates(b.state, a.state);
-    const added = addManualEntry(b.state, b.clock, { text: 'Cindy', nowMs: 5_000 });
+    const added = addManualEntry(b.state, b.clock, { text: 'Watchdog', nowMs: 5_000 });
     b.state = added.state;
 
     // 之后 A 继续自动学习,也不会把来源退回 automatic。

@@ -109,7 +109,7 @@ async function fixture() {
           files: [
             {
               role: 'installer',
-              name: 'Cindy.exe',
+              name: 'Watchdog.exe',
               sha256: createHash('sha256').update('installer').digest('hex'),
             },
           ],

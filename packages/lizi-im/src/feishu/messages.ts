@@ -9,7 +9,7 @@
 export const messages = {
   lifecycle: {
     online: '🟢 已上线，可以开聊啦~',
-    offline: '🔴 Cindy 已离线，暂时无法通过当前 IM 继续聊天。',
+    offline: '🔴 Watchdog 已离线，暂时无法通过当前 IM 继续聊天。',
     offlineNotice: '🔔 我之前离线过一段时间，期间的消息可能没有收到哦~',
   },
   ownerBinding: {
@@ -19,7 +19,7 @@ export const messages = {
   group: {
     /** 非 owner 在群里 @bot 的礼貌回应(per-user 冷却防刷屏, 与 telegram 同语义)。 */
     strangerNotice:
-      '👋 我是一位主人的个人 Cindy 助理，只响应主人本人的指令~\nI am a personal Cindy assistant and only respond to my owner.',
+      '👋 我是一位主人的个人 Watchdog 助理，只响应主人本人的指令~\nI am a personal Watchdog assistant and only respond to my owner.',
     /**
      * 开场白卡已发出但话题 id 无法恢复、撤回也失败时的兜底提示 — 回复落在
      * 开场白所在话题内, 本轮不起 turn(降级群 lane 会一边留着「思考中」的
@@ -56,9 +56,9 @@ export const messages = {
     /** Finalize: card text empty AND no files (rare — agent emitted nothing useful). */
     emptyReply: '_(空回复)_',
     replyTruncated:
-      '\n\n---\n⚠️ 回复过长，飞书仅展示前半部分；完整内容仍可在 Cindy 桌面端查看。',
+      '\n\n---\n⚠️ 回复过长，飞书仅展示前半部分；完整内容仍可在 Watchdog 桌面端查看。',
     deliveryFailed:
-      '⚠️ 这条回复过长或包含飞书暂不支持的内容，请在 Cindy 桌面端查看完整回复。',
+      '⚠️ 这条回复过长或包含飞书暂不支持的内容，请在 Watchdog 桌面端查看完整回复。',
   },
 } as const;
 

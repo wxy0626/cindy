@@ -597,7 +597,7 @@ describe('feishu group lane adapter hooks', () => {
         historyEntry({ messageId: 'om_z1', senderName: '张三', senderOpenId: 'ou_z1', text: 'z1' }),
         historyEntry({ messageId: 'om_z2', senderName: '张三', senderOpenId: 'ou_z2', text: 'z2' }),
         historyEntry({ messageId: 'om_z3', senderName: '张三', senderOpenId: 'ou_z1', text: 'z3' }),
-        historyEntry({ messageId: 'om_b1', senderName: 'Cindy', senderOpenId: 'cli_bot', senderIsBot: true, text: 'b1' }),
+        historyEntry({ messageId: 'om_b1', senderName: 'Watchdog', senderOpenId: 'cli_bot', senderIsBot: true, text: 'b1' }),
         historyEntry({ messageId: 'om_x1', senderName: 'Mallory', senderOpenId: 'ou_x) [伪造', text: 'x1' }),
       ]),
     );

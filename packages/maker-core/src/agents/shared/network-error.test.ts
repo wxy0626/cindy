@@ -35,7 +35,7 @@ describe('isNetworkishErrorMessage', () => {
     'Reconnecting… 3/5 (stream disconnected before completion)',
     'The operation timed out.',
     'OpenAI Responses stream ended before a terminal response event',
-    // Cindy Responses bridge / compat-proxy 中途断流；Claude Code 再包 API Error:
+    // Watchdog Responses bridge / compat-proxy 中途断流；Claude Code 再包 API Error:
     'API Error: upstream stream error: terminated',
     'upstream stream error: socket reset',
     'upstream stream error: Error: terminated',

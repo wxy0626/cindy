@@ -90,6 +90,13 @@ describe('subagentSpawnResultIndicatesRunning', () => {
   it('recognises the durable PI launch receipt', () => {
     expect(subagentSpawnResultIndicatesRunning(
       'subagent',
+      'Watchdog subagent launched. The agent is working in the background.',
+    )).toBe(true);
+  });
+
+  it('still recognises the pre-rename PI launch receipt kept in old sessions', () => {
+    expect(subagentSpawnResultIndicatesRunning(
+      'subagent',
       'Cindy subagent launched. The agent is working in the background.',
     )).toBe(true);
   });

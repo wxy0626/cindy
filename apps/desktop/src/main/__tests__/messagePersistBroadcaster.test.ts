@@ -2803,7 +2803,7 @@ describe('stale-idle assistant late final identity', () => {
     const meta = { requestId: 'req-stale-idle', uuid: 'assistant-stale-idle' };
     const persistId = onAssistantTextEvent(
       SESSION,
-      { text: 'Cindy 能够理解多轮对', isFinal: false },
+      { text: 'Watchdog 能够理解多轮对', isFinal: false },
       meta,
     );
     sealAssistantBlockForLateFinal(SESSION, null);
@@ -2813,7 +2813,7 @@ describe('stale-idle assistant late final identity', () => {
 
     const lateFinalId = onAssistantTextEvent(
       SESSION,
-      { text: 'Cindy 能够理解多轮对', isFinal: true, isFullText: true },
+      { text: 'Watchdog 能够理解多轮对', isFinal: true, isFullText: true },
       { ...meta, uuid: 'assistant-late-snapshot', stopReason: 'stop_sequence' },
     );
     expect(lateFinalId).toBe(persistId);

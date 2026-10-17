@@ -650,7 +650,7 @@ describe('builtinGhostProvisioner locale validation', () => {
       JSON.stringify({
         schemaVersion: 2,
         id: 'cindy-github',
-        name: 'Cindy GitHub',
+        name: 'Watchdog GitHub',
         version: '1.0.0',
         entry: 'main.js',
         slots: ['tool'],
@@ -662,7 +662,7 @@ describe('builtinGhostProvisioner locale validation', () => {
     const trustPath = path.join(repoRoot, 'cindy-github', '.cindy-trust.json');
     expect(JSON.parse(await fs.promises.readFile(trustPath, 'utf8'))).toMatchObject({
       level: 'cindy-official',
-      publisherName: 'Cindy Plugin Market',
+      publisherName: 'Watchdog Plugin Market',
     });
 
     await fs.promises.writeFile(path.join(repoRoot, 'cindy-github', '.disabled'), '');
@@ -681,7 +681,7 @@ describe('builtinGhostProvisioner locale validation', () => {
       publisherSigned: true,
       publisherVerified: true,
       reviewed: true,
-      publisherName: 'Cindy Plugin Market',
+      publisherName: 'Watchdog Plugin Market',
     });
     expect(fs.existsSync(path.join(repoRoot, 'cindy-github', '.disabled'))).toBe(true);
     expect(await fs.promises.readFile(path.join(repoRoot, 'cindy-github', 'main.js'), 'utf8'))

@@ -1573,7 +1573,7 @@ describe('HookConnectionsSection binding actions (Telegram / X)', () => {
           teamId: 'team-1',
           teamName: 'Cindy Team',
           slackUserId: 'user-1',
-          slackUserName: 'Cindy User',
+          slackUserName: 'Watchdog User',
           displaced,
         },
       ],
@@ -1621,7 +1621,7 @@ describe('HookConnectionsSection binding actions (Telegram / X)', () => {
       serverSlackCommunications: true,
       bindings: [{
         teamId: 'team-1', teamName: 'Cindy Team', slackUserId: 'user-1',
-        slackUserName: 'Cindy User', displaced: true, communicationsEnabled: true,
+        slackUserName: 'Watchdog User', displaced: true, communicationsEnabled: true,
       }],
     };
     ipc.get.mockResolvedValue({ hook: initial });

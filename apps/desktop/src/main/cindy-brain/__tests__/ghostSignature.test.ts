@@ -189,7 +189,7 @@ describe('ghostSignature · Cindy 审核签名', () => {
       await verifyGhostZipSignatures(zip, '', MANIFEST, {
         reviewers: {
           [doc.review!.keyId]: {
-            name: 'Cindy Security Review',
+            name: 'Watchdog Security Review',
             publicKey: reviewerPublicDer.toString('base64'),
           },
         },
@@ -200,7 +200,7 @@ describe('ghostSignature · Cindy 审核签名', () => {
         level: 'reviewed',
         reviewed: true,
         publisherVerified: true,
-        reviewerName: 'Cindy Security Review',
+        reviewerName: 'Watchdog Security Review',
       },
     });
   });

@@ -257,7 +257,7 @@ describe('buildClaudeRemoteToolGuards', () => {
           '/feishu-delegate:message-feishu-coworkers',
         ],
         denialMessage:
-          'This downstream source was not explicitly selected. Use Cindy capability xd-feishu.',
+          'This downstream source was not explicitly selected. Use Watchdog capability xd-feishu.',
       },
     ]);
   });

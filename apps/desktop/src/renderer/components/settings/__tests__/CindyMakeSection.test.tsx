@@ -202,7 +202,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('Settings > Cindy Make', () => {
+describe('Settings > Watchdog Make', () => {
   it('opens version control first and preserves the keyboard tab order and scoped creation action', async () => {
     const h = harness();
     const getVersions = vi.fn(async () => ({

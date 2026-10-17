@@ -5,7 +5,7 @@ import { getLastWorkingDir, setLastWorkingDir } from '../state/lastWorkingDir';
 describe('lastWorkingDir', () => {
   afterEach(() => setLastWorkingDir(null));
 
-  it('preserves the active Cindy-managed worktree for cwd-scoped consumers', () => {
+  it('preserves the active Watchdog-managed worktree for cwd-scoped consumers', () => {
     setLastWorkingDir('D:\\projects\\cindy\\.cindy-worktrees\\task-123\\apps\\desktop');
     expect(getLastWorkingDir()).toBe(
       'D:/projects/cindy/.cindy-worktrees/task-123/apps/desktop',

@@ -41,7 +41,7 @@ function normalizedImageSrc(markdown: string, workingDir = '/repo'): string | un
 describe('Markdown local image path encoding', () => {
   it('loads a cindy-media blob absolute path containing Application Support', () => {
     const path =
-      '/Users/test/Library/Application Support/Cindy/cindy-media/blobs/aa/' +
+      '/Users/test/Library/Application Support/Watchdog/cindy-media/blobs/aa/' +
       `${'a'.repeat(64)}.png`;
 
     expect(normalizedImageSrc(`![work](<${path}>)`)).toBe(

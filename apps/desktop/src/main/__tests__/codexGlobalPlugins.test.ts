@@ -571,7 +571,7 @@ describe('prepareCodexGlobalPluginsBridge', () => {
     },
   );
 
-  it('never replaces a real marketplace directory that was not created by Cindy routing', async () => {
+  it('never replaces a real marketplace directory that was not created by Watchdog routing', async () => {
     const { homeDir, codexHome, paths } = await setup();
     const marketplace = 'personal';
     const plugin = 'feishu-delegate';

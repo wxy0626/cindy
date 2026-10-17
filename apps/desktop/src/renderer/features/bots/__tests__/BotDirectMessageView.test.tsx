@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   getThread: vi.fn(),
   navigate: vi.fn(),
   profiles: [
-    { id: 'bot-a', name: 'Cindy', avatar: '', avatarColor: 'red' },
+    { id: 'bot-a', name: 'Watchdog', avatar: '', avatarColor: 'red' },
     { id: 'bot-b', name: 'Planner', avatar: '', avatarColor: 'blue' },
   ],
   search: '',

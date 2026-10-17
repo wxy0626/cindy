@@ -230,7 +230,7 @@ describe('collab send outcome semantics', () => {
     })).resolves.toEqual({
       ok: false,
       errorCode: 'SKILL_DISABLED',
-      message: 'Cindy Learn is disabled in Local Skills.',
+      message: 'Watchdog Learn is disabled in Local Skills.',
     });
   });
 
@@ -324,7 +324,7 @@ describe('collab send outcome semantics', () => {
     })).resolves.toEqual({
       ok: false,
       errorCode: 'USER_REQUEST_REQUIRED',
-      message: 'Cindy Learn is not authorized for this task instance.',
+      message: 'Watchdog Learn is not authorized for this task instance.',
     });
     expect(isCurrentLocalSessionInstance).toHaveBeenNthCalledWith(
       2,

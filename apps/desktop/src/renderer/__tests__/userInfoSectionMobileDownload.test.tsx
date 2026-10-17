@@ -15,7 +15,7 @@ const {
   switchAccount,
 } = vi.hoisted(() => ({
   authState: {
-    user: { name: 'Cindy user', avatar: null } as { name: string; avatar: string | null } | null,
+    user: { name: 'Watchdog user', avatar: null } as { name: string; avatar: string | null } | null,
     mode: 'cloud' as 'cloud' | 'local',
     dataOwnerId: 'owner-a' as string | null,
     isCanary: false,
@@ -112,7 +112,7 @@ beforeEach(() => {
   confirm.mockReset().mockResolvedValue(true);
   runningSnapshot.clear();
   navigate.mockReset();
-  authState.user = { name: 'Cindy user', avatar: null };
+  authState.user = { name: 'Watchdog user', avatar: null };
   authState.mode = 'cloud';
   authState.dataOwnerId = 'owner-a';
   listAccounts.mockReset().mockResolvedValue({

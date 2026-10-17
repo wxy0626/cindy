@@ -160,7 +160,7 @@ const detail: GhostPluginDetail = {
     publisherSigned: true,
     publisherVerified: true,
     reviewed: true,
-    publisherName: 'Cindy',
+    publisherName: 'Watchdog',
   },
 };
 
@@ -236,7 +236,7 @@ describe('Ghost plugin detail sections', () => {
             {
               manifest: { id: 'cindy-github' },
               enabled: true,
-              trust: { ...detail.trust, publisherName: 'Cindy Plugin Market' },
+              trust: { ...detail.trust, publisherName: 'Watchdog Plugin Market' },
             } as any
           }
           detail={{ ...detail, id: 'cindy-github', hasSettingsUi: true }}
@@ -836,20 +836,20 @@ describe('Ghost plugin detail sections', () => {
                   id: 'image-default',
                   label: 'Image Default',
                   providerId: 'xd',
-                  providerName: 'Cindy AI',
+                  providerName: 'Watchdog AI',
                 },
                 {
                   id: 'image-option',
                   label: 'Image Option',
                   providerId: 'xd',
-                  providerName: 'Cindy AI',
+                  providerName: 'Watchdog AI',
                 },
               ],
               defaultModel: {
                 id: 'image-default',
                 label: 'Image Default',
                 providerId: 'xd',
-                providerName: 'Cindy AI',
+                providerName: 'Watchdog AI',
               },
             },
             imageEdit: {
@@ -858,20 +858,20 @@ describe('Ghost plugin detail sections', () => {
                   id: 'image-edit',
                   label: 'Image Edit',
                   providerId: 'xd',
-                  providerName: 'Cindy AI',
+                  providerName: 'Watchdog AI',
                 },
                 {
                   id: 'image-edit-option',
                   label: 'Image Edit Option',
                   providerId: 'xd',
-                  providerName: 'Cindy AI',
+                  providerName: 'Watchdog AI',
                 },
               ],
               defaultModel: {
                 id: 'image-edit',
                 label: 'Image Edit',
                 providerId: 'xd',
-                providerName: 'Cindy AI',
+                providerName: 'Watchdog AI',
               },
             },
             video: {
@@ -1010,7 +1010,7 @@ describe('Ghost plugin detail sections', () => {
     fireEvent.click(codexChoice!);
 
     const codexList = await screen.findByRole('listbox');
-    expect(within(codexList).getByRole('group', { name: 'Cindy AI' })).toBeTruthy();
+    expect(within(codexList).getByRole('group', { name: 'Watchdog AI' })).toBeTruthy();
     expect(within(codexList).getByRole('group', { name: 'OpenAI' })).toBeTruthy();
     const plainRow = within(codexList)
       .getByText('GPT 5.5', { exact: true })
@@ -1194,14 +1194,14 @@ describe('Ghost plugin detail sections', () => {
                   id: 'image-default',
                   label: 'Image Default',
                   providerId: 'xd',
-                  providerName: 'Cindy AI',
+                  providerName: 'Watchdog AI',
                 },
               ],
               defaultModel: {
                 id: 'image-default',
                 label: 'Image Default',
                 providerId: 'xd',
-                providerName: 'Cindy AI',
+                providerName: 'Watchdog AI',
               },
             },
             imageEdit: {

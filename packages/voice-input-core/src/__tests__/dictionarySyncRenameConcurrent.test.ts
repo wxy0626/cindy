@@ -61,7 +61,7 @@ describe('并发改名', () => {
 
   it('反复改名再改回来也不涨', () => {
     let state = seedTerm(createEmptySyncState(), createHlcClock('node-a', 1_000), {
-      text: 'Cindy',
+      text: 'Watchdog',
       source: 'manual',
       stage: 'entry',
       count: 4,
@@ -91,7 +91,7 @@ describe('并发改名', () => {
 
   it('改名到一个已存在的词上,两边证据相加(那是两批独立证据)', () => {
     let state = seedTerm(createEmptySyncState(), createHlcClock('node-a', 1_000), {
-      text: 'Cindy',
+      text: 'Watchdog',
       source: 'manual',
       stage: 'entry',
       count: 3,

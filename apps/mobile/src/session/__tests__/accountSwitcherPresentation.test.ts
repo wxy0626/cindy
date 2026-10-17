@@ -31,7 +31,7 @@ describe('account switcher presentation', () => {
     ).toEqual({
       isOrg: true,
       imageUrl: 'https://example.com/org.png',
-      title: 'Cindy',
+      title: 'Watchdog',
       subtitle: 'Cao Jianbo',
     });
   });

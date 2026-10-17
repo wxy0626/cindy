@@ -123,7 +123,7 @@ describe('ProviderShareReceivedDetail', () => {
   it('lists the shared models the owner left visible', () => {
     catalog.value = {
       providers: [{
-        id: 'xd', name: 'Cindy AI', agents: ['claude-code', 'codex'], connected: true, routing: {},
+        id: 'xd', name: 'Watchdog AI', agents: ['claude-code', 'codex'], connected: true, routing: {},
         models: {
           'claude-code': [{ id: 'opus', name: 'Opus 5.5' }, { id: 'hidden', name: 'Hidden' }],
           codex: [{ id: 'opus', name: 'Opus 5.5' }, { id: 'gpt', name: 'GPT-5.5' }],

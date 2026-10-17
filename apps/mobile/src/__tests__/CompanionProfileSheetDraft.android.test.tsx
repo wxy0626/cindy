@@ -48,8 +48,8 @@ vi.mock('@/session/CompanionModelChain', () => ({ readCompanionModelChain: () =>
 import { CompanionProfileSheet } from '@/session/CompanionProfileSheet';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-const resource = { ref: { collectionId: 'teammates', kind: 'bot', id: 'bot' }, display: { title: 'Cindy' }, links: [], revision: 'v1' };
-const profilePanel = (disabled = false) => ({ id: 'profile', values: { name: 'Cindy' },
+const resource = { ref: { collectionId: 'teammates', kind: 'bot', id: 'bot' }, display: { title: 'Watchdog' }, links: [], revision: 'v1' };
+const profilePanel = (disabled = false) => ({ id: 'profile', values: { name: 'Watchdog' },
   action: { id: 'grant', label: 'Save', disabled, fields: [{ id: 'name', label: 'Name', kind: 'text' }] } });
 let root: Root | undefined;
 async function render(online = true) {

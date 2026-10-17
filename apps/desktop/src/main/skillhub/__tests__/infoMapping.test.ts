@@ -57,7 +57,7 @@ describe('mapHubSkillInfoToDesktopInfo', () => {
       description: 'Organization skill',
       version: '1.0.0',
       owner: { type: 'org', slug: 'acme', name: 'Acme' },
-      publisher: { name: 'Cindy Publisher' },
+      publisher: { name: 'Watchdog Publisher' },
       visibility: 'public',
       updatedAt: '2026-09-02T00:00:00.000Z',
     });

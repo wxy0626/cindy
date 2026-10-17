@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { routeInjectedRemoteMcpApprovalsThroughCindy } from '../remote-claude-permission-mode.js';
 
 describe('remote Claude MCP permission mode', () => {
-  it('routes OAuth Auto through Cindy when the host injected an MCP server', () => {
+  it('routes OAuth Auto through Watchdog when the host injected an MCP server', () => {
     const startParams: Record<string, unknown> = { permissionMode: 'auto' };
 
     routeInjectedRemoteMcpApprovalsThroughCindy(startParams, 1);

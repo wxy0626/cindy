@@ -383,7 +383,7 @@ describe('exportGhostPackage', () => {
     await exportGhostPackage('hello', makeDeps({ showSaveDialog }));
     expect(showSaveDialog).toHaveBeenCalledWith({
       defaultPath: path.join(workDir, 'Hello 插件-1.2.0.cindy'),
-      filters: [{ name: 'Cindy Plugin', extensions: ['cindy'] }],
+      filters: [{ name: 'Watchdog Plugin', extensions: ['cindy'] }],
     });
   });
 

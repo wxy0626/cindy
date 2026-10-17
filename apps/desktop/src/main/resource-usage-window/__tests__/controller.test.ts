@@ -251,7 +251,7 @@ describe('ResourceUsageWindowController', () => {
     expect(windows[0]?.focus).toHaveBeenCalledOnce();
   });
 
-  it('ignores readiness from any other Cindy window', () => {
+  it('ignores readiness from any other Watchdog window', () => {
     const { controller, windows } = makeHarness();
     controller.prewarm();
     const other = { id: 99 } as WebContents;

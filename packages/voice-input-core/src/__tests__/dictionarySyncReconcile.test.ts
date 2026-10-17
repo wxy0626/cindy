@@ -133,7 +133,7 @@ describe('dictionary sync — 首次迁移保留频次', () => {
         entries: [
           { text: 'Claude code', source: 'automatic', frequency: 4 },
           { text: 'Fable 5', source: 'automatic', frequency: 3 },
-          { text: 'Cindy', source: 'manual', frequency: 2 },
+          { text: 'Watchdog', source: 'manual', frequency: 2 },
         ],
         suppressedTexts: [],
         candidates: [{ text: 'Bug', evidenceCount: 2 }, { text: 'invoice', evidenceCount: 1 }],
@@ -252,7 +252,7 @@ describe('dictionary sync — 首次迁移保留频次', () => {
     // 文件里写着 5(上次物化的结果)。即使把它当成「新增」喂回来,也不能再记一遍。
     const result = reconcileFromLocalSnapshot(a.state, a.clock, {
       snapshot: {
-        entries: [{ text: 'Cindy', source: 'automatic', frequency: 5 }],
+        entries: [{ text: 'Watchdog', source: 'automatic', frequency: 5 }],
         suppressedTexts: [],
       },
       lastMaterializedKeys: [],
@@ -264,7 +264,7 @@ describe('dictionary sync — 首次迁移保留频次', () => {
   it('迁移进来的频次可以继续正常增长与合并', () => {
     const migrated = reconcileFromLocalSnapshot(createEmptySyncState(), createHlcClock('a', 1_000), {
       snapshot: {
-        entries: [{ text: 'Cindy', source: 'automatic', frequency: 4 }],
+        entries: [{ text: 'Watchdog', source: 'automatic', frequency: 4 }],
         suppressedTexts: [],
       },
       lastMaterializedKeys: [],
@@ -277,7 +277,7 @@ describe('dictionary sync — 首次迁移保留频次', () => {
     // 另一台设备各自迁移了同一份词典再学一次:两边各记各的桶,合并后求和。
     const migratedB = reconcileFromLocalSnapshot(createEmptySyncState(), createHlcClock('b', 1_000), {
       snapshot: {
-        entries: [{ text: 'Cindy', source: 'automatic', frequency: 4 }],
+        entries: [{ text: 'Watchdog', source: 'automatic', frequency: 4 }],
         suppressedTexts: [],
       },
       lastMaterializedKeys: [],
@@ -302,7 +302,7 @@ describe('dictionary sync — 降级回收', () => {
     const result = reconcileFromLocalSnapshot(a.state, a.clock, {
       snapshot: {
         entries: [
-          { text: 'Cindy', source: 'automatic' },
+          { text: 'Watchdog', source: 'automatic' },
           { text: 'Orca', source: 'manual' },
           { text: 'device-link', source: 'automatic' },
         ],
@@ -332,7 +332,7 @@ describe('dictionary sync — 降级回收', () => {
 
     const result = reconcileFromLocalSnapshot(a.state, a.clock, {
       snapshot: {
-        entries: [{ text: 'Cindy', source: 'automatic' }],
+        entries: [{ text: 'Watchdog', source: 'automatic' }],
         suppressedTexts: ['Orca'],
       },
       lastMaterializedKeys: lastKeys,

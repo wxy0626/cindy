@@ -33,7 +33,7 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
     oneLiner: 'Grok 有浏览器跳转和设备短码两种登录方式；agent 可发授权页与短码并查询完成状态。',
     detail: [
       '浏览器跳转登录在设置的 Grok 连接卡中可用。',
-      '设备码登录适合远程协助：agent 通过 cindy_helper 的 auth 类 start_grok_device_login 取得 xAI 授权页和短码，发给用户；用户在授权页输入短码并确认，Cindy 在本机自动轮询并保存凭证。',
+      '设备码登录适合远程协助：agent 通过 cindy_helper 的 auth 类 start_grok_device_login 取得 xAI 授权页和短码，发给用户；用户在授权页输入短码并确认，Watchdog 在本机自动轮询并保存凭证。',
       'agent 可用 get_grok_login_status 查询连接状态，用户要求停止时可用 cancel_grok_device_login。长期 access token 和 refresh token 不会出现在工具返回值或聊天里；不要要求用户粘贴长期凭证。',
     ].join(' '),
   },
@@ -142,7 +142,7 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
       '整理出对维护者有用的标题与正文,默认概括并脱敏;功能建议不写源码级方案。对话里的图不会传到 GitHub,不要声称截图已附。',
       '整理出结构化标题与正文后调用 submit_github_issue(cindy_helper 的 feedback 类目);用户明确同意公开相关日志时传 include_related_logs=true,系统自动生成独立的「相关日志」模块,并通过日志来源/字段白名单、脱敏和长度限制。',
       '提交前 App 内弹系统确认卡片,用户可编辑标题/正文、确认或取消;',
-      '不需要安装或配置 GitHub 插件:默认由 Cindy 官方 Bot 提交;当前已配置且可用的 GitHub 账号只作为确认卡里的额外身份选项。',
+      '不需要安装或配置 GitHub 插件:默认由 Watchdog 官方 Bot 提交;当前已配置且可用的 GitHub 账号只作为确认卡里的额外身份选项。',
       `客户端版本 / OS / Harness / 模型 ID / 界面语言由系统作为「提交时的任务环境」自动附加(OS 来自提交客户端本机,Harness / 模型是当前任务快照,不一定是出问题的那个)。用户说明的实际故障环境按需写进正文。最终创建到 ${BRAND_NAME} 官方 GitHub 仓库。创建后会返回 issue 链接,并可继续协助用户从源码复现、修复 Bug、开发功能和准备 PR。`,
     ].join(' '),
   },

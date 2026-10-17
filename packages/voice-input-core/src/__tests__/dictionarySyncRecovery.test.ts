@@ -26,13 +26,13 @@ import {
 describe('墓碑与重建', () => {
   it('降级回收允许越过墓碑重建(老客户端刚加回来的词)', () => {
     const added = addManualEntry(createEmptySyncState(), createHlcClock('a', 1_000), {
-      text: 'Cindy',
+      text: 'Watchdog',
       nowMs: 1_000,
     });
     const removed = deleteTerms(added.state, added.clock, { termKeys: ['cindy'], nowMs: 2_000 });
 
     const result = reconcileFromLocalSnapshot(removed.state, removed.clock, {
-      snapshot: { entries: [{ text: 'Cindy', source: 'manual', frequency: 3 }], suppressedTexts: [] },
+      snapshot: { entries: [{ text: 'Watchdog', source: 'manual', frequency: 3 }], suppressedTexts: [] },
       lastMaterializedKeys: [],
       nowMs: 3_000,
     });
@@ -43,7 +43,7 @@ describe('墓碑与重建', () => {
   it('sidecar 恢复不越过墓碑 —— 别的设备删掉的词不会复活', () => {
     // 设备 B 删掉了这个词。
     const added = addManualEntry(createEmptySyncState(), createHlcClock('b', 1_000), {
-      text: 'Cindy',
+      text: 'Watchdog',
       nowMs: 1_000,
     });
     const peerAfterDelete = deleteTerms(added.state, added.clock, {
@@ -55,7 +55,7 @@ describe('墓碑与重建', () => {
     // 再按恢复语义认领 —— 这正是延迟恢复要保证的顺序。
     const merged = mergeSyncStates(createEmptySyncState(), peerAfterDelete.state);
     const recovered = reconcileFromLocalSnapshot(merged, createHlcClock('a', 5_000), {
-      snapshot: { entries: [{ text: 'Cindy', source: 'manual', frequency: 9 }], suppressedTexts: [] },
+      snapshot: { entries: [{ text: 'Watchdog', source: 'manual', frequency: 9 }], suppressedTexts: [] },
       lastMaterializedKeys: [],
       nowMs: 5_000,
       allowTombstonedRevival: false,
@@ -97,7 +97,7 @@ describe('墓碑与重建', () => {
       snapshot: {
         entries: [],
         suppressedTexts: [],
-        candidates: [{ text: 'Cindy', evidenceCount: 2 }],
+        candidates: [{ text: 'Watchdog', evidenceCount: 2 }],
       },
       lastMaterializedKeys: [],
       nowMs: 1_000,
@@ -107,7 +107,7 @@ describe('墓碑与重建', () => {
     // 老客户端把它转正:文件里现在是正式词条,而这个键从没进过 lastMaterializedKeys。
     const promoted = reconcileFromLocalSnapshot(seeded.state, seeded.clock, {
       snapshot: {
-        entries: [{ text: 'Cindy', source: 'automatic', frequency: 2 }],
+        entries: [{ text: 'Watchdog', source: 'automatic', frequency: 2 }],
         suppressedTexts: [],
       },
       lastMaterializedKeys: [],

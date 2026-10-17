@@ -138,7 +138,7 @@ describe('统一 composer 建议入口', () => {
         {
           item: {
             type: 'plugin-command',
-            name: 'Cindy Art',
+            name: 'Watchdog Art',
             relPath: 'art',
             pluginId: 'cindy-art',
           },

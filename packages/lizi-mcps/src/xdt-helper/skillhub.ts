@@ -33,14 +33,14 @@ export function registerSkillhubTools(registry: XdtHelperToolRegistry, deps: {
 }): void {
   const execute = async (request: SkillhubAgentRequest) => {
     const context = deps.getSessionContext();
-    if (!context.sessionId) return errorPayload('NO_SESSION_CONTEXT', 'No Cindy task is bound to this call.');
-    if (context.remoteHostId) return errorPayload('UNSUPPORTED_CAPABILITY', 'SkillHub tools require a local Cindy task. For uploads, copy remote Skill files to the Cindy host first.');
+    if (!context.sessionId) return errorPayload('NO_SESSION_CONTEXT', 'No Watchdog task is bound to this call.');
+    if (context.remoteHostId) return errorPayload('UNSUPPORTED_CAPABILITY', 'SkillHub tools require a local Watchdog task. For uploads, copy remote Skill files to the Watchdog host first.');
     const result = await deps.execute(request, context);
     return result.ok ? okPayload(result) : errorPayload(result.errorCode, result.message);
   };
   registry.register({
     name: 'search_skills', category: 'skills',
-    description: 'Search Cindy SkillHub by keyword. scope=market searches the public marketplace; scope=team searches the current organization (organization identities only). Omit scope or use all to search both for organization users, or the public market for personal users. Results retain catalog_scope to distinguish same-name Skills. To paginate, specify one scope and its next_cursor. Search does not install or publish anything.',
+    description: 'Search Watchdog SkillHub by keyword. scope=market searches the public marketplace; scope=team searches the current organization (organization identities only). Omit scope or use all to search both for organization users, or the public market for personal users. Results retain catalog_scope to distinguish same-name Skills. To paginate, specify one scope and its next_cursor. Search does not install or publish anything.',
     inputShape: {
       query: z.string().trim().min(1).max(200),
       scope: z.enum(['market', 'team', 'all']).optional(),

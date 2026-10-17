@@ -10,7 +10,7 @@ describe('FORGE_GUIDE · Cindy Connection 凭证章节', () => {
   it('说明 oidc-token 的 Host 托管、注入限制和不可读边界', () => {
     for (const marker of [
       '"oidc-token"',
-      'Cindy 企业身份断言',
+      'Watchdog 企业身份断言',
       'Connection JWT',
       'Authorization: Bearer {value}',
       'setup.requires',

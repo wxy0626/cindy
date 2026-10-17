@@ -30,7 +30,7 @@ describe('communication notification extension', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'cindy-notification-plugin-'));
     roots.push(root);
     const pbx = project();
-    const config = { name: 'Cindy', slug: 'cindy', version: '2.3.4', ios: { bundleIdentifier, buildNumber: '123', appleTeamId: 'TESTTEAM' } };
+    const config = { name: 'Watchdog', slug: 'cindy', version: '2.3.4', ios: { bundleIdentifier, buildNumber: '123', appleTeamId: 'TESTTEAM' } };
     const mobile = path.resolve(import.meta.dirname, '../..');
     plugin.configureProject(pbx, config, root, mobile);
     plugin.configureProject(pbx, config, root, mobile);

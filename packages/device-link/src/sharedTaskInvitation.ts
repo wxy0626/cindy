@@ -77,5 +77,5 @@ export function sharedTaskAccountName(name: string | null | undefined): string {
   const text = (name ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
   let end = Math.min(text.length, 32);
   if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1] ?? '') && /[\uDC00-\uDFFF]/.test(text[end] ?? '')) end--;
-  return text.slice(0, end) || 'Cindy';
+  return text.slice(0, end) || 'Watchdog';
 }

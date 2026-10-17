@@ -926,7 +926,7 @@ export function createComputerMcpServer(
       {
         ok: false,
         errorCode: 'REPLAY_BUDGET_EXCEEDED',
-        data: { message: 'Trajectory replay exceeded Cindy\'s bounded execution budget.' },
+        data: { message: 'Trajectory replay exceeded Watchdog\'s bounded execution budget.' },
       },
       true,
     );
@@ -985,7 +985,7 @@ export function createComputerMcpServer(
     if (typeof directory !== 'string' || !workingDir) {
       return {
         error: trajectoryValidationFailedResult(
-          'Cindy could not safely resolve the trajectory directory.',
+          'Watchdog could not safely resolve the trajectory directory.',
         ),
       };
     }
@@ -1042,7 +1042,7 @@ export function createComputerMcpServer(
       });
       return {
         error: trajectoryValidationFailedResult(
-          'Cindy could not read the trajectory directory before replay.',
+          'Watchdog could not read the trajectory directory before replay.',
         ),
       };
     }
@@ -1109,7 +1109,7 @@ export function createComputerMcpServer(
           if (currentStat.dev !== stat.dev || currentStat.ino !== stat.ino) {
             return {
               error: trajectoryValidationFailedResult(
-                'The recorded action changed while Cindy was opening it.',
+                'The recorded action changed while Watchdog was opening it.',
                 turn,
               ),
             };
@@ -1152,7 +1152,7 @@ export function createComputerMcpServer(
         if (!definition) {
           return {
             error: trajectoryValidationFailedResult(
-              `Recorded tool ${tool} is not exposed by this Cindy version.`,
+              `Recorded tool ${tool} is not exposed by this Watchdog version.`,
               turn,
             ),
           };
@@ -1180,7 +1180,7 @@ export function createComputerMcpServer(
         if (!parsed.success) {
           return {
             error: trajectoryValidationFailedResult(
-              `Recorded tool ${tool} does not match the current Cindy schema.`,
+              `Recorded tool ${tool} does not match the current Watchdog schema.`,
               turn,
             ),
           };
@@ -1199,7 +1199,7 @@ export function createComputerMcpServer(
         });
         return {
           error: trajectoryValidationFailedResult(
-            'Cindy could not safely validate this recorded action.',
+            'Watchdog could not safely validate this recorded action.',
             turn,
           ),
         };

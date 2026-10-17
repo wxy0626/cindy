@@ -39,7 +39,7 @@ export function registerStartSkillLearningTool(
     name: 'start_skill_learning',
     category: 'skills',
     description:
-      "Start Cindy's managed Learn flow for the current task. The host gathers evidence, distills into a separate task, stages the proposed Skill, and requires review before installation. Use only for an explicit /learn request. Call once and do not poll.",
+      "Start Watchdog's managed Learn flow for the current task. The host gathers evidence, distills into a separate task, stages the proposed Skill, and requires review before installation. Use only for an explicit /learn request. Call once and do not poll.",
     inputShape: {
       source_kind: z.enum(['session', 'freetext', 'hub']),
       input: z.string().max(12_000).optional(),
@@ -49,7 +49,7 @@ export function registerStartSkillLearningTool(
     handler: async ({ source_kind, input, hub_slug, hub_catalog_scope }) => {
       const context = deps.getSessionContext();
       if (!context.sessionId) {
-        return errorPayload('NO_SESSION_CONTEXT', 'No Cindy task is bound to this call.');
+        return errorPayload('NO_SESSION_CONTEXT', 'No Watchdog task is bound to this call.');
       }
 
       const normalizedInput = input?.trim() ?? '';
@@ -88,7 +88,7 @@ export function registerStartSkillLearningTool(
             run_id: result.runId,
             status: 'collecting',
             guidance:
-              'Learn started. Progress and the review action appear in Cindy; do not call this tool again or poll.',
+              'Learn started. Progress and the review action appear in Watchdog; do not call this tool again or poll.',
           })
         : errorPayload(result.errorCode, result.message);
     },

@@ -274,7 +274,7 @@ describe('scanAtResources context providers', () => {
             windowId: 22,
             pid: 11,
             appName: 'Code.exe',
-            title: 'Cindy',
+            title: 'Watchdog',
           },
         ],
         unavailable: [],
@@ -309,7 +309,7 @@ describe('scanAtResources context providers', () => {
       context: {
         success: true,
         browserTabs: [{ tabId, title: 'Docs', url }],
-        desktopWindows: [{ windowId: 22, pid: 11, appName, title: 'Cindy' }],
+        desktopWindows: [{ windowId: 22, pid: 11, appName, title: 'Watchdog' }],
         unavailable: [],
       },
     });

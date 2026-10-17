@@ -150,7 +150,7 @@ function groupMessage(overrides: {
       message_type: 'text',
       content: JSON.stringify({ text: overrides.text ?? '@_user_1 帮我看看' }),
       mentions: overrides.mentions ?? [
-        { key: '@_user_1', id: { open_id: BOT_OPEN_ID }, name: 'Cindy' },
+        { key: '@_user_1', id: { open_id: BOT_OPEN_ID }, name: 'Watchdog' },
       ],
     },
   };
@@ -1314,7 +1314,7 @@ describe('feishu group inbound gate', () => {
       groupMessage({
         text: '@_user_1 问下 @_user_2 的进度',
         mentions: [
-          { key: '@_user_1', id: { open_id: BOT_OPEN_ID }, name: 'Cindy' },
+          { key: '@_user_1', id: { open_id: BOT_OPEN_ID }, name: 'Watchdog' },
           { key: '@_user_2', id: { open_id: 'ou_alice' }, name: 'Al\u0007ice' },
         ],
       }),

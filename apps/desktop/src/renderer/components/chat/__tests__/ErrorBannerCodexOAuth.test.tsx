@@ -208,7 +208,7 @@ describe('ErrorBanner OpenAI connection recovery', () => {
     },
   );
 
-  it('opens ChatGPT App without starting Cindy OAuth for an invalidated system-shared login', async () => {
+  it('opens ChatGPT App without starting Watchdog OAuth for an invalidated system-shared login', async () => {
     mocks.getState.mockResolvedValue({
       authenticated: false,
       errorReason: 'token_revoked',
@@ -307,7 +307,7 @@ describe('ErrorBanner OpenAI connection recovery', () => {
     expect(screen.getByRole('button', { name: 'chat.errorBanner.retry' })).toBeTruthy();
   });
 
-  it('opens the ChatGPT App instead of starting Cindy OAuth for system-shared recovery', async () => {
+  it('opens the ChatGPT App instead of starting Watchdog OAuth for system-shared recovery', async () => {
     mocks.getState.mockResolvedValue({
       authenticated: false,
       errorReason: 'token_revoked',
@@ -333,7 +333,7 @@ describe('ErrorBanner OpenAI connection recovery', () => {
     expect(screen.queryByRole('button', { name: 'chat.errorBanner.retry' })).toBeNull();
   });
 
-  it('does not start Cindy OAuth after opening ChatGPT App for system-shared recovery', async () => {
+  it('does not start Watchdog OAuth after opening ChatGPT App for system-shared recovery', async () => {
     mocks.getState.mockResolvedValue({
       authenticated: false,
       errorReason: 'token_revoked',

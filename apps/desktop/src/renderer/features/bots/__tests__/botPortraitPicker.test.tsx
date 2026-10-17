@@ -60,7 +60,7 @@ describe('shared teammate portrait gallery', () => {
     const onChange = vi.fn();
     render(<BotPortraitPicker onChange={onChange} />);
     fireEvent.click(screen.getByRole('button', { name: 'bots.profile.changeAvatar' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cindy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Watchdog' }));
     await waitFor(() =>
       expect(onChange).toHaveBeenCalledWith('data:image/png;base64,cG9ydHJhaXQ='),
     );
@@ -100,7 +100,7 @@ describe('shared teammate portrait gallery', () => {
     const onUpload = vi.fn();
     render(<BotPortraitPicker onChange={onChange} onUpload={onUpload} />);
     fireEvent.click(screen.getByRole('button', { name: 'bots.profile.changeAvatar' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cindy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Watchdog' }));
     fireEvent.click(screen.getByRole('button', { name: 'bots.guided.upload' }));
     await act(async () => complete());
     expect(onUpload).toHaveBeenCalledOnce();
@@ -118,7 +118,7 @@ describe('shared teammate portrait gallery', () => {
     const onChange = vi.fn();
     const view = render(<BotPortraitPicker onChange={onChange} />);
     fireEvent.click(screen.getByRole('button', { name: 'bots.profile.changeAvatar' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cindy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Watchdog' }));
     view.unmount();
     await act(async () => complete());
     expect(onChange).not.toHaveBeenCalled();
@@ -128,7 +128,7 @@ describe('shared teammate portrait gallery', () => {
 it.each(['cindy://avatar/preset/cindy', '🤖', '👩🏽‍💻'])(
   'renders a current avatar fallback while prioritizing a new image draft: %s',
   (avatar) => {
-    const fallback = <BotAvatar bot={{ name: 'Cindy', avatar }} />;
+    const fallback = <BotAvatar bot={{ name: 'Watchdog', avatar }} />;
     const view = render(<BotPortraitPicker fallback={fallback} onChange={vi.fn()} />);
     const trigger = screen.getByRole('button', { name: 'bots.profile.changeAvatar' });
     if (avatar.startsWith('cindy://'))
@@ -191,7 +191,7 @@ it('keeps the newer gallery operation pending when an older decode settles', asy
   const onChange = vi.fn();
   render(<BotPortraitPicker onChange={onChange} onPreparingChange={pending} />);
   fireEvent.click(screen.getByRole('button', { name: 'bots.profile.changeAvatar' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Cindy' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Watchdog' }));
   fireEvent.click(screen.getByRole('button', { name: 'bots.guided.portrait-1' }));
   await act(async () => decodes[0]());
   expect(pending.mock.calls).toEqual([[true]]);
@@ -207,7 +207,7 @@ it('releases preparation after a gallery decode failure', async () => {
   const onChange = vi.fn();
   render(<BotPortraitPicker onChange={onChange} onPreparingChange={pending} />);
   fireEvent.click(screen.getByRole('button', { name: 'bots.profile.changeAvatar' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Cindy' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Watchdog' }));
   expect(pending).toHaveBeenNthCalledWith(1, true);
   await screen.findByRole('alert');
   expect(pending.mock.calls).toEqual([[true], [false]]);

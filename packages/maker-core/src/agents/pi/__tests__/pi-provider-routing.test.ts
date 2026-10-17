@@ -3111,7 +3111,7 @@ describe("Pi provider-aware model routing", () => {
         if (modelId !== "shared-model") return null;
         return {
           id: modelId,
-          displayName: "Shared through Cindy",
+          displayName: "Shared through Watchdog",
           contextWindow: 200_000,
           efforts: ["minimal", "low", "high"] as const,
           defaultEffort: "high" as const,
@@ -4450,7 +4450,7 @@ describe("Pi provider-aware model routing", () => {
         model: "local-model",
         providerId: "my-local",
       }),
-    ).rejects.toThrow(/refusing to fall back to the Cindy gateway/);
+    ).rejects.toThrow(/refusing to fall back to the Watchdog gateway/);
     expect(captured.args).toEqual([]);
   });
 

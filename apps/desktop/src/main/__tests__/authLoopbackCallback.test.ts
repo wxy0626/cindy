@@ -69,7 +69,7 @@ describe('auth loopback callback page', () => {
       htmlLang: 'en',
       variant: 'error',
       title: 'Sign-in not completed',
-      body: 'Please return to Cindy and sign in again.',
+      body: 'Please return to Watchdog and sign in again.',
       detail: '<script>alert(1)</script>',
     });
     expect(html).toContain('class="detail"');
@@ -149,7 +149,7 @@ describe('auth loopback dev bridge seam (v6.13)', () => {
       htmlLang: 'en',
       variant: 'error' in result ? 'error' : 'success',
       title: 'Sign-in not completed',
-      body: 'Please return to Cindy and sign in again.',
+      body: 'Please return to Watchdog and sign in again.',
       detail: 'error' in result ? result.error : undefined,
     });
 

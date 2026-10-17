@@ -21,7 +21,7 @@ describe('setLifecycleAnnouncementFromIpc', () => {
   });
 
   it('logs filesystem details only in Main and returns a sanitized IPC error', () => {
-    const privatePath = '/Users/private/Library/Application Support/Cindy/slack-hook.json';
+    const privatePath = '/Users/private/Library/Application Support/Watchdog/slack-hook.json';
     const failure = new Error(`EROFS: read-only file system, rename '${privatePath}.tmp'`);
     const manager = {
       setLifecycleAnnouncement: vi.fn(() => {

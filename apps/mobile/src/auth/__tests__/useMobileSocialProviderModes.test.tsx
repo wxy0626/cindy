@@ -132,7 +132,7 @@ describe('mobile social provider visibility', () => {
     expect(native.available).toHaveBeenCalledTimes(2);
   });
 
-  it('hides iOS WeChat after it is uninstalled while Cindy is in the background', async () => {
+  it('hides iOS WeChat after it is uninstalled while Watchdog is in the background', async () => {
     native.available.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await renderProbe();
     expect(wechatButton()).not.toBeNull();

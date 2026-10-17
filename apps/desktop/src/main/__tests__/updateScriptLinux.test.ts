@@ -46,7 +46,7 @@ describe('buildLinuxUpdateScript structure', () => {
     expect(portable).not.toContain('PKEXEC=');
     expect(portable).not.toContain('apt-get install');
     expect(portable).toContain('cindy-user-install --apply');
-    expect(portable).toContain("nohup '/home/user/Cindy/current/Cindy' '--password-store=gnome-libsecret'");
+    expect(portable).toContain("nohup '/home/user/Cindy/current/Watchdog' '--password-store=gnome-libsecret'");
     expect(portable).toContain('flock -n 9');
     expect(portable).toContain('INSTALL_EXIT=$?');
     if (process.platform !== 'win32') execFileSync('bash', ['-n'], { input: portable });

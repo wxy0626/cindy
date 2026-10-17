@@ -2350,7 +2350,7 @@ describe('prepareExternalCodexSessionForResume orphan rollout synthesis', () => 
       'state will hydrate on resume',
     ]);
 
-    // Cindy 不伪造版本敏感的 threads 行;它由随后的 app-server thread/resume hydrate。
+    // Watchdog 不伪造版本敏感的 threads 行;它由随后的 app-server thread/resume hydrate。
     const stateDb = new Database(dbPath, { readonly: true });
     const stateCount = stateDb
       .prepare('SELECT count(*) AS count FROM threads WHERE id = ?')
@@ -3019,7 +3019,7 @@ describe('prepareExternalCodexSessionForResume orphan rollout synthesis', () => 
     expect(state.rolloutPath).toBe(syntheticCandidate);
   });
 
-  it('does not publish through a sessions directory symlink outside Cindy storage', async () => {
+  it('does not publish through a sessions directory symlink outside Watchdog storage', async () => {
     const dbPath = createStateDb(desktopHome());
     const externalEmpty = path.join(
       externalHome,
@@ -5559,7 +5559,7 @@ describe('prepareExternalCodexSessionForResume orphan rollout synthesis', () => 
       sessionId,
       'external-late-c1',
       'user',
-      JSON.stringify({ text: 'Cindy visible history' }),
+      JSON.stringify({ text: 'Watchdog visible history' }),
       1_000,
     );
     const externalAuthoritative = `${JSON.stringify({

@@ -100,7 +100,7 @@ describe('sent structured reference chips', () => {
         windowId: 7,
         pid: 42,
         appName: 'Cindy',
-        title: 'Cindy Dev',
+        title: 'Watchdog Dev',
       } satisfies AgentInputReference,
     },
     {

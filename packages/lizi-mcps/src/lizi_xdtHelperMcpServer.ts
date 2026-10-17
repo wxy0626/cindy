@@ -358,12 +358,12 @@ function registerStartSessionTaskEntry(
     name: 'start_session_task',
     category: 'bots',
     description: [
-      'Start one real independent Cindy Session task in the background. For project work, pass the actual project/worktree path in working_dir before starting. Set use_worktree=true to create and register an isolated worktree before runtime starts; failure never falls back to the shared directory; creating a worktree later in a shell does not relocate the registered Session. timeout_ms defaults to 1800000 (30 minutes), maximum 86400000 (24 hours); specify the needed budget at creation. Follow-up after timeout inherits the original budget, it does not extend it.',
+      'Start one real independent Watchdog Session task in the background. For project work, pass the actual project/worktree path in working_dir before starting. Set use_worktree=true to create and register an isolated worktree before runtime starts; failure never falls back to the shared directory; creating a worktree later in a shell does not relocate the registered Session. timeout_ms defaults to 1800000 (30 minutes), maximum 86400000 (24 hours); specify the needed budget at creation. Follow-up after timeout inherits the original budget, it does not extend it.',
       'Prefer completing work in the current chat, including status checks, bounded code or document reading, explaining existing results, and simple file work. A repository, multiple files, tools, or a deliverable alone is not a reason to delegate. Use this when the user explicitly requests an independent task or the work needs separate ongoing execution, an isolated workspace, parallel delivery, or independent tracking. Decide by execution needs, not time or file-count thresholds. When warranted, act without asking again merely to start a task; respect an explicit request to work inline.',
       'Normally omit model_selection: the host uses the teammate task model, or inherits its current model when no task model is configured. When the user requests another model or this task needs a different available capability, read get_app_default_model and pass an available route id in model_selection, with supported effort or fast_mode if needed. The id binds model, provider account and Harness together. This changes only this task, never application or teammate defaults. An unavailable explicit choice fails instead of silently using another model.',
       'Choose the route internally when starting the task. In ordinary replies, briefly describe the work or result; do not repeat the delegated instruction, tool names, argument names, route JSON, or task/session ids. The task card already tracks progress. Explain model or routing details when the user asks, and explain failures in plain language with the action needed.',
       'Pass the objective, constraints, known facts, relevant files, completed actions, and acceptance criteria in instruction; the task does not automatically inherit this chat. Do not duplicate its work. Review the returned result and follow up on the same task if needed.',
-      "This never calls a Cindy Bot or any other teammate. Use send_to_agent for a bounded message to a named teammate.",
+      "This never calls a Watchdog Bot or any other teammate. Use send_to_agent for a bounded message to a named teammate.",
       "The task appears in the user's task list and returns its completion automatically. Start it once and use check_session_task, message_session_task, or stop_session_task only when there is a concrete reason.",
     ].join('\n'),
     inputShape: {
@@ -382,7 +382,7 @@ function registerStartSessionTaskEntry(
     handler: async ({ instruction, title, working_dir, use_worktree, context_refs, timeout_ms, model_selection }) => {
       const callerSessionId = resolveLiziMcpSessionContext(sessionCtx).sessionId;
       if (!callerSessionId) {
-        return errorPayload('NOT_A_BOT_SESSION', '当前调用未绑定 Cindy 伙伴任务。');
+        return errorPayload('NOT_A_BOT_SESSION', '当前调用未绑定 Watchdog 伙伴任务。');
       }
       const result = await deps.sessionTasks!.startSessionTask({
         callerSessionId,
@@ -463,7 +463,7 @@ function registerSendToAgentEntry(
     name: 'send_to_agent',
     category: 'bots',
     description: [
-      'Send one asynchronous message to a named Cindy Bot teammate.',
+      'Send one asynchronous message to a named Watchdog Bot teammate.',
       'Use it for a brief question, discussion, or information transfer. It does not create a task, status, progress, cancellation, or a completion contract.',
       "The message remains visible in both teammates' timelines. The recipient may answer in a later turn. Do not poll or send acknowledgement-only replies.",
       'For independently tracked development or deliverable work, use start_session_task instead.',
@@ -477,7 +477,7 @@ function registerSendToAgentEntry(
     handler: async ({ target_id, message }) => {
       const callerSessionId = resolveLiziMcpSessionContext(sessionCtx).sessionId;
       if (!callerSessionId) {
-        return errorPayload('NOT_A_BOT_SESSION', '当前调用未绑定 Cindy 伙伴任务。');
+        return errorPayload('NOT_A_BOT_SESSION', '当前调用未绑定 Watchdog 伙伴任务。');
       }
       const result = await deps.botMessaging!.messageAgent({
         callerSessionId,
@@ -521,7 +521,7 @@ function registerSessionTaskControlEntries(
   const requireCaller = () =>
     callerSessionId()
       ? null
-      : errorPayload('NOT_A_BOT_SESSION', '当前调用未绑定 Cindy 伙伴任务。');
+      : errorPayload('NOT_A_BOT_SESSION', '当前调用未绑定 Watchdog 伙伴任务。');
 
   registry.register({
     name: 'check_session_task',

@@ -26,7 +26,7 @@ describe('pluginMarketErrorKey', () => {
     );
   });
 
-  it('reuses the existing Cindy compatibility reminder', () => {
+  it('reuses the existing Watchdog compatibility reminder', () => {
     expect(pluginMarketErrorKey(serializedIpcError('GHOST_HOST_UNSUPPORTED'))).toBe(
       'settings.ghosts.errors.hostUnsupported',
     );

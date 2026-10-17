@@ -35,7 +35,7 @@ const syncState = { version: 1 as const, records: {}, suppressed: {} };
 const stateOverride: { value: unknown } = { value: null };
 const defaultMaterializedEntry = {
   id: 'dict-sync-cindy',
-  text: 'Cindy',
+  text: 'Watchdog',
   source: 'manual' as const,
   frequency: 2,
   aliases: [{ text: 'sindy', count: 1, lastSeenAt: 5 }],
@@ -168,7 +168,7 @@ describe('出站', () => {
     expect(sendMobileSnapshot).toHaveBeenCalledWith('phone-1', expect.objectContaining({
       ok: true,
       entries: [
-        { text: 'Cindy', frequency: 2, aliases: [{ text: 'sindy', count: 1 }] },
+        { text: 'Watchdog', frequency: 2, aliases: [{ text: 'sindy', count: 1 }] },
       ],
     }));
     expect(sendMobileSnapshot.mock.calls[0][1].emittedAt).toEqual(expect.any(Number));
@@ -295,7 +295,7 @@ describe('手机只读投影', () => {
   it('只投影润色用得上的字段,不含同步元数据', () => {
     const projection = readDictionaryProjectionForMobile();
     expect(projection.entries).toEqual([
-      { text: 'Cindy', frequency: 2, aliases: [{ text: 'sindy', count: 1 }] },
+      { text: 'Watchdog', frequency: 2, aliases: [{ text: 'sindy', count: 1 }] },
     ]);
     // 除了词条、发出时间和版本向量,不该漏出节点 id、化身、墓碑等同步内部结构。
     expect(Object.keys(projection).sort()).toEqual(['entries']);
@@ -303,7 +303,7 @@ describe('手机只读投影', () => {
 
   it('带上版本向量,让手机按包含关系而不是响应到达顺序挑快照', () => {
     const first = addManualEntry(createEmptySyncState(), createHlcClock('node-a', 1_000), {
-      text: 'Cindy',
+      text: 'Watchdog',
       nowMs: 1_000,
     });
     stateOverride.value = first.state;
@@ -320,7 +320,7 @@ describe('手机只读投影', () => {
 
   it('同步关闭的空投影仍带上当前版本向量,避免晚到的空表清掉更新快照', () => {
     const first = addManualEntry(createEmptySyncState(), createHlcClock('node-a', 1_000), {
-      text: 'Cindy',
+      text: 'Watchdog',
       nowMs: 1_000,
     });
     stateOverride.value = first.state;

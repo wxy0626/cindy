@@ -373,7 +373,7 @@ describe('PlanChangeTargetDialog product-first selection', () => {
     expect(screen.queryByRole('button', { name: 'Select' })).toBeNull();
   });
 
-  it('links model access to Cindy AI and closes the purchase comparison', () => {
+  it('links model access to Watchdog AI and closes the purchase comparison', () => {
     const onViewModels = vi.fn();
     render(
       <PlanComparison

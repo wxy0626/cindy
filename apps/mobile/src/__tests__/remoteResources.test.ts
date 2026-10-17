@@ -171,7 +171,7 @@ describe('remote resource response boundaries', () => {
     expect(normalizeRemoteCollectionItems({ items: [
       {
         ref: { collectionId: 'teammates', kind: 'bot', id: 'bot-1' },
-        display: { title: 'Cindy', futureDisplay: true },
+        display: { title: 'Watchdog', futureDisplay: true },
         links: [],
         revision: '1',
         futureField: true,
@@ -190,7 +190,7 @@ describe('remote resource response boundaries', () => {
     const [item] = normalizeRemoteCollectionItems({ items: [{
       ref: { collectionId: 'teammates', kind: 'bot', id: 'bot-1' },
       display: {
-        title: 'Cindy',
+        title: 'Watchdog',
         timestamp: 9e15,
         avatar: { kind: 'emoji', value: { boom: true }, fallbackText: 'C' },
         status: { label: 42 },
@@ -204,7 +204,7 @@ describe('remote resource response boundaries', () => {
 
     expect(item).toEqual({
       ref: { collectionId: 'teammates', kind: 'bot', id: 'bot-1' },
-      display: { title: 'Cindy' },
+      display: { title: 'Watchdog' },
       links: [{ rel: 'conversation', target: { kind: 'session', sessionId: 'session-1' } }],
       revision: '1',
     });
@@ -275,7 +275,7 @@ describe('portable task controls', () => {
 
 it('preserves additive public generation state without interpreting unknown future phases', () => {
   const input = (generation?: unknown) => ({ items: [{ ref: { collectionId: 'teammates', kind: 'bot', id: 'bot' },
-    display: { title: 'Cindy', generation }, links: [], revision: '1' }] });
+    display: { title: 'Watchdog', generation }, links: [], revision: '1' }] });
   expect(normalizeRemoteCollectionItems(input({ phase: 'replying', startedAt: 123 }), 'teammates')[0].display.generation)
     .toEqual({ phase: 'replying', startedAt: 123 });
   expect(normalizeRemoteCollectionItems(input(), 'teammates')[0].display.generation).toBeUndefined();

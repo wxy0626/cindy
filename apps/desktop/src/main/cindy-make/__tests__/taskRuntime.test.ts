@@ -101,7 +101,7 @@ function input() {
     originSessionId: origin.id,
     runId: 'runtime-' + ++sequence,
     request: '  修复滚动，保留原文  ',
-    title: 'Cindy Make: 修复滚动',
+    title: 'Watchdog Make: 修复滚动',
   };
 }
 function deferred() {
@@ -348,7 +348,7 @@ describe('Cindy Make task runtime', () => {
   ])('rejects malformed home preferences before creating a task: %j', (createOptions) => {
     expect(() =>
       validateCindyMakeTaskStart({ ...input(), originSessionId: undefined, createOptions }),
-    ).toThrow('Invalid Cindy Make preferences');
+    ).toThrow('Invalid Watchdog Make preferences');
   });
   it.each([false, true])(
     'dispatches with the real mapper and Windows paths after initial persistence failure=%s',
@@ -573,7 +573,7 @@ describe('Cindy Make task runtime', () => {
         { content: JSON.stringify({ __cindyMakeCard: { data: { report: { status } } } }) },
       ]);
       await expect(assertCindyMakeTaskReady('created')).rejects.toThrow(
-        'Retry Cindy Make preparation',
+        'Retry Watchdog Make preparation',
       );
     },
   );
@@ -630,7 +630,7 @@ describe('Cindy Make task runtime', () => {
 
       add('visible', 'failed', 110);
       await expect(assertCindyMakeTaskReady('created')).rejects.toThrow(
-        'Retry Cindy Make preparation',
+        'Retry Watchdog Make preparation',
       );
       sqlite.prepare('UPDATE messages SET rewind_at = 111 WHERE created_at = 110').run();
       await expect(assertCindyMakeTaskReady('created')).resolves.toBeUndefined();
@@ -639,7 +639,7 @@ describe('Cindy Make task runtime', () => {
       await expect(assertCindyMakeTaskReady('created')).resolves.toBeUndefined();
       add('latest', 'cancelled', 121);
       await expect(assertCindyMakeTaskReady('created')).rejects.toThrow(
-        'Retry Cindy Make preparation',
+        'Retry Watchdog Make preparation',
       );
     } finally {
       sqlite.close();

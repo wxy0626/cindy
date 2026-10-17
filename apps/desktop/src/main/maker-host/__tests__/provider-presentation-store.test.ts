@@ -68,7 +68,7 @@ it('persists generic OAuth restoration after a removed connection logs in again'
   owner = 'first';
 });
 
-it('persists the name across removal and reconnect, isolated by Cindy owner', async () => {
+it('persists the name across removal and reconnect, isolated by Watchdog owner', async () => {
   expect(readLocalCodexPresentation()).toEqual({});
   await renameLocalCodexProvider('  My OpenAI  ');
   await setLocalCodexProviderRemoved(true);

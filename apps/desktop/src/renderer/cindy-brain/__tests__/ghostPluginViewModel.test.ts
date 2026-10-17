@@ -130,7 +130,7 @@ describe('ghostPluginViewModel', () => {
             },
       {
         id: 'slack',
-        name: 'Cindy Slack',
+        name: 'Watchdog Slack',
         description: 'messages',
         version: '1',
         enabled: true,

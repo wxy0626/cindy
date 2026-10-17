@@ -100,7 +100,7 @@ export async function listCodexFeatures(
     if (!response || !Array.isArray(response.data)) throw new Error('Codex returned no feature list.');
     for (const item of response.data as Array<Record<string, unknown> | null>) {
       if (!item || typeof item.name !== 'string' || typeof item.stage !== 'string' || typeof item.enabled !== 'boolean') {
-        throw new Error('Codex returned a feature entry Cindy cannot read.');
+        throw new Error('Codex returned a feature entry Watchdog cannot read.');
       }
       features.push({ name: item.name, stage: item.stage, enabled: item.enabled });
     }
@@ -139,7 +139,7 @@ export const CODEX_USER_INSTRUCTION_FILE_NAMES = ['AGENTS.override.md', 'AGENTS.
  */
 export async function assertNoCodexUserInstructions(codexHome: string | null | undefined): Promise<void> {
   if (!codexHome) {
-    throw new Error('[REMOTE_AGENT_UNSUPPORTED] Codex did not report its home directory, so Cindy cannot confirm that personal Codex instructions stay on this computer.');
+    throw new Error('[REMOTE_AGENT_UNSUPPORTED] Codex did not report its home directory, so Watchdog cannot confirm that personal Codex instructions stay on this computer.');
   }
   for (const name of CODEX_USER_INSTRUCTION_FILE_NAMES) {
     let content: string;
@@ -148,7 +148,7 @@ export async function assertNoCodexUserInstructions(codexHome: string | null | u
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR') continue;
-      throw new Error(`Cindy could not check personal Codex instructions on this computer: ${code ?? 'read failed'}`);
+      throw new Error(`Watchdog could not check personal Codex instructions on this computer: ${code ?? 'read failed'}`);
     }
     if (content.trim().length > 0) {
       throw new Error(

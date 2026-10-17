@@ -268,7 +268,7 @@ test('desktopLogUploadBuildEnv: 非法 region ⇒ 抛错(不静默落到某个�
   const configPath = writeConfig(VALID);
   assert.throws(
     () => desktopLogUploadBuildEnv({ authRegion: 'nowhere', configPath }),
-    /Invalid Cindy auth region/,
+    /Invalid Watchdog auth region/,
   );
 });
 

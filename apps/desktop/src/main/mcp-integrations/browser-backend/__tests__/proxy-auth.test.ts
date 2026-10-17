@@ -160,7 +160,7 @@ async function createFakeCdp(options: {
 const publicLookup = (async () => [{ address: '93.184.216.34', family: 4 }]) as never;
 
 describe('commandLineHasExactArgument', () => {
-  const dir = '/Users/me/Library/Application Support/Cindy/browser/Cindy';
+  const dir = '/Users/me/Library/Application Support/Watchdog/browser/Cindy';
 
   it('rejects a value the expected one is merely a prefix of', () => {
     // The reason this cannot be `includes`: the result feeds a process kill, so

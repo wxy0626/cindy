@@ -127,7 +127,7 @@ describe('WechatBotSection', () => {
     expect(mocks.cancelAuthorization).toHaveBeenCalledTimes(1);
   });
 
-  it('confirms unbind while retaining existing Cindy history', async () => {
+  it('confirms unbind while retaining existing Watchdog history', async () => {
     mocks.state = {
       phase: 'needs_reauth',
       bound: true,

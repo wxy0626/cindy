@@ -64,7 +64,7 @@ describe('classifyConnectFailure', () => {
   });
 
   it('surfaces the explicit Cindy authentication subset error', () => {
-    const err = new Error('SSH config authentication is outside Cindy\'s supported subset: IdentityAgent none');
+    const err = new Error('SSH config authentication is outside Watchdog\'s supported subset: IdentityAgent none');
     (err as { code?: string }).code = SSH_CONFIG_AUTH_UNSUPPORTED_CODE;
     expect(classifyConnectFailure(err)).toMatchObject({
       code: 'SSH_CONFIG_AUTH_UNSUPPORTED',

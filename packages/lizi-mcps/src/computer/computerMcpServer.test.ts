@@ -1384,7 +1384,7 @@ describe('createComputerMcpServer', () => {
     await h.cleanup();
   });
 
-  it('replays a validated trajectory through Cindy action dispatch', async () => {
+  it('replays a validated trajectory through Watchdog action dispatch', async () => {
     const deps: ComputerMcpDeps = {
       getStatus: vi.fn(),
       callTool: vi.fn(async () => ({ ok: true })),

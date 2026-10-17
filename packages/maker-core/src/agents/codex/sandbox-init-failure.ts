@@ -38,11 +38,11 @@ export function isBwrapSandboxInitFailureOutput(output: string | null | undefine
  * `[Cindy]` 前缀明示这是宿主归因而非命令输出。
  */
 export const CODEX_SANDBOX_INIT_FAILURE_NOTE =
-  '[Cindy] The Codex command sandbox (bubblewrap) failed to initialize on this restricted Linux host — ' +
+  '[Watchdog] The Codex command sandbox (bubblewrap) failed to initialize on this restricted Linux host — ' +
   'the command above was never executed. This typically means the host blocks unprivileged user ' +
   'namespaces or network namespace setup (CAP_NET_ADMIN). Retrying the same command will fail ' +
   'identically; do not retry. Tell the user the sandbox cannot start in this environment and that ' +
-  'they can either switch this task to Full access (their explicit choice) or run Cindy on a host ' +
+  'they can either switch this task to Full access (their explicit choice) or run Watchdog on a host ' +
   'that permits sandbox namespaces.';
 
 /**

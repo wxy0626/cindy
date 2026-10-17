@@ -10,14 +10,14 @@ import {
   isMobileImPlatform,
 } from '@/session/messageSourceLabels';
 
-describe('mobile shared Cindy source card wiring', () => {
+describe('mobile shared Watchdog source card wiring', () => {
   it('downgrades only legacy hook rows (stored prompt) and keeps local IM rows as user rows', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/session/MessageRenderer.tsx'), 'utf8');
 
     expect(source).toContain('&& !item.message.hookSource.userTextContent');
     expect(source).toContain("kind: 'system' as const, align: 'agent' as const");
     expect(source).toContain('testID="message.hookSource"');
-    // 抬头走 i18n「Cindy · 来自 {{platform}}」,不再硬编码 Slack / Telegram / X。
+    // 抬头走 i18n「Watchdog · 来自 {{platform}}」,不再硬编码 Slack / Telegram / X。
     expect(source).toContain('{imSourceHeaderTitle(hookSource.im)}');
     expect(source).not.toContain("hookSource.im === 'x' ? 'X' : 'Slack'");
     expect(source).toContain('{hookSource.channelName}');
@@ -35,15 +35,15 @@ describe('IM source header text', () => {
 
   it('covers the same nine platforms as desktop with the shared zh-CN wording', () => {
     expect(MOBILE_IM_PLATFORMS.map((im) => imSourceHeaderTitle(im))).toEqual([
-      'Cindy · 来自 Slack',
-      'Cindy · 来自 Telegram',
-      'Cindy · 来自 X',
-      'Cindy · 来自 飞书',
-      'Cindy · 来自 Lark',
-      'Cindy · 来自 Discord',
-      'Cindy · 来自 微信',
-      'Cindy · 来自 企业微信',
-      'Cindy · 来自 钉钉',
+      'Watchdog · 来自 Slack',
+      'Watchdog · 来自 Telegram',
+      'Watchdog · 来自 X',
+      'Watchdog · 来自 飞书',
+      'Watchdog · 来自 Lark',
+      'Watchdog · 来自 Discord',
+      'Watchdog · 来自 微信',
+      'Watchdog · 来自 企业微信',
+      'Watchdog · 来自 钉钉',
     ]);
   });
 
@@ -55,8 +55,8 @@ describe('IM source header text', () => {
 
   it('localizes the header in every mobile locale', async () => {
     const expected: Record<string, string> = {
-      en: 'Cindy · from Feishu',
-      'zh-CN': 'Cindy · 来自 飞书',
+      en: 'Watchdog · from Feishu',
+      'zh-CN': 'Watchdog · 来自 飞书',
     };
     for (const [locale, text] of Object.entries(expected)) {
       await i18n.changeLanguage(locale);

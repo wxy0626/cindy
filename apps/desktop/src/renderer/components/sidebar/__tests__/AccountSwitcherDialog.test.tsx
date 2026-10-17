@@ -36,7 +36,7 @@ const snapshot = {
   accounts: [
     {
       accountKey: 'personal-key',
-      displayName: 'Personal Cindy',
+      displayName: 'Personal Watchdog',
       email: 'personal@example.com',
       avatarUrl: 'https://example.com/user-avatar.png',
       kind: 'personal' as const,
@@ -96,7 +96,7 @@ describe('AccountSwitcherDialog', () => {
       />,
     );
 
-    expect(await screen.findByText('Personal Cindy')).toBeTruthy();
+    expect(await screen.findByText('Personal Watchdog')).toBeTruthy();
     expect(screen.getByText('personal@example.com')).toBeTruthy();
     expect(screen.getByText('Example Corp')).toBeTruthy();
     expect(screen.getByText('Organization Cindy')).toBeTruthy();

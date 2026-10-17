@@ -83,7 +83,7 @@ describe('stop agent task IPC handler', () => {
       stopDetachedTask: vi.fn(async () => {
         throw createIpcError(
           'PRECONDITION_FAILED',
-          'This Subagent run belongs to another running Cindy instance.',
+          'This Subagent run belongs to another running Watchdog instance.',
         );
       }),
     });

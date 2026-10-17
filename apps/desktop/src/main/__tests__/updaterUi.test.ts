@@ -200,7 +200,7 @@ describe('updater failure retry UI', () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
     ui.status({ phase: 'failed', can_retry: true, error: 'processes_running' });
     const message =
-      'Close Cindy and any processes running from its installation folder, then retry';
+      'Close Watchdog and any processes running from its installation folder, then retry';
     expect(ui.elements.get('error-text')!.textContent).toBe(message);
     const pending = ui.elements.get('btn-retry')!.click!();
     ui.rejectRetry('processes_running');

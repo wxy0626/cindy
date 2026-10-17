@@ -117,7 +117,7 @@ describe('Pi package runtime invalidation', () => {
       mutatePiPackage: async (_: unknown, __: unknown, hooks: { onRuntimeInvalidationPublished(): Promise<void> }) => {
         await hooks.onRuntimeInvalidationPublished(); return { ok: true };
       },
-      invalidateLocalPiPackageRuntimes, t: () => 'Restart Cindy', log: { warn() {} },
+      invalidateLocalPiPackageRuntimes, t: () => 'Restart Watchdog', log: { warn() {} },
     };
     new Function(...Object.keys(dependencies), transpileModule(block, {
       compilerOptions: { target: ScriptTarget.ES2022 },

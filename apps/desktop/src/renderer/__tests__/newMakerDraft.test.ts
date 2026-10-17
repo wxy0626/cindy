@@ -136,7 +136,7 @@ describe('newMakerDraft store', () => {
     if (customized) markDefaultTupleCustomized();
     sources.push({
       id: 'xd',
-      name: 'Cindy AI',
+      name: 'Watchdog AI',
       source: 'builtin',
       connected: true,
       agents: ['pi'],

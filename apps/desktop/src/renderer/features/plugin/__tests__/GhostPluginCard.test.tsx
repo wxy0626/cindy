@@ -492,7 +492,7 @@ describe('GhostPluginCard', () => {
   it('renders the Mermaid fallback symbol on the theme elevated surface', () => {
     const { container } = render(
       <GhostPluginCard
-        item={{ ...commandPlugin, id: 'cindy-mermaid', name: 'Cindy Mermaid' }}
+        item={{ ...commandPlugin, id: 'cindy-mermaid', name: 'Watchdog Mermaid' }}
         onPrimary={vi.fn()}
         onManage={vi.fn()}
       />,

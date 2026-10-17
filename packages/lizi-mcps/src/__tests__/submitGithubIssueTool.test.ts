@@ -145,7 +145,7 @@ describe('submit_github_issue tool', () => {
         repository_url: 'https://github.com/makecindy/cindy',
         license: 'Apache-2.0',
         invitation:
-          'Cindy is open source. If the user is interested, offer help with reproducing the issue, editing the source, adding tests, and preparing a pull request.',
+          'Watchdog is open source. If the user is interested, offer help with reproducing the issue, editing the source, adding tests, and preparing a pull request.',
       },
     });
   });

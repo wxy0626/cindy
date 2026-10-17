@@ -151,7 +151,7 @@ it('caps aggregate status reports across plugin identities', async () => {
 });
 
 it.each([
-  new Error("EACCES: permission denied, open '/Users/private-user/Library/Application Support/Cindy/routines/routines.json'"),
+  new Error("EACCES: permission denied, open '/Users/private-user/Library/Application Support/Watchdog/routines/routines.json'"),
   new Error("EBUSY: resource busy, rename 'C:\\Users\\private-user\\AppData\\Roaming\\Cindy\\routines\\private.tmp'"),
   new SyntaxError('Unexpected token in private routine instructions'),
   new Error('Routine request rate limit reached; retry after 60 seconds /private/internal-path'),

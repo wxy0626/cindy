@@ -21,7 +21,7 @@ const report: MakeDoctorReport = {
   platform: 'win32',
   arch: 'x64',
   checks: [],
-  task: { sessionId: 'make-session', title: 'Personal Cindy', phase: 'dependencies' },
+  task: { sessionId: 'make-session', title: 'Personal Watchdog', phase: 'dependencies' },
 };
 
 describe('Cindy Make input replacement', () => {
@@ -39,7 +39,7 @@ describe('Cindy Make input replacement', () => {
     vi.stubGlobal('electronAPI', { cancelCindyMakeTask: cancel });
     const view = render(<CindyMakeComposerMask phase="dependencies" report={report} />);
     expect(screen.getAllByRole('listitem')).toHaveLength(6);
-    expect(screen.getByText('[make] Personal Cindy')).toBeTruthy();
+    expect(screen.getByText('[make] Personal Watchdog')).toBeTruthy();
     expect(screen.getByText('cindyMake.code.dependencyActivity.starting')).toBeTruthy();
     expect(screen.queryByText('cindyMake.code.inputLocked.hint')).toBeNull();
     expect(screen.queryByRole('textbox')).toBeNull();
@@ -100,7 +100,7 @@ describe('Cindy Make input replacement', () => {
           originSessionId: undefined,
           runId: report.runId,
           request: 'original request',
-          title: '[make] Personal Cindy',
+          title: '[make] Personal Watchdog',
         }),
       );
     },

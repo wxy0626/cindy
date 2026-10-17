@@ -582,7 +582,7 @@ describe('remote SSH mutation runtime semantics', () => {
   });
 
   it('reports an ownership error when the existing managed SSH file is unclaimed', async () => {
-    const ownershipError = new Error('existing managed SSH config is not owned by Cindy') as Error & { code?: string };
+    const ownershipError = new Error('existing managed SSH config is not owned by Watchdog') as Error & { code?: string };
     ownershipError.code = 'SSH_CONFIG_OWNERSHIP_REQUIRED';
     mocks.addManagedHostWithInclude.mockRejectedValueOnce(ownershipError);
 

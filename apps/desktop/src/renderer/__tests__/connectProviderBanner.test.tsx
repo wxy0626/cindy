@@ -40,7 +40,7 @@ import {
 
 const disconnectedXd = {
   id: 'xd',
-  name: 'Cindy AI',
+  name: 'Watchdog AI',
   source: 'builtin',
   agents: ['claude-code', 'codex'],
   auth: { method: 'managed' },

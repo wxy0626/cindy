@@ -67,7 +67,7 @@ const bot = {
   id: 'bot',
   deviceId: 'host',
   deviceName: 'Remote Mac',
-  name: 'Cindy',
+  name: 'Watchdog',
   avatar: '',
   avatarColor: '',
   description: '',
@@ -84,7 +84,7 @@ const resource = (
 ) => ({
   ref: { collectionId: 'teammates', kind: 'bot', id: 'bot' },
   revision,
-  display: { title: 'Cindy' },
+  display: { title: 'Watchdog' },
   links: [],
   actions: [
     {
@@ -632,7 +632,7 @@ it.each(['gallery', 'file'])(
     fireEvent.click(screen.getByRole('button', { name: 'bots.profile.changeAvatar' }));
     let canClose: unknown;
     await act(async () => {
-      if (source === 'gallery') fireEvent.click(screen.getByRole('button', { name: 'Cindy' }));
+      if (source === 'gallery') fireEvent.click(screen.getByRole('button', { name: 'Watchdog' }));
       else
         fireEvent.change(document.querySelector('input[type="file"]')!, {
           target: { files: [new File(['image'], 'avatar.png', { type: 'image/png' })] },

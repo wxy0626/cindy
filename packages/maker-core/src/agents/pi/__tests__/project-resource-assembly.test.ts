@@ -278,7 +278,7 @@ describe('Pi approved project resource assembly', () => {
     expect(result.diagnostic.reason).toBe('approval-matched');
   });
 
-  it('keeps a single-file markdown skill discovered because Cindy project scanning only approves directories', async () => {
+  it('keeps a single-file markdown skill discovered because Watchdog project scanning only approves directories', async () => {
     const workingDir = '/repo-a/packages/app';
     const skillFile = `${workingDir}/.pi/skills/demo.md`;
     const result = await assembleApprovedPiProjectResources(

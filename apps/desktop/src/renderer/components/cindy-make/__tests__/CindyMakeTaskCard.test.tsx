@@ -25,7 +25,7 @@ const report: MakeDoctorReport = {
   platform: 'win32',
   arch: 'x64',
   task: {
-    title: 'Cindy Make: scrolling',
+    title: 'Watchdog Make: scrolling',
     sessionId: 'created',
     originSessionId: 'origin',
     phase: 'dependencies',

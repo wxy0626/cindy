@@ -279,7 +279,7 @@ describe('mobile composer document', () => {
       expect.objectContaining({
         kind: 'project',
         href: projectHref,
-        name: 'Cindy',
+        name: 'Watchdog',
         workingDir: '/repos/cindy',
       }),
     ]);

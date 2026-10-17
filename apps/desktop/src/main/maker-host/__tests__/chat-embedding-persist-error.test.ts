@@ -16,7 +16,7 @@ describe('rethrowChatEmbeddingPersistError', () => {
 
   it('rewrites filesystem failures to a stable INTERNAL code without leaking the path', () => {
     const leakedPath =
-      '/Users/example/Library/Application Support/Cindy/owners/abc/chat-embedding-settings.json';
+      '/Users/example/Library/Application Support/Watchdog/owners/abc/chat-embedding-settings.json';
     try {
       rethrowChatEmbeddingPersistError(
         new Error(`ENOENT: no such file or directory, unlink '${leakedPath}'`),

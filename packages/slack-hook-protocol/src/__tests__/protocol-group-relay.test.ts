@@ -57,7 +57,7 @@ describe('group.message(阶段 14)', () => {
         threadId: null,
         messageId: '1',
         chatName: null,
-        author: { name: 'Cindy(bot)', isBot: true },
+        author: { name: 'Watchdog(bot)', isBot: true },
         text: '看起来是连接池耗尽',
         sentAt: 1_785_200_000_001,
       }),

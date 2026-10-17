@@ -9,7 +9,7 @@ import { buildSafeStorageIssueMeta } from '../safeStorageIssueLog';
 describe('buildSafeStorageIssueMeta', () => {
   it('fs 错误只落 code,message 里的绝对路径与明文绝不进载荷', () => {
     const err = new Error(
-      "EACCES: permission denied, open '/Users/someone/Library/Application Support/Cindy/safe-storage/token.enc' plaintext=hunter2",
+      "EACCES: permission denied, open '/Users/someone/Library/Application Support/Watchdog/safe-storage/token.enc' plaintext=hunter2",
     ) as NodeJS.ErrnoException;
     err.code = 'EACCES';
     const meta = buildSafeStorageIssueMeta('token', err);

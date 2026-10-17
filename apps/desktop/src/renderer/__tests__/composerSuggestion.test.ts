@@ -46,7 +46,7 @@ describe('composerSuggestion', () => {
         {
           item: {
             type: 'plugin-command',
-            name: 'Cindy Art',
+            name: 'Watchdog Art',
             relPath: 'art',
             pluginId: 'cindy-art',
           },

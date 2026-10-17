@@ -4,7 +4,7 @@ export class CodexHistoryRecoveryRequiredError extends Error {
 
   constructor() {
     super(
-      'Codex native history requires a Cindy context handoff instead of in-place rewriting',
+      'Codex native history requires a Watchdog context handoff instead of in-place rewriting',
     );
     this.name = 'CodexHistoryRecoveryRequiredError';
   }
