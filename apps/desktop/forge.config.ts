@@ -1779,6 +1779,8 @@ if (isWin) {
 }
 
 const config: ForgeConfig = {
+  // 打包产物统一落在 build/,避免 out/ 与 build/ 两份并存导致无效增长。
+  outDir: "build",
   packagerConfig: {
     // sharp 的底层 libvips 共享库 (libvips-cpp.dylib / libvips-42.dll /
     // libvips-cpp.so) 在不同平台上的位置不同:
@@ -2008,6 +2010,15 @@ const config: ForgeConfig = {
         }
       } finally {
         removeCindySourceMetadata();
+      }
+    },
+    // electron-builder 会在 apps/desktop/dist 留下 builder-debug.yml 等中间文件；
+    // 安装包已被 forge 收集到 build/make，这里顺手清掉，避免仓库里出现第二份产物目录。
+    postMake: async () => {
+      const distDir = path.join(__dirname, 'dist');
+      if (fs.existsSync(distDir)) {
+        fs.rmSync(distDir, { recursive: true, force: true });
+        console.log('[forge:postMake] removed intermediate dist/ (artifacts live in build/)');
       }
     },
   },
