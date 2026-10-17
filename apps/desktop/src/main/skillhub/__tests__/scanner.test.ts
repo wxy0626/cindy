@@ -112,7 +112,7 @@ describe('scanAllSkills', () => {
     expect(result.skills).toHaveLength(2);
     expect(result.skills.find((skill) => skill.builtIn)).toMatchObject({
       name: 'cindy-skill-creator',
-      description: 'Watchdog copy',
+      description: 'Cindy copy',
       builtIn: true,
       canUninstall: false,
       cindyEnabled: true,

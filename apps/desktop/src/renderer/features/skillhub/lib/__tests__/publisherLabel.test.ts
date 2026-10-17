@@ -7,13 +7,13 @@ describe('skillPublisherLabel', () => {
     expect(skillPublisherLabel({
       publisherName: 'Watchdog Publisher',
       authorName: 'Acme',
-    })).toBe('Cindy Publisher · Acme');
+    })).toBe('Watchdog Publisher · Acme');
   });
 
   it('does not duplicate a personal owner fallback', () => {
     expect(skillPublisherLabel({
       publisherName: 'Watchdog Publisher',
       authorName: 'Watchdog Publisher',
-    })).toBe('Cindy Publisher');
+    })).toBe('Watchdog Publisher');
   });
 });

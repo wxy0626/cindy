@@ -63,7 +63,7 @@ describe('mapHubSkillInfoToDesktopInfo', () => {
     });
 
     expect(info.authorName).toBe('Acme');
-    expect(info.publisherName).toBe('Cindy Publisher');
+    expect(info.publisherName).toBe('Watchdog Publisher');
   });
 
   it('preserves Hub ownership, visibility, and review status needed by My Published management', () => {

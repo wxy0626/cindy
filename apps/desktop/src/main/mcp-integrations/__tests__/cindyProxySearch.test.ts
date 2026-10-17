@@ -110,7 +110,7 @@ describe('cindyProxySearch', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       model: CINDY_SEARCH_MODEL_NAME,
       max_tokens: 2048,
-      messages: [{ role: 'user', content: 'Cindy' }],
+      messages: [{ role: 'user', content: 'Watchdog' }],
       tools: [
         {
           type: 'web_search_20250305',

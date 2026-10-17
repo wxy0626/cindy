@@ -185,7 +185,7 @@ describe('portable teammate memory pages', () => {
   it('confirms deletion with the teammate and memory names and deletes through the service', async () => {
     const f = fixture();
     const detail = await f.resource('settings:bot-a/memory/feedback_sources');
-    expect(detail.actions![1]).toMatchObject({ tone: 'destructive', confirmation: { body: { translations: { 'zh-CN': 'Cindy之后不会再参考「注明来源」。' } } } });
+    expect(detail.actions![1]).toMatchObject({ tone: 'destructive', confirmation: { body: { translations: { 'zh-CN': 'Watchdog之后不会再参考「注明来源」。' } } } });
     await f.send(detail, {}, 1);
     expect(f.deps.memory.delete).toHaveBeenCalledWith({ botId: 'bot-a', filename: 'feedback_sources.md', expectedUpdatedAt: detail.revision });
     await expect(f.resource('settings:bot-a/memory/feedback_sources')).rejects.toBeInstanceOf(RemoteResourceRegistryError);

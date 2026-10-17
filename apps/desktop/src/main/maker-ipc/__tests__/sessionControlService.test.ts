@@ -200,7 +200,7 @@ describe('session control domain service', () => {
         dispatcherBot: { id: 'bot-1', name: 'Watchdog' },
         message: 'follow-up',
       }),
-    ).toMatchObject({ senderBotId: 'bot-1', senderBotName: 'Cindy' });
+    ).toMatchObject({ senderBotId: 'bot-1', senderBotName: 'Watchdog' });
   });
 
   it('shares queue lifecycle while enforcing sender ownership and preserving identity', async () => {

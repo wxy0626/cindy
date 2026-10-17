@@ -729,7 +729,7 @@ describe('model-disable:set handler', () => {
     const harness = new IpcHarness();
     const rejecting = makeDeps({
       assertTrustedSender: vi.fn(() => {
-        throwIpcError('PERMISSION_DENIED', '此操作只能从 Watchdog 主页面发起');
+        throwIpcError('PERMISSION_DENIED', '此操作只能从 Cindy 主页面发起');
       }),
     });
     registerProviderHandlers(harness, rejecting);
@@ -752,7 +752,7 @@ describe('provider:models-rediscover handler', () => {
   it('校验 sender 后才发起重新发现;不可信 sender 直接拒绝', async () => {
     const harness = new IpcHarness();
     const assertTrustedSender = vi.fn(() => {
-      throwIpcError('PERMISSION_DENIED', '此操作只能从 Watchdog 主页面发起');
+      throwIpcError('PERMISSION_DENIED', '此操作只能从 Cindy 主页面发起');
     });
     const deps = makeDeps({ assertTrustedSender });
     registerProviderHandlers(harness, deps);
@@ -896,7 +896,7 @@ describe('provider:models-refresh handler', () => {
       harness,
       makeDeps({
         refreshBuiltinModels: async () => {
-          throwIpcError('MODEL_ACCESS_FAILED', 'Watchdog AI model list refresh failed.');
+          throwIpcError('MODEL_ACCESS_FAILED', 'Cindy AI model list refresh failed.');
         },
       }),
     );
@@ -3758,7 +3758,7 @@ describe('provider:models-fetch handler', () => {
   it('rejects an untrusted sender before issuing a credentialed model request', async () => {
     const harness = new IpcHarness();
     const assertTrustedSender = vi.fn(() => {
-      throwIpcError('PERMISSION_DENIED', '此操作只能从 Watchdog 主页面发起');
+      throwIpcError('PERMISSION_DENIED', '此操作只能从 Cindy 主页面发起');
     });
     const deps = makeDeps({ assertTrustedSender });
     registerProviderHandlers(harness, deps);

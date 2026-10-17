@@ -57,7 +57,7 @@ describe('OAuth result page language and copy', () => {
       href: 'cindy://focus/xai%20oauth',
       label: '返回 Cindy',
     });
-    expect(buildOAuthReturnAction('en', 'generic-oauth', 'Cindy').label).toBe('Return to Watchdog');
+    expect(buildOAuthReturnAction('en', 'generic-oauth', 'Cindy').label).toBe('Return to Cindy');
   });
 
   it('provides provider-specific localized result copy', () => {
@@ -79,7 +79,7 @@ describe('OAuth result page language and copy', () => {
   it('localizes the return action for English', () => {
     expect(buildOAuthReturnAction('en', 'ghost-oauth', 'Cindy')).toEqual({
       href: 'cindy://focus/ghost-oauth',
-      label: 'Return to Watchdog',
+      label: 'Return to Cindy',
     });
   });
 });
@@ -102,11 +102,11 @@ describe('neutral callback copy (demo CALLBACK.neutral verbatim)', () => {
   it('matches the localized copy character-for-character', () => {
     expect(getOAuthNeutralResultCopy('zh', 'Cindy')).toEqual({
       title: '需要继续操作',
-      body: '请返回 Watchdog，完成当前工作区的安装后继续。',
+      body: '请返回 Cindy，完成当前工作区的安装后继续。',
     });
     expect(getOAuthNeutralResultCopy('en', 'Cindy')).toEqual({
       title: 'Action required',
-      body: 'Return to Watchdog and finish installing in the current workspace.',
+      body: 'Return to Cindy and finish installing in the current workspace.',
     });
   });
 
@@ -176,7 +176,7 @@ describe('renderOAuthResultPage', () => {
       htmlLang: 'zh-CN',
       variant: 'warning',
       title: '需要继续操作',
-      body: '请返回 Watchdog。',
+      body: '请返回 Cindy。',
       action: { href: 'cindy://focus/slack-hook-install', label: '返回 Cindy' },
     });
     expect(html).toContain('<a class="cta" href="cindy://focus/slack-hook-install">返回 Cindy</a>');

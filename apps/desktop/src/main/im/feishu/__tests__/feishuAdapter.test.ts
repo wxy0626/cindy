@@ -616,7 +616,7 @@ describe('feishu group lane adapter hooks', () => {
         `[张三 (user_id: ou_z1)] ${t} z1`,
         `[张三 (user_id: ou_z2)] ${t} z2`,
         `[张三 (user_id: ou_z1)] ${t} z3`,
-        `[Cindy (bot)] ${t} b1`,
+        `[Watchdog (bot)] ${t} b1`,
         `[Mallory] ${t} x1`,
       ].join('\n'),
     );

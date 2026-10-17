@@ -286,7 +286,7 @@ describe('background results during normal turn delivery', () => {
 describe('post-terminal runtime recovery delivery', () => {
   it.each([
     ['en', 'Pi extensions could not be refreshed. Restart Watchdog before using Pi again.'],
-    ['zh-CN', 'Pi 扩展未能完成刷新。请重启 Cindy 后再使用 Pi。'],
+    ['zh-CN', 'Pi 扩展未能完成刷新。请重启 Watchdog 后再使用 Pi。'],
   ] as const)('delivers localized %s recovery after the observer unsubscribes, without replay', async (locale, expected) => {
     setMainLocale(locale);
     let terminal!: () => void;

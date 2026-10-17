@@ -45,7 +45,7 @@ describe('shared teammate portrait gallery', () => {
     fireEvent.click(screen.getByRole('button', { name: 'bots.profile.changeAvatar' }));
     const buttons = within(screen.getByRole('dialog')).getAllByRole('button');
     expect(buttons).toHaveLength(18);
-    expect(buttons[0].getAttribute('aria-label')).toBe('Cindy');
+    expect(buttons[0].getAttribute('aria-label')).toBe('Watchdog');
     expect(buttons.slice(1, 17).map((button) => button.getAttribute('aria-label'))).toEqual(
       Array.from({ length: 16 }, (_, i) => `bots.guided.portrait-${i + 1}`),
     );

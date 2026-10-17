@@ -111,7 +111,7 @@ describe('buildMenubarView', () => {
     const view = buildMenubarView(input([quota], { locale: 'zh-CN' }));
     expect(view.sources[0]).toMatchObject({ when: '20天3时后重置' });
     expect(view.sources[0].fill).toBeCloseTo(0.9998);
-    expect(view.headlinePrimary).toBe('Cindy 本期配额还能用。');
+    expect(view.headlinePrimary).toBe('Watchdog 本期配额还能用。');
     expect(view.details.cindy).toMatchObject({ title: 'Watchdog 本期配额', action: { kind: 'open-settings' } });
     expect(view.details.cindy.facts).toContainEqual({ label: '今日已用', value: '$3.62', sub: '每日建议 $3,000 以内' });
   });

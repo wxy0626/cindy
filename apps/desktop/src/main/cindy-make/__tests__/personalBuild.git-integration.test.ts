@@ -475,7 +475,7 @@ it('commits completed task files locally but refuses to commit on main', async (
     );
     expect(stagedCopies).toContain('staged-only revision');
     expect(await h.git(['log', '-1', '--format=%B'], h.workingDir)).toContain(
-      'Signed-off-by: Cindy Make <cindy-make@localhost.invalid>',
+      'Signed-off-by: Watchdog Make <cindy-make@localhost.invalid>',
     );
     expect(await collectCindyMakeChanges(h.git, h.userData, h.workingDir)).toEqual(facts);
     await h.git(['checkout', '-b', 'main'], h.workingDir);

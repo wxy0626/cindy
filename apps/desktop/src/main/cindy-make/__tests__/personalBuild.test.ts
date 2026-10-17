@@ -473,7 +473,7 @@ describe('personal source integration and packaging', () => {
               args[2],
               'apps/desktop/release/artifacts/global/unversioned',
               process.platform + '-' + process.arch,
-              'Watchdog-Setup.exe',
+              'Cindy-Setup.exe',
             );
             await writeFile(installer, 'modified after packaging');
           }
