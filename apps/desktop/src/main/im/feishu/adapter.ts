@@ -257,7 +257,7 @@ export function buildFeishuAdapter(
     messageSourceIm: () => feishuIm.getService(),
     resolveNotificationReply: (event) => resolveFeishuNotificationReply(feishuIm, event),
     notificationReplyText: {
-      unavailable: '暂时无法继续这条通知对应的任务，请在 Cindy 中确认任务仍可用后重试。',
+      unavailable: '暂时无法继续这条通知对应的任务，请在 Watchdog 中确认任务仍可用后重试。',
       commands: '本话题用于继续通知对应的任务。停止请用 !stop；其他命令请在主聊天中操作。',
     },
     im: feishuIm,

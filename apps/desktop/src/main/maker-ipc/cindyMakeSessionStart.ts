@@ -24,7 +24,7 @@ export async function applyPersistedCindyMakeMarker(
   if (typeof o.id !== 'string' || !o.id) return false;
   if ((await readSource(o.id)) !== CINDY_MAKE_SESSION_SOURCE) return false;
   if (o.remoteHostId) {
-    throwIpcError('UNSUPPORTED_CAPABILITY', 'Cindy Make tasks are local-only');
+    throwIpcError('UNSUPPORTED_CAPABILITY', 'Watchdog Make tasks are local-only');
   }
   o.vendorOptions = { ...(o.vendorOptions ?? {}), [CINDY_MAKE_VENDOR_OPTION_KEY]: true };
   return true;

@@ -1557,19 +1557,19 @@ export const FORGE_GUIDE = `# 意识(Ghost)编写手册
 状态上报另有独立的每插件 60 次/分钟、全账号 240 次/分钟额度，重复状态同样计数；相同状态和声明不会触发界面刷新，也不会清空最近事件时间。请只在状态变化或重连后上报，超限时退避重试。
 失败回执只包含固定公开文案；未知宿主错误统一返回 Routine request failed; please retry later，底层路径和异常仅留在 Main 日志。保留原投递 ID，按退避重试。
 
-意识是 Cindy 的第三方能力包,文件形态是 \`.cindy\`(zip 包)。装入后可给
+意识是 Watchdog 的第三方能力包,文件形态是 \`.cindy\`(zip 包)。装入后可给
 主机叠加:AI 可调用的工具、常驻界面面板、模型代办能力。本手册教你(agent)替用户
 写一个意识。**流程:先取手册目录 → 按 §0 用提问卡片和用户对齐设计 → 按需用 section
 读透相关章(动手前至少读完"沙箱红线"与"打包与测试"两章) → 在工作目录写源码文件 →
 ghost_forge_pack 校验并生成 .cindy 产物；需要发布时改用 publish intent 取得一次性票据。**
 
 **安装与更新契约**：用户导入本地 \`.cindy\`、点击市场安装、明确要求 Agent 安装，或插件命中
-服务端 \`defaultInstall\`，都是明确的安装依据。Cindy 校验真实包后，首次安装会先列出插件声明的
+服务端 \`defaultInstall\`，都是明确的安装依据。Watchdog 校验真实包后，首次安装会先列出插件声明的
 全部权限请用户确认（Agent 发起的安装在任务里弹确认卡，不论任务权限档），确认后安装并启用；
 更新只在新版本比已装版本权限变多时请用户确认，权限没变多的更新直接完成。服务端
 \`defaultInstall\` 下发的插件不弹确认。另有一道窄确认：企业作者
 用 \`ghost_forge_install\` 安装声明了 \`oidc-token\` 的包时，需核对 id 与注入域名。市场安装会绑定所选来源，
-此后权限没变多的新版本由 Cindy 静默更新并保留当前启用状态；权限变多的新版本会暂停自动更新，
+此后权限没变多的新版本由 Watchdog 静默更新并保留当前启用状态；权限变多的新版本会暂停自动更新，
 等用户在插件页确认，在此之前旧版本照常可用。所以发布新版时不要顺手扩大权限，确需新增的在更新
 说明里讲清楚。本地 \`.cindy\` 不自动猜测更新来源，需要用户再次导入新版包。当前组织的默认插件可能在严格核对组织、前缀、批准、退订与来源后，
 接管同 id 的普通本地导入；明确通过 \`ghost_forge_install\` 安装或更新的作者自测包会被保护，
@@ -1578,20 +1578,20 @@ ghost_forge_pack 校验并生成 .cindy 产物；需要发布时改用 publish i
 
 **先判断谁执行，再声明能力**：
 
-- 当前 Agent 调用你的 tool 时，是否执行由 Cindy 现有 Agent 授权系统决定。
+- 当前 Agent 调用你的 tool 时，是否执行由 Watchdog 现有 Agent 授权系统决定。
   普通 HTTPS 请求和当前 workdir 文件操作把主机下发的 \`msg.callId\` 原样带给
   \`cindy.fetch\` 或 \`cindy.fs\`；CLI 继续使用既有随包 Node 工作进程，
   不新增另一套 Host 执行协议。具体 CLI、域名或路径不需要先注册成客户端 Slot。
 - 只有 Panel、订阅、常驻进程、后台任务等**脱离当前 Agent tool-call**
   仍要自主使用 Host 能力时，才声明 \`network\`、\`fs\`、\`node\` 等对应字段。
-  真正需要 Cindy 尚未实现的 Host 服务（例如新的内置设备面）时，才需要客户端
+  真正需要 Watchdog 尚未实现的 Host 服务（例如新的内置设备面）时，才需要客户端
   实现并提高 \`minCindyVersion\`。
 
 从零开始时优先调用 \`ghost_forge_scaffold\` 生成一份不会覆盖现有文件的骨架，再在
 骨架上修改。可选模板:\`plain\`(普通沙箱工具)、\`agent-action\`(卡片点击后让 Agent
 继续工作)、\`node-json-rpc\`(普通随包 Node 服务)、\`node-mcp\`(随包 stdio MCP)。正式版
-Cindy 会默认把自身版本写进这份具体插件的 \`minCindyVersion\`；在开发版或预发布版中制作时，
-调用 scaffold 必须明确传入插件实际依赖的首个 Cindy 正式版本。
+Watchdog 会默认把自身版本写进这份具体插件的 \`minCindyVersion\`；在开发版或预发布版中制作时，
+调用 scaffold 必须明确传入插件实际依赖的首个 Watchdog 正式版本。
 
 ## 0. 设计对齐:动手前用提问卡片确认关键决策
 
@@ -1606,7 +1606,7 @@ Cindy 会默认把自身版本写进这份具体插件的 \`minCindyVersion\`；
 
 值得主动摆出来让用户选的"隐藏"设计选项(详见对应章节):
 
-- **界面形态**:无界面(纯工具)/ 聊天卡片(card 能力,§4.5)/ Cindy 一级主视图
+- **界面形态**:无界面(纯工具)/ 聊天卡片(card 能力,§4.5)/ Watchdog 一级主视图
   (mainView 能力,§4.20)/ 停靠面板(panel.position
   left,§5)/ 插件页内独占面板(position "tab",从插件页「使用」打开、离开即关,§5)。
 - **唤起方式**:只靠 AI 按 whenToUse 自动想起,还是同时声明 \`command\` 点名词让用户
@@ -1620,7 +1620,7 @@ Cindy 会默认把自身版本写进这份具体插件的 \`minCindyVersion\`；
   要用户填 key 就需要 setup
   就绪声明与 settingsHtml 设置区(§4.7、§4.8)。
 - **运行形态**:纯沙箱 main.js 够用,还是要随包 Node 进程装依赖跑重活(node,§4.12)。
-- **媒体能力**:要不要基于 Cindy Core 的图片/视频模型封装上层能力；插件负责场景、
+- **媒体能力**:要不要基于 Watchdog Core 的图片/视频模型封装上层能力；插件负责场景、
   配置和结果呈现，生成请求由当前 Agent 调用 Core media 工具(§2、§4.0.4)。
 
 问完后把选择复述成一份简短设计小结(要解决的问题/目标用户/交互流程/所选形态/
@@ -1676,7 +1676,7 @@ my-ghost/
     "en": "locales/en.json"
   },
   "version": "1.0.0",
-  "minCindyVersion": "1.2.3", // 示例；v3 必填:本插件实际依赖的首个 Cindy 正式版本(SemVer)
+  "minCindyVersion": "1.2.3", // 示例；v3 必填:本插件实际依赖的首个 Watchdog 正式版本(SemVer)
   "entry": "main.js",          // 电子脑入口(kind 字段已无需填写:意识只有芯片一种形态,缺省即 chip;写了也只认 "chip")
   "launch": "on-demand",       // 可选:电子脑启动模式。on-demand(缺省)=被需要才拉起;resident=唤醒即常驻(详情页会如实标注"常驻运行",绝大多数意识不需要,仅订阅型/需秒响应的场景用)
   "command": "画图",            // 推荐:用户 $画图 显式点名(与已装意识查重,冲突拒装)。
@@ -1688,7 +1688,7 @@ my-ghost/
   "cindy": { "image": ["generate", "edit"] },   // 直接声明能力及详单,见下
   // 类目按需申请:image / video 的动作是 "generate" | "edit";media 只有
   // "deposit"(把你手里的媒体字节寄存进总仓换指纹,见 §4.0.1);
-  // text 只有 "oneshot";search 只有 "web"(Cindy 托管公网搜索)。每条都会
+  // text 只有 "oneshot";search 只有 "web"(Watchdog 托管公网搜索)。每条都会
   // 在插件详情的能力清单里单独列给用户看。
   "panel": { "title": "面板标题", "html": "panel.html", "position": "left",
              "minWidth": 240, "defaultFraction": 0.24,
@@ -1711,8 +1711,8 @@ my-ghost/
 }
 \`\`\`
 
-\`schemaVersion: 3\` 必须填写 \`minCindyVersion\`。它写本插件实际依赖的首个 Cindy
-正式版本；Manifest schema 本身没有统一的 Cindy 版本下限。不要为了使用某项既有能力随意抬高版本。
+\`schemaVersion: 3\` 必须填写 \`minCindyVersion\`。它写本插件实际依赖的首个 Watchdog
+正式版本；Manifest schema 本身没有统一的 Watchdog 版本下限。不要为了使用某项既有能力随意抬高版本。
 官方市场会优先向旧客户端投影最近的兼容历史版本，没有兼容版本时不展示该插件。
 Desktop 信任来源已经完成的版本选择，不再按 \`minCindyVersion\` 追加筛选或确认弹窗；
 用户主动导入的本地包、以及用户添加的自定义市场也遵循同一安装策略。这个字段仍必须
@@ -1748,7 +1748,7 @@ Desktop 信任来源已经完成的版本选择，不再按 \`minCindyVersion\` 
 
 ### 2.1 本地化资源(locales)
 
-插件语言**只跟随 Cindy 宿主当前语言**。不要读取 \`navigator.language\`、操作系统语言或
+插件语言**只跟随 Watchdog 宿主当前语言**。不要读取 \`navigator.language\`、操作系统语言或
 浏览器偏好，也不要在插件内保存另一份语言选择。宿主当前只支持 \`zh-CN / en\`；
 插件没提供宿主当前语言时先回退中文，再回退英文，因此只要声明 \`locales\` 就必须提供 \`en\`。
 
@@ -1817,8 +1817,8 @@ v3 直接用顶层字段声明插件贡献项与自主 Host 能力，不再有 \
 不能写 \`false\`。\`card: {}\` 与 \`agent: {}\` 分别表示基础聊天卡片能力和用户点击后
 发起 Agent 回合；其它对象型能力必须包含该能力真正需要的详单。
 
-v3 未识别的顶层字段会原样保留，但旧版 Cindy 不展示、不给这个未知 Host 能力、也不因此阻止安装。
-当未来 Cindy 识别该字段后，它才会进入正常的能力展示与运行时守门。插件若依赖新能力，
+v3 未识别的顶层字段会原样保留，但旧版 Watchdog 不展示、不给这个未知 Host 能力、也不因此阻止安装。
+当未来 Watchdog 识别该字段后，它才会进入正常的能力展示与运行时守门。插件若依赖新能力，
 应同时把 \`minCindyVersion\` 提高到首个支持版本；仅由插件包自己完成的逻辑不要发明
 Host 能力字段。v2 的 \`slots\` 只用于存量包兼容，新插件不得再写。
 当前 Agent tool-call 内，插件工具是否执行由外层 \`ghost_call\` 的 Agent 授权决定；
@@ -1858,7 +1858,7 @@ Host 能力字段。v2 的 \`slots\` 只用于存量包兼容，新插件不得�
 \`\`\`
 
 node 详单**不接受** \`command\` / \`args\` / \`shell\` / \`env\` 或其它自造字段；
-入口固定使用 Cindy 随包运行时启动，用户不需要另装 Node、CLI 或 MCP。
+入口固定使用 Watchdog 随包运行时启动，用户不需要另装 Node、CLI 或 MCP。
 **不要在 worker 里用 \`process.execPath\` / \`child_process.fork\` 再生 Node 子进程**
 ——正式包关闭了 RunAsNode,那样生出来的不是 Node;要多进程就把入口申报进
 \`entries\`,由主机代开。
@@ -1895,14 +1895,14 @@ node 详单**不接受** \`command\` / \`args\` / \`shell\` / \`env\` 或其它�
 }
 \`\`\`
 
-**cindy 能力详单**:声明插件要基于哪些 Cindy Core 能力提供上层能力--只有类目和
+**cindy 能力详单**:声明插件要基于哪些 Watchdog Core 能力提供上层能力--只有类目和
 动作,**没有任何具体模型/供应商信息**。image / video 声明同时决定该插件能否在
 自己的设置页或面板读取对应类型的模型目录；生成请求仍由当前 Agent 发起。
 类目与动作:\`image\`(\`generate\`=出图 / \`edit\`=改图)、\`video\`(\`generate\`=
 文生视频 / \`edit\`=图生视频,参考图怎么用由 \`refMode\` 决定:首尾帧 1–2 张,
 或多张参考图,详见 §4 的 cindy-request 视频段)、\`media\`(\`deposit\`=把手里的
 媒体字节存进媒体库,§4.0.1)、\`text\`(\`oneshot\`=快问快答,§4.0.2)、
-\`embed\`(\`text\`=文本转向量,§4.0.3)、\`search\`(\`web\`=Cindy 托管
+\`embed\`(\`text\`=文本转向量,§4.0.3)、\`search\`(\`web\`=Watchdog 托管
 公网搜索,见 §4 的 \`search_web\` 段)。
 详单里没申请的动作,运行时点单直接被拒。\`search.web\` 只能由真实 tool-call
 触发,还必须同时声明至少一个 \`tools\` 条目。旧 v2 包的 model slot/字段仍兼容，
@@ -1943,7 +1943,7 @@ node 详单**不接受** \`command\` / \`args\` / \`shell\` / \`env\` 或其它�
       "extraAuthorizeParams": { "access_type": "offline", "prompt": "consent" },  // 可选 ≤8 条:服务商特有授权参数(协议保留参数禁写)
       "identity": { "url": "https://api.example.com/userinfo", "labelPath": "email", "displayTemplate": "{team} · {user}", "avatarPath": "data.avatar_thumb" },  // 可选:授权后拉一次身份端点给账号打标签(设置页"已连接为 xxx";url 域名须命中 hosts)。labelPath 应指向**唯一且稳定**字段(如邮箱 / user_id)——它是重复授权时的同身份合并判定键,选 name 这类可重名可改名字段会误合并。displayTemplate 可选:人类可读展示名模板,\`{点分路径}\` 占位符从同一份身份响应取值(至少一个占位符,≤200 字符),任一占位符取不到值整体降级为空、回落显示 labelPath 的值——labelPath 的稳定字段不可读(如 Slack 的 user_id)时声明它,设置页与账号工具展示的就是渲染后的名字(邮箱这类本身可读的服务商不需要)。avatarPath 可选:头像 URL 在身份响应里的点分路径(如飞书的 "data.avatar_thumb")——主机取 https 地址后**不带凭证**下载小图(仅 png/jpeg/webp/gif、≤256KB)转 data URL 存库,\`/oauth\` 回查里以 account.avatarDataUrl 给你的 settingsHtml 展示(<img> 直接用)。**下载仅对第一方官方意识生效**(头像地址不受 hosts 白名单约束,第三方声明合法但恒降级 null)——所以页面必须能没头像也好看(如回落姓名首字圆片)
       "redirectPort": 53682,                        // 可选:loopback 回调固定端口(1024–65535);声明 tokenBroker 时必填。服务商要求回调 URI 与注册值精确匹配(如 Atlassian)时声明,回调恒为 http://127.0.0.1:<端口>/callback;非 broker 模式缺省 = 随机端口(Google 等允许任意 loopback 端口的服务商不用声明)
-      "tokenBroker": "jira",                        // 可选:三路资格:静态官方前缀照旧放行;当前组织的服务端 organization market 包满足来源/组织/前缀/整包 sha256 绑定;或企业作者用 ghost_forge_install 明确安装且 id 命中本组织已登记前缀。后两路只给 Broker 与 oidc-token,不给宿主原语;手动导入与个人身份不放行。声明时必须同时声明 redirectPort;code/refresh 交换经 Cindy 服务端 broker 完成(client secret 在服务端,不随包分发),与 clientSecret 互斥;设置页不再支持自填 client
+      "tokenBroker": "jira",                        // 可选:三路资格:静态官方前缀照旧放行;当前组织的服务端 organization market 包满足来源/组织/前缀/整包 sha256 绑定;或企业作者用 ghost_forge_install 明确安装且 id 命中本组织已登记前缀。后两路只给 Broker 与 oidc-token,不给宿主原语;手动导入与个人身份不放行。声明时必须同时声明 redirectPort;code/refresh 交换经 Watchdog 服务端 broker 完成(client secret 在服务端,不随包分发),与 clientSecret 互斥;设置页不再支持自填 client
       "brokerBounce": { "path": "/example/bounce", "callbackPath": "/example/callback" }  // 可选:双地址弹跳回调(服务商后台只收 https redirect、不收 http loopback 时用)。必须与 tokenBroker、redirectPort 同时声明;报给服务商的 redirect_uri = broker 服务基地址 + path(主机运行时拼,清单不落域名),浏览器授权后由弹跳路由 302 回 http://127.0.0.1:<redirectPort><callbackPath>
     }
   }],
@@ -2119,12 +2119,12 @@ UTF-8、符号链接和其它扩展名都会在打包与装入两侧拒绝。
 用它伪造授权或绕过工具自身的运行期门禁。
 
 **发布硬门槛**:首个依赖 \`manual\` / \`ghost_manual\` 的插件版本，必须等包含该工具的
-Cindy 先发布，确认首个支持它的**正式版本号**后，再把 \`minCindyVersion\` 设为不低于
+Watchdog 先发布，确认首个支持它的**正式版本号**后，再把 \`minCindyVersion\` 设为不低于
 该正式版本并发布插件。开发期版本号未定时只保留这条契约，不猜占位版本。移除
-\`skill.items\` 的迁移版本也必须设置上述 \`minCindyVersion\`，并遵守 Cindy 先发、插件
+\`skill.items\` 的迁移版本也必须设置上述 \`minCindyVersion\`，并遵守 Watchdog 先发、插件
 后发的顺序；服务端还要保留上一份带 Skill 的历史 release，使旧客户端能通过历史版本回退
 继续取得兼容包。
-Manual-only 插件还必须等首个支持 Manual-only 发现与读取的 Cindy 正式版本发布,
+Manual-only 插件还必须等首个支持 Manual-only 发现与读取的 Watchdog 正式版本发布,
 并将 \`minCindyVersion\` 设为不低于该版本;不能只以最早提供 \`ghost_manual\` 的版本为准。
 
 ## 4. main.js 电子脑(沙箱后台逻辑)
@@ -2198,8 +2198,8 @@ cindy.send({
 
 // 以下 gen_image / edit_image / gen_video / edit_video 是存量插件兼容接口。
 // 新插件不要从沙箱或面板直接发媒体生成请求；按 §4.0.4 让当前 Agent 使用
-// Cindy Core media 工具。非媒体的 cindy-request 能力继续按各自章节使用。
-// 存量 Cindy 代办(需声明 cindy 顶层字段 + 能力详单;主机出图、落仓、记账):
+// Watchdog Core media 工具。非媒体的 cindy-request 能力继续按各自章节使用。
+// 存量 Watchdog 代办(需声明 cindy 顶层字段 + 能力详单;主机出图、落仓、记账):
 // 由 tool-call 触发的代办**务必带上收到的 callId**(归因号:让用户在日志/账单里
 // 对上"哪次调用花的钱");面板交互等自发代办可不带。
 const r = await cindy.send({ type: 'cindy-request', kind: 'gen_image', prompt: '一只猫', callId: msg.callId });
@@ -2217,13 +2217,13 @@ const r = await cindy.send({ type: 'cindy-request', kind: 'gen_image', prompt: '
 //   改图不传 = 跟随源图画幅);视频画幅是另一个参数 ratio,值域不同,带错会被拒。
 //   用户没提横竖要求时别自作主张,不传让后端自定。
 //
-// Cindy 托管 Web Search(需声明 cindy.search:["web"]):
+// Watchdog 托管 Web Search(需声明 cindy.search:["web"]):
 // provider 固定为 cindy,主机固定 Anthropic Messages 搜索模型与上游凭证;
 // 不接受 api_base/header/key/model/tool。
 const search = await cindy.send({
   type: 'cindy-request',
   kind: 'search_web',
-  query: 'Cindy 最新版本',
+  query: 'Watchdog 最新版本',
   limit: 5,                       // 可选,1–10,缺省 5
   provider: 'cindy',
   callId: msg.callId,             // 搜索只由 tool-call 触发,必须透传
@@ -2353,7 +2353,7 @@ await cindy.send({ type: 'cindy-request', kind: 'release_media', hash: r.hash })
 媒体库」并写明上限——这是唯一一条"不花钱就能写用户媒体库"的能力,所以要用户
 单独点头。别为了省事把它当默认能力申请:不做面板素材加工的插件不要声明。
 
-### 4.0.2 快问快答:向 Cindy 的快速通道要一段文字(oneshot_text)
+### 4.0.2 快问快答:向 Watchdog 的快速通道要一段文字(oneshot_text)
 
 需要"问一句、拿一段文字答案"(总结、分类、改写、抽取)而不需要 Agent 动用
 任何工具时,不要发起 Agent 回合——用快问快答,几秒到几十秒出结果,便宜得多:
@@ -2392,7 +2392,7 @@ const r = await cindy.send({
   \`errorCode:'BAD_MODEL_OUTPUT'\`(message 带原始输出开头供排查)。字段结构
   在 prompt 里自己描述,主机不做逐字段 schema 校验;
 - prompt ≤32768 字符;同步返回,没有异步单;每插件在途上限与媒体代办共用
-  (用户可配);详情页会单列一行「可向 Cindy 的快速通道提问」。
+  (用户可配);详情页会单列一行「可向 Watchdog 的快速通道提问」。
 
 ### 4.0.3 文本转向量:把文字算成向量做语义检索(embed_text)
 
@@ -2548,10 +2548,10 @@ visible 跟随当前账号模型选择器；建议默认显示可见项，隐藏
 
 ## 4.0.4 媒体模型配置与调用边界
 
-媒体上层能力由插件定义，Cindy Core 只提供两项低级能力：
+媒体上层能力由插件定义，Watchdog Core 只提供两项低级能力：
 
 1. 插件设置页 / panel 按类型读取当前可用模型，用来保存插件自己的模型选择；
-2. 当前 Agent 执行插件能力时，使用永久注册的 Cindy Core \`media\` 工具发起调用。
+2. 当前 Agent 执行插件能力时，使用永久注册的 Watchdog Core \`media\` 工具发起调用。
 
 设置页 / panel 没有 preload 桥，直接走同源只读端点。插件必须声明 \`cindy\` 顶层字段，
 并在 \`cindy.image\` 或 \`cindy.video\` 中声明至少一个动作：
@@ -2586,7 +2586,7 @@ const result = await (await fetch('/media-models?type=image')).json();
 
 1. Agent 用 \`ghost_call\` 调用插件的业务工具；
 2. 插件通过普通 \`tool-result\` JSON 返回业务参数、面板里保存的模型选择或其它上下文；
-3. 同一个 Agent 读取结果后，自行调用 Cindy Core \`media\` 工具；
+3. 同一个 Agent 读取结果后，自行调用 Watchdog Core \`media\` 工具；
 4. 如果插件需要最终媒体，Agent 再调用插件的普通接收工具，并通过顶层
    \`ghost_call.attachments\` 显式交接；Host 复用通用 attachments 授权链，把授权后的
    指纹注入 \`args.attachments\`，避免把本地绝对路径暴露给插件。插件自行保存业务状态
@@ -2665,7 +2665,7 @@ region 只适合选择**已在 manifest 声明过**的公开配置。例如 brok
 
 当 \`onHostMessage\` 收到 \`tool-call\` 时，主机下发的 \`msg.callId\` 是本次
 Agent 调用的严格在途凭证。它已绑定真实插件和当前会话，外层
-\`ghost_call\` 由 Cindy 现有 Agent 授权系统处理。因此本次调用里的普通
+\`ghost_call\` 由 Watchdog 现有 Agent 授权系统处理。因此本次调用里的普通
 HTTPS 和 workdir 写入不需要再声明 \`network\` 或 \`fs\`。
 
 对应 tool 的 \`description\` 必须写清实际会执行的命令类别、联网目标／用途和
@@ -3136,7 +3136,7 @@ PAT。支持宿主管理连接入口时还返回可选的 \`hostManagedSetup:tru
 此来源的注入形态固定为 \`api.github.com\` 的
 \`Authorization: Bearer {value}\`,不允许 exchange,也不要放进 \`setup.requires\`。
 
-**Cindy 企业身份断言(source:"oidc-token",可选)**:适用于接入 Cindy Connection
+**Watchdog 企业身份断言(source:"oidc-token",可选)**:适用于接入 Watchdog Connection
 Auth 的企业服务。主机只在当前登录账号属于组织 Membership，且满足以下任一安装基座时
 按需向 auth-server 换取短时 Connection JWT：①当前组织的 Plugin Market organization
 安装记录(source 必须是服务端 \`market\`)，且安装 manifest digest 与记录一致；②企业作者
@@ -3155,7 +3155,7 @@ organization 记录（含 installed:false）时必须仍走 digest，不得借�
 会从已批准的安装事实读取这些声明,目标请求必须精确命中声明域名才会签发并注入。
 它没有用户输入、\`url\`、\`exchange\` 或 \`oauth\` 详单,也不要放进 \`setup.requires\`;没有企业
 身份时 cindy.fetch 会 fail-closed 并返回结构化错误。企业服务应使用 Connection JWT
-中的 \`sub\`、\`email\` 或 \`identities\` 等声明自行选择业务身份,不要要求 Cindy 客户端先把
+中的 \`sub\`、\`email\` 或 \`identities\` 等声明自行选择业务身份,不要要求 Watchdog 客户端先把
 令牌交给插件代码。上游返回 401 时,Host 只对 GET / HEAD / OPTIONS 自动换令牌重试一次；
 POST / PUT / PATCH / DELETE 和上传请求只作废令牌缓存、不自动重放,避免重复业务写入。
 
@@ -3240,8 +3240,8 @@ identity.displayTemplate 时,\`/oauth\` 回查与连接结果里 account.label �
   ③企业作者通过 \`ghost_forge_install\` 明确安装，且 id 命中当前组织已登记前缀；是否已有
   同 id 市场记录不影响这条自测路径。后两路不接受个人身份或别的组织前缀，且只给 Broker
   与 oidc-token，不给宿主原语；手动导入不属于 Forge 路径。
-  code/refresh 交换改经 Cindy 服务端 broker 完成,client secret 由服务端持有、不随包
-  分发,且要求用户已登录 Cindy。声明它时必须同时声明 redirectPort,并与 clientSecret
+  code/refresh 交换改经 Watchdog 服务端 broker 完成,client secret 由服务端持有、不随包
+  分发,且要求用户已登录 Watchdog。声明它时必须同时声明 redirectPort,并与 clientSecret
   互斥;PKCE 缺省开(verifier
   经 broker exchange 透传服务端),不吃 PKCE 的服务商显式 \`"pkce": false\`;
   设置页的 \`/oauth/<key>/client\` 自填通道返回 405(settingsHtml 不要再画
@@ -3613,7 +3613,7 @@ await cindy.fs({ op: 'write', root: 'data', path: 'a.txt', content: 'hi' });
 
 声明 \`"library": true\` 后,你获得一个**用户作品级**的持久存储区——
 和 fs 槽的私有储物柜(256MB 配额、卸载即回收)是两个语义:Library 不受配额
-约束(只受磁盘水位约束),**卸载插件不删数据**(用户必须在 Cindy 设置里单独
+约束(只受磁盘水位约束),**卸载插件不删数据**(用户必须在 Watchdog 设置里单独
 确认才删除)。适合画布、素材库、项目文件这类"用户会心疼"的数据。
 
 位置由用户与宿主决定(装入时可选、随时可在设置里迁移),你**看不到也无需
@@ -3743,7 +3743,7 @@ await cindy.library({
 
 ## 4.11 发起 Agent 新回合(agent 能力)
 
-这个能力让你的 \`main.js\` 把一段文字作为**普通用户消息**交给 Cindy Agent，适合
+这个能力让你的 \`main.js\` 把一段文字作为**普通用户消息**交给 Watchdog Agent，适合
 “用户在插件卡片上点继续，然后 Agent 接着做”的流程。它不是系统提示词，也不会
 修改该会话里其它插件或 Agent 的长期规则。
 
@@ -3866,14 +3866,14 @@ const q = await cindy.agent.queryErrand({ jobId: r.jobId });
 被唤起时活着,也没有定时器。要做出「每小时帮我看一眼,有事就点亮插件入口」这种效果,
 正确的分工是:
 
-    插件不是执行者,而是**定时任务的目标**。执行者是 Cindy 的 AI。
+    插件不是执行者,而是**定时任务的目标**。执行者是 Watchdog 的 AI。
 
 完整回路(以「Codex 重置提醒」为例):
 
 1. 用户在你的面板上点一个选项,比如「重置时间快到了提醒我」;
 2. 你调 \`cindy.agent.requestSchedule(...)\`,请主机**打开预填好的新建自动化面板**;
 3. 用户在面板上选个模型(或就用默认)→ **亲手点保存**。任务这才存在;
-4. 到点了,Cindy 起一轮 AI 去干活:查本机重置时间、看 X 上的相关发帖、**判断**要不要
+4. 到点了,Watchdog 起一轮 AI 去干活:查本机重置时间、看 X 上的相关发帖、**判断**要不要
    提醒——这些判断是 AI 做的,不是你做的;
 5. 那一轮 AI **调用你申报的 tool**(§3)把结果交给你,你在 tool 里更新自己的数据;
 6. 你顺手发一个未读角标(§4.9.1),用户的插件入口和图标上就亮起点;
@@ -4024,12 +4024,12 @@ run 的 acceptedConfig 是接收配置，execution 是观测到的原生 instanc
 启动一个独立 Node 进程；同一插件的多个会话复用它，不同插件绝不共用进程。通信链固定为：
 
 \`\`\`
-Node worker ↔ JSON-RPC stdio ↔ 你的 main.js ↔ Cindy 主机能力
+Node worker ↔ JSON-RPC stdio ↔ 你的 main.js ↔ Watchdog 主机能力
 \`\`\`
 
 Node 不能直接拿到 \`cindy\`、Electron IPC 或 Agent 会话。它向主机发反向 JSON-RPC
-请求时，主机会固定返回 \`-32601\`；需要 Cindy 能力时，Node 先把数据回给 \`main.js\`，
-再由 \`main.js\` 调 Cindy 通道。插件自主调用继续按 manifest 验权；当前
+请求时，主机会固定返回 \`-32601\`；需要 Watchdog 能力时，Node 先把数据回给 \`main.js\`，
+再由 \`main.js\` 调 Watchdog 通道。插件自主调用继续按 manifest 验权；当前
 Agent tool-call 内的网络与 workdir 操作按 §4.2 复用 Agent 授权。
 
 ### 4.12.1 自定义 Node 服务(JSON-RPC stdio)
@@ -4211,7 +4211,7 @@ Worker 与它启动的 CLI 是受信任的原生代码，会接触短期令牌�
 每次调用使用独立子进程环境，不修改全局 \`process.env\`。令牌失效后的写操作不能自动重放。
 
 把 \`protocol\` 改成 \`"mcp-stdio"\`，worker 实现标准的逐行 JSON-RPC MCP server。
-Cindy 会统一完成 \`initialize\` + \`notifications/initialized\`，你的 main.js 不要重复初始化，
+Watchdog 会统一完成 \`initialize\` + \`notifications/initialized\`，你的 main.js 不要重复初始化，
 直接调用标准方法：
 
 \`\`\`js
@@ -4223,29 +4223,29 @@ const called = await cindy.node.request({
 \`\`\`
 
 MCP server 的 sampling / elicitation / roots 等 server→client 反向请求第一版不开放；需要
-这类能力时仍按“结果回 main.js，再由 main.js 申请 Cindy 能力”的链路设计。
+这类能力时仍按“结果回 main.js，再由 main.js 申请 Watchdog 能力”的链路设计。
 
 ### 4.12.3 打包和生命周期红线
 
-- 用户不需要安装 Node、npm、CLI 或 MCP。运行时由 Cindy 随包提供；你必须在制作阶段
+- 用户不需要安装 Node、npm、CLI 或 MCP。运行时由 Watchdog 随包提供；你必须在制作阶段
   把依赖打成单个 worker 文件或连同静态资源放进目录；**禁止**在安装/首次运行时执行
   \`npm install\`、\`npx\`、\`postinstall\` 或从网络下载可执行代码；
 - Forge 会跳过 \`node_modules\`，推荐用 esbuild/rollup 预打包成 \`worker.cjs\`。Node 包
   最多 2048 个文件、解压后 256MB、.cindy 128MB；超限直接拒绝；
 - \`on-demand\` 首次 \`cindy.node.request\` 才启动，缺省空闲 120 秒关闭；停用、更新、
-  卸载、退出 Cindy 都立即关闭。\`resident\` 会随插件启用一直运行，详情页单独显示；
+  卸载、退出 Watchdog 都立即关闭。\`resident\` 会随插件启用一直运行，详情页单独显示；
 - 每个插件最多 32 条在途请求；单次 params 256KB、单行 stdout 1MB。单次请求缺省
   30 秒、上限 120 秒;长任务用 maxTotalMs 开启"有动静就续期",绝对上限 15 分钟
   (见 §4.12.1)。进程崩溃只影响
   自己，所有在途请求收到结构化失败，下次请求可重新启动；
 - **最重要的安全事实**：Node 进程不是浏览器沙箱，它拥有当前登录系统账号能拿到的
-  本机权限，能读写文件、联网、起别的进程。Cindy 会在插件详情中显著展示这项能力，
+  本机权限，能读写文件、联网、起别的进程。Watchdog 会在插件详情中显著展示这项能力，
   但安装不会追加确认弹窗；不需要本机能力的插件不要声明 node，用户也只应安装可信来源。
 
 ### 4.12.4 宿主代启子进程(childSpawn)
 
 有些库(如 \`@taptap/maker\`)会在肚子里自己 \`spawn(process.execPath, [脚本, 参数])\`
-——在 Cindy 的 worker 里这条路是死路(正式包关 RunAsNode,生出来的不是 Node)。
+——在 Watchdog 的 worker 里这条路是死路(正式包关 RunAsNode,生出来的不是 Node)。
 声明 \`"childSpawn": true\` 后,worker 里多一个全局窄接口,可以请宿主**代启**一个
 已申报入口的原样 stdio 子进程:
 
@@ -4438,7 +4438,7 @@ if (!opened.ok) console.warn(opened.errorCode, opened.message);
   稳定原则进入 Manual。Manual 与 \`list_tools\` 用完整调用互相指路,不复制同一段规则。
 
 以下只解释存量包的兼容形态,用于维护与迁移,**不要照抄到新插件**。存量插件装入且
-启用后,主机把每个技能目录投影到 Cindy 的账号隔离目录,分别接入 Claude Code、
+启用后,主机把每个技能目录投影到 Watchdog 的账号隔离目录,分别接入 Claude Code、
 Codex、Pi,不写入用户的全局技能目录;停用/卸载即撤销这些入口。
 
 目录形态(每条 item 一个目录,内必须有 SKILL.md):
@@ -4460,7 +4460,7 @@ SKILL.md 硬规则(打包与装入双侧强制,任一不满足直接拒):
 - \`name\`:小写字母/数字加单连字符分段(禁首尾/连续连字符),≤64 字符;
 - SKILL.md 单文件 ≤64KB;items 最多 4 条。
 
-这些入口仅供 Cindy 管理的 Agent 会话使用,不会自动暴露给外部 CLI,无需为旧的
+这些入口仅供 Watchdog 管理的 Agent 会话使用,不会自动暴露给外部 CLI,无需为旧的
 全局目录发现方式添加环境守卫。技能如依赖插件工具,仍应说明实际依赖;调用时工具
 不可用就报告缺失,不得据此假定已获得其它能力或权限。
 
@@ -4525,7 +4525,7 @@ const ensured = await cindy.workspace({
 ## 4.18 确认弹窗(confirm 能力)
 
 动手之前要用户点头(切分支、覆盖文件、发不可撤回的东西)时,声明 \`"confirm": true\`,
-经管子请主机弹一个**和 Cindy 自己一模一样**的确认框,并拿回用户的真实点击:
+经管子请主机弹一个**和 Watchdog 自己一模一样**的确认框,并拿回用户的真实点击:
 
 \`\`\`js
 const r = await cindy.confirm({
@@ -4567,7 +4567,7 @@ if (r.ok && r.confirmed) {
 
 ## 4.20 一级主视图(mainView 能力)
 
-插件需要一个从 Cindy 一级侧边栏进入的完整页面时，直接声明 \`mainView\`：
+插件需要一个从 Watchdog 一级侧边栏进入的完整页面时，直接声明 \`mainView\`：
 
 \`\`\`json
 {
@@ -4585,7 +4585,7 @@ if (r.ok && r.confirmed) {
   回退插件 \`name\`。声明过基础 title 后，locale 文件可用
   \`"mainView": { "title": "Workspace" }\` 翻译；没有基础 title 时不要声明该翻译；
 - \`mainView.icon\` 可省略，省略时使用 \`puzzle\`。它只控制主视图的侧边栏入口，不会
-  替代或修改根级 \`icon\` 品牌图片。可用值与 Cindy 系统图标名完全一致：
+  替代或修改根级 \`icon\` 品牌图片。可用值与 Watchdog 系统图标名完全一致：
   \`puzzle\`、\`globe\`、\`code\`、\`folder\`、\`database\`、\`chart-column\`、
   \`image\`、\`message-circle\`、\`calendar-days\`；不接受别名、任意图标名或图片路径；
 - \`mainView\` 与 \`panel\` 是两种独立 UI 贡献项。可以让两者指向同一 HTML，但必须分别
@@ -4621,7 +4621,7 @@ v2 清单继续忽略此扩展字段；运行时更新始终严格校验，不�
 不会退回初始推荐任务列表；不提供此字段的旧插件继续正常使用。首页打开或换批时读取最新列表，
 不为获取推荐任务启动所有插件；已显示的一批保持稳定，点击前重新核对是否撤回或改变。
 
-Cindy 统一归类、随机选择与排序，同批每个场景和每个插件最多一条。增加推荐任务数量不会增加
+Watchdog 统一归类、随机选择与排序，同批每个场景和每个插件最多一条。增加推荐任务数量不会增加
 插件的抽取机会。若只想提供某个场景的任务，替换为仅含该任务的列表即可，但不能指定
 首页位置或优先级。用户主动首装优先，更新包或替换推荐任务列表不算新安装，首次使用后回到普通排序。
 点击推荐后才将 prompt 作为普通用户消息发送，绝不进入系统提示词。未安装/未启用时
@@ -4721,7 +4721,7 @@ Cindy 统一归类、随机选择与排序，同批每个场景和每个插件�
   展示名与一句话用途填入下面模板后原样注入，不要临场追加文字、品牌或复杂场景：
 
   \`\`\`text
-  Create a polished square app icon for a Cindy plugin named "{{name}}". Purpose: {{one-sentence purpose}}. Show one clear, original visual metaphor for that purpose. Use a clean geometric composition, a restrained natural color palette, high contrast, and a centered subject with generous safe padding so it remains readable at 32–48 px. Use one symbol only on a simple solid or transparent background. No text, letters, numbers, UI mockups, scenes, baked-in rounded corners, trademarks, copied brand shapes, watermarks, heavy gradients, inner shadows, or photorealism. Output a 1024×1024 PNG.
+  Create a polished square app icon for a Watchdog plugin named "{{name}}". Purpose: {{one-sentence purpose}}. Show one clear, original visual metaphor for that purpose. Use a clean geometric composition, a restrained natural color palette, high contrast, and a centered subject with generous safe padding so it remains readable at 32–48 px. Use one symbol only on a simple solid or transparent background. No text, letters, numbers, UI mockups, scenes, baked-in rounded corners, trademarks, copied brand shapes, watermarks, heavy gradients, inner shadows, or photorealism. Output a 1024×1024 PNG.
   \`\`\`
 
   只尝试一次。图片能力不可用、超时或失败时不要重试，保留占位图/宿主默认图标继续。
@@ -4794,8 +4794,8 @@ Cindy 统一归类、随机选择与排序，同批每个场景和每个插件�
 
 - **发布者签名**覆盖插件 id、版本、发布者名称/公钥，以及每个文件的路径、大小和
   SHA256。它证明包里的文件和显示身份在签名后没有被改，也证明不同版本由同一把
-  发布者私钥签出；只有发布者公钥已进入 Cindy 信任表时，界面才会显示“发布者已验证”；
-- **Cindy 审核签名**再覆盖准确版本的文件清单和发布者签名。只有审核公钥属于 Cindy
+  发布者私钥签出；只有发布者公钥已进入 Watchdog 信任表时，界面才会显示“发布者已验证”；
+- **Watchdog 审核签名**再覆盖准确版本的文件清单和发布者签名。只有审核公钥属于 Watchdog
   信任表且签名有效时，界面才会显示“此版本已审核”。改一行代码或改版本号都必须重新
   发布、重新审核，旧版本的审核不能借给新版本。
 
@@ -4803,13 +4803,13 @@ Cindy 统一归类、随机选择与排序，同批每个场景和每个插件�
 
 - 私钥像保险柜钥匙，只留在发布者机器的安全存储或受保护的 CI；不能放进插件源码、
   \`.cindy\`、Git、聊天消息，也不要让 Agent 读取、生成或回显正式私钥；
-- 公钥像公开印章样本，可以公开并提交给 Cindy 的发布者/审核信任表；客户端只需要
+- 公钥像公开印章样本，可以公开并提交给 Watchdog 的发布者/审核信任表；客户端只需要
   公钥验签，永远不需要私钥；
 - 包里自带但未进入信任表的发布者公钥，只能证明“文件没改、还是同一把钥匙”，不能
   自己证明现实身份。签名文件一旦存在却损坏或对不上文件，客户端会直接拒装，不能
   偷偷降级成未签名包。
 
-界面最终会区分:Cindy 随包官方、此版本已审核、发布者已验证、未验证/无签名。正式
+界面最终会区分:Watchdog 随包官方、此版本已审核、发布者已验证、未验证/无签名。正式
 签名和审核应由商店/发布流水线完成；本地 Forge 不替用户生成或保存正式密钥。
 
 ### 8.1 发布到官方插件仓的额外门禁

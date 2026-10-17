@@ -2134,7 +2134,7 @@ function sessionTreeRehydrate(readyDb, args) {
     const session = readyDb.prepare('SELECT id FROM sessions WHERE id = ? LIMIT 1').get(sessionId);
     if (!session) throw Object.assign(new Error('Session 不存在: ' + sessionId), { code: 'NOT_FOUND' });
     // Keep this fallback mirror in sync with worker/opHandlers/tx.ts: preserve only
-    // Cindy-managed attachments matched by stable id/uuid/piEntryId or a verified visible prefix.
+    // Watchdog-managed attachments matched by stable id/uuid/piEntryId or a verified visible prefix.
     const attachmentSources = selectUserAttachmentSources.all(sessionId);
     const byClientId = new Map(attachmentSources.map((row) => [row.client_id, row]));
     const byUuid = new Map();

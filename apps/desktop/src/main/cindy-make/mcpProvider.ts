@@ -36,7 +36,7 @@ function result(payload: Record<string, unknown>, isError = false) {
 
 /** Text the model sees in the tool schema; it is the only instruction the tool carries. */
 export const CINDY_MAKE_REPORT_COMPLETE_DESCRIPTION =
-  '在当前 Cindy 个人版制作任务中，用户要求的代码修改已全部完成、并已按仓库 AGENTS.md 的提交前门禁' +
+  '在当前 Watchdog 个人版制作任务中，用户要求的代码修改已全部完成、并已按仓库 AGENTS.md 的提交前门禁' +
   '（pnpm test:unit:related 与涉及包的 typecheck）通过后调用，然后照常向用户总结改了什么、验证了什么。' +
   '这是向用户报告完成的唯一方式；不调用则用户不会收到完成通知。' +
   '无参数。只在真正完成时调用一次，不要用它汇报进度或提问。';
@@ -91,7 +91,7 @@ export function createCindyMakeMcpProvider(deps: CindyMakeMcpDeps): McpProvider 
           return result({
             ok: true,
             message:
-              '已登记完成。本轮回复结束后 Cindy 会在对话里展示完成卡片；请照常向用户总结改动与验证结果。',
+              '已登记完成。本轮回复结束后 Watchdog 会在对话里展示完成卡片；请照常向用户总结改动与验证结果。',
           });
         },
       );

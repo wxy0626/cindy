@@ -383,7 +383,7 @@ class MenubarService {
       readRemoteSubscriptions({
         nowMs,
         listDevices: () => {
-          requireAppCapability('canUseDeviceLink', 'Device Link requires a Cindy account.');
+          requireAppCapability('canUseDeviceLink', 'Device Link requires a Watchdog account.');
           return handleListDevices(deviceDirectoryDeps());
         },
         invoke: (deviceId, channel, args) => remoteBackgroundInvoke(deviceId, channel, args),

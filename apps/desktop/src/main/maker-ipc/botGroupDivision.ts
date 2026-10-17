@@ -178,7 +178,7 @@ const MAX_HANDOFF_CHARS = 2_000;
 export function buildPlanStepBrief(input: PlanStepBriefInput): string {
   const current = input.steps.find((step) => step.position === input.position);
   const lines = [
-    `[Cindy group chat ${JSON.stringify(input.groupName)} · 分工]`,
+    `[Watchdog group chat ${JSON.stringify(input.groupName)} · 分工]`,
     `You are ${input.botName}. The user approved a plan in this group chat, and step ${input.position + 1} is yours.`,
     "The user's request:",
     untrustedJsonBlock({ text: clamp(input.request, MAX_REQUEST_CHARS) }),

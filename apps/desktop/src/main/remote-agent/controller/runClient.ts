@@ -358,7 +358,7 @@ export function remoteAgentLinkError(error: { code?: string; message?: string } 
       : 'remote agent request failed';
   if (code === 'CHANNEL_NOT_ALLOWED') {
     return Object.assign(
-      new Error("[REMOTE_AGENT_PEER_TOO_OLD] Cindy on the other computer is too old to run agents for this computer."),
+      new Error("[REMOTE_AGENT_PEER_TOO_OLD] Watchdog on the other computer is too old to run agents for this computer."),
       { code: 'REMOTE_AGENT_PEER_TOO_OLD' },
     );
   }

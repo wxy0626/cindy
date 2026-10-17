@@ -1146,7 +1146,7 @@ export async function runPiPackageCommand(
   const command = args[0] === '--version' ? 'version'
     : args[0] === 'install' || args[0] === 'update' || args[0] === 'remove' || args[0] === 'list' ? args[0] : undefined;
   const binaryPath = getReadyBinaryPath('pi');
-  if (!binaryPath) throw createPiPackageCommandError('Pi is not installed in Cindy', { command, phase: 'prepare', outcome: 'failed' });
+  if (!binaryPath) throw createPiPackageCommandError('Pi is not installed in Watchdog', { command, phase: 'prepare', outcome: 'failed' });
   try {
     await fs.mkdir(packageHome(), { recursive: true, mode: 0o700 });
     return await runPackageProcess(binaryPath, args, packageHome(), timeoutMs, { ...options, command });
@@ -1203,7 +1203,7 @@ export async function executePiNativeManagementCommand(
   if (command.kind === 'models') {
     // The managed package home intentionally contains no session provider credentials.
     // Refreshing it would falsely claim that Cindy's host-owned model catalog changed.
-    throw new Error('Pi model catalogs are owned by Cindy providers; this command is not supported in the package home.');
+    throw new Error('Pi model catalogs are owned by Watchdog providers; this command is not supported in the package home.');
   }
   return enqueueMutation(async () => {
     const core = command.kind === 'self' || command.kind === 'all';
@@ -3747,7 +3747,7 @@ export async function mutatePiPackage(
       try {
         inspectedAfterInstall = await inspectAllPackages();
       } catch {
-        log.warn('Pi package installed; Cindy post-install analysis unavailable', {
+        log.warn('Pi package installed; Watchdog post-install analysis unavailable', {
           action: 'install',
           failureCategory: 'projection-unavailable',
         });
@@ -3789,7 +3789,7 @@ export async function mutatePiPackage(
           ...(affected ? { enable: affected } : {}),
         });
       } catch (error) {
-        log.warn('Pi package installed but optional Cindy snapshot metadata refresh failed', {
+        log.warn('Pi package installed but optional Watchdog snapshot metadata refresh failed', {
           source: logSource,
           failureCategory: piPackageMutationFailureCategory(error),
         });
@@ -3820,7 +3820,7 @@ export async function mutatePiPackage(
           snapshotUnavailablePackages: state.snapshotUnavailablePackages,
         });
       } catch (error) {
-        log.warn('Pi package removed but Cindy projection cleanup failed', {
+        log.warn('Pi package removed but Watchdog projection cleanup failed', {
           source: logSource,
           failureCategory: piPackageMutationFailureCategory(error),
         });
@@ -3850,7 +3850,7 @@ export async function mutatePiPackage(
       try {
         await revokeExtensionApproval(updateAliases);
       } catch (error) {
-        log.warn('Pi package updated but Cindy approval projection could not be refreshed', {
+        log.warn('Pi package updated but Watchdog approval projection could not be refreshed', {
           source: logSource,
           failureCategory: piPackageMutationFailureCategory(error),
         });
@@ -3860,7 +3860,7 @@ export async function mutatePiPackage(
       try {
         inspectedAfterUpdate = await inspectAllPackages();
       } catch {
-        log.warn('Pi package updated; Cindy post-update analysis unavailable', {
+        log.warn('Pi package updated; Watchdog post-update analysis unavailable', {
           action: 'update',
           failureCategory: 'projection-unavailable',
         });
@@ -3897,7 +3897,7 @@ export async function mutatePiPackage(
           ...(wasExplicitlyDisabled === false && affected ? { enable: affected } : {}),
         });
       } catch (error) {
-        log.warn('Pi package updated but Cindy projection refresh failed', {
+        log.warn('Pi package updated but Watchdog projection refresh failed', {
           source: logSource,
           failureCategory: piPackageMutationFailureCategory(error),
         });
@@ -3978,7 +3978,7 @@ export async function mutatePiPackage(
     try {
       result = await listPiPackagesNow();
     } catch {
-      log.warn('Pi package mutation succeeded; Cindy list projection unavailable', {
+      log.warn('Pi package mutation succeeded; Watchdog list projection unavailable', {
         action: request.action,
         failureCategory: 'projection-unavailable',
       });
@@ -4033,7 +4033,7 @@ export async function mutatePiPackage(
         const target = await findAffectedInspectedPackage(inspected, affectedSource ?? source);
         if (target) await persistEnabledExtensionApprovals({ enable: target });
       } catch (error) {
-        log.warn('Pi package enabled; optional Cindy snapshot metadata unavailable', {
+        log.warn('Pi package enabled; optional Watchdog snapshot metadata unavailable', {
           source: logSource,
           failureCategory: piPackageMutationFailureCategory(error),
         });
@@ -4060,7 +4060,7 @@ export async function mutatePiPackage(
     });
   } catch (error) {
     if (nativeCommandSucceeded) {
-      log.warn('Pi native package command succeeded; Cindy analysis unavailable', {
+      log.warn('Pi native package command succeeded; Watchdog analysis unavailable', {
         action: request.action, failureCategory: 'projection-unavailable',
       });
       return {

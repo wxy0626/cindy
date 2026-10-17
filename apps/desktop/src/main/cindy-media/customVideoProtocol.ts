@@ -43,7 +43,7 @@ export function customVideoGuide(
         media: [{ path: ['video', 'url'], encoding: 'url', kind: 'video', allowedUrlHosts: ['vidgen.x.ai'] }],
       },
     },
-    instructions: `必填 prompt${image ? ' 和 image: {url: 一条 Cindy 图片引用}' : ''}。可选 duration（1–15 秒）、resolution（480p/720p/1080p）、aspect_ratio。省略参数时跟随上游默认；图生视频省略画幅以保留原图比例。一次提交后只轮询原 invocation，不重新生成。当前不支持尾帧、多参考图、fps 或音轨开关。model 与凭证由 Cindy 注入。`,
+    instructions: `必填 prompt${image ? ' 和 image: {url: 一条 Watchdog 图片引用}' : ''}。可选 duration（1–15 秒）、resolution（480p/720p/1080p）、aspect_ratio。省略参数时跟随上游默认；图生视频省略画幅以保留原图比例。一次提交后只轮询原 invocation，不重新生成。当前不支持尾帧、多参考图、fps 或音轨开关。model 与凭证由 Watchdog 注入。`,
     exampleBody: { prompt: '静止镜头，画面中的主体轻轻移动', ...(image ? { image: { url: 'cindy-media://blobs/<hash>.png' } } : {}) },
     inputSchema: {
       type: 'object', additionalProperties: false, required: image ? ['prompt', 'image'] : ['prompt'],

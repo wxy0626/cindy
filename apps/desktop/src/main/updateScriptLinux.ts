@@ -93,7 +93,7 @@ export function buildLinuxUpdateScript(params: LinuxUpdateScriptParams): string 
   const qLock = shellSingleQuote(lockFilePath);
   const qSha = shellSingleQuote(sha256);
   const userInstallation = params.userInstallation;
-  const launchPath = userInstallation ? `${userInstallation.prefix}/current/Cindy` : exePath;
+  const launchPath = userInstallation ? `${userInstallation.prefix}/current/Watchdog` : exePath;
   const launch = [launchPath, ...(params.relaunchArgs ?? [])].map(shellSingleQuote).join(' ');
 
   return [

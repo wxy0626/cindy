@@ -356,7 +356,7 @@ function dispatchRendererAction(action: WorkLouderCodexRendererAction): void {
   const win = actionWindowRouter.resolve(action);
   if (win && sendWindowMessage(win, WORKLOUDER_CODEX_ACTION_CHANNEL, action)) return;
   if (systemFrontmostInput.handle(action)) return;
-  log.debug('Codex Micro action skipped because no ready Cindy window can receive it', {
+  log.debug('Codex Micro action skipped because no ready Watchdog window can receive it', {
     type: action.type,
   });
 }

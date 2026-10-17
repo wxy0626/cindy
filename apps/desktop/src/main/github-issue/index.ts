@@ -57,7 +57,7 @@ export async function submitGithubIssueForSession(
     return {
       ok: false,
       errorCode: 'AUTH_NOT_READY',
-      message: '提交官方反馈需要登录 Cindy 账号。',
+      message: '提交官方反馈需要登录 Watchdog 账号。',
     };
   }
   const bridge = bridgeHolder;
@@ -66,7 +66,7 @@ export async function submitGithubIssueForSession(
     return {
       ok: false,
       errorCode: 'HOST_NOT_READY',
-      message: 'Cindy 主进程 issue 提交服务尚未就绪,请告知用户稍等几秒后重试。',
+      message: 'Watchdog 主进程 issue 提交服务尚未就绪,请告知用户稍等几秒后重试。',
     };
   }
   const githubUserSubmitterDeps: GithubUserIssueSubmitterDeps = buildGithubUserSubmitterDeps();

@@ -48,7 +48,7 @@ export async function checkHandoverDirectory(raw: string, env: HandoverDirectory
       return invalid('不能把整个磁盘或主目录交给伙伴,请给具体的项目目录');
     }
     if (isInside(candidate, userData, env.caseInsensitive) || isInside(candidate, realUserData, env.caseInsensitive)) {
-      return invalid('这是 Cindy 自己的数据目录,不是项目');
+      return invalid('这是 Watchdog 自己的数据目录,不是项目');
     }
   }
   return { ok: true, path: resolved };

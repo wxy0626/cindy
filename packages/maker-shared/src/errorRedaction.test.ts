@@ -245,7 +245,7 @@ describe('isGatewayProxyTokenInvalidError', () => {
     expect(isGatewayProxyTokenInvalidError('')).toBe(false);
   });
 
-  it('scopes Cindy gateway classification away from custom LiteLLM providers', () => {
+  it('scopes Watchdog gateway classification away from custom LiteLLM providers', () => {
     const message = 'Invalid proxy server token; LiteLLM_VerificationTokenTable';
     expect(
       isCindyGatewayProxyTokenInvalidError({ reason: GATEWAY_PROXY_TOKEN_INVALID_REASON }),

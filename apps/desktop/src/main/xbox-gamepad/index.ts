@@ -75,7 +75,7 @@ function dispatchRendererAction(action: WorkLouderCodexRendererAction): void {
   }
   const win = actionWindowRouter.resolve(action);
   if (win && sendWindowMessage(win, WORKLOUDER_CODEX_ACTION_CHANNEL, action)) return;
-  log.debug('Xbox gamepad action skipped because Cindy is not the frontmost app', {
+  log.debug('Xbox gamepad action skipped because Watchdog is not the frontmost app', {
     type: action.type,
   });
 }

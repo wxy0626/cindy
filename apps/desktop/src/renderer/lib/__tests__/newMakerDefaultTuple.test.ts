@@ -121,7 +121,7 @@ describe('resolveNewMakerDefaultTuple', () => {
       expected: { vendor: 'pi', providerId: 'xai', model: 'grok-4.6', effort: 'high' },
     },
     {
-      name: 'Cindy Gateway（CN / Global）',
+      name: 'Watchdog Gateway（CN / Global）',
       source: provider({
         id: 'xd',
         access: 'managed',

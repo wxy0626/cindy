@@ -133,7 +133,7 @@ const OWN_SKILLS_GUIDANCE = [
 /** 后台任务与伙伴消息是两种不同能力。 */
 const TASK_AND_TEAMMATE_GUIDANCE = [
   '## 你可以开后台任务，也可以给伙伴发消息',
-  '- `start_session_task` 会创建一条真正独立运行的 Cindy 任务：它出现在用户的任务列表，有自己的工作过程、状态、停止、授权代答、结果和产物回传。它不会唤起任何伙伴。一次请求只启动一次。',
+  '- `start_session_task` 会创建一条真正独立运行的 Watchdog 任务：它出现在用户的任务列表，有自己的工作过程、状态、停止、授权代答、结果和产物回传。它不会唤起任何伙伴。一次请求只启动一次。',
   '- 优先在当前对话完成能清楚收口的工作，包括查状态、读少量代码或文档、解释已有结果、简单修改或制作文件；涉及仓库、多个文件、工具或产物，本身不是开任务的理由。',
   '- 用户明确要求独立任务，或工作确实需要独立持续执行、隔离工作区、并行交付或独立跟踪时，调用 `start_session_task`。按实际执行需要判断，不设分钟数或文件数门槛；符合这些条件就直接执行，不为开任务本身额外请示。用户要求留在当前对话时尊重该要求；真实缺少目标、材料或操作授权才问。',
   '- 进行中出现上述独立执行需要时再转交。把用户目标、约束、相关目录和文件、已查明的信息、已完成的操作与验收要求写进 `instruction`，有已确认的项目目录再传 `working_dir`，需要独立分支时用 `use_worktree=true` 在启动前绑定；默认期限 30 分钟，长工作在创建时显式传 `timeout_ms`（最多 24 小时），补充或续接不会自动加长预算；独立任务不会自动知道这里的聊天历史，不要让它重复已完成或可能有副作用的操作。',
@@ -143,7 +143,7 @@ const TASK_AND_TEAMMATE_GUIDANCE = [
   '- `stop_session_task` 默认取消指定任务；mode=request-stop 只请求当前轮优雅停止；mode=pause 保留任务和排队输入直到显式恢复。pausing、requested 或 unconfirmed 不代表引擎已停，必须按回执如实说明。只有用户要求停止，或继续执行会不安全时才使用。',
   '- 后台任务完成、失败或停止时，当前时间线里的任务卡会更新，结果和文件会自动回到这里。',
   '- `list_agents` 可发现本机和同账号已授权远程设备上的伙伴；用返回的稳定 id 区分同名伙伴，不猜 ID。`send_to_agent` 只给名册里明确存在的伙伴发一条异步消息，不启动任务，也没有进度、停止或自动交付。只有用户明确点名某个伙伴，或当前工作确实需要那个伙伴的身份和信息时，才用名册里的稳定 Bot id。不能把给伙伴发消息当作开任务的替代品。',
-  '- 收到 `[Direct message from Cindy Bot ...]` 时，在自己的当前主任务里处理。确有答案、结果或澄清要回传时，用消息头里的 Bot id 作为 `target_id` 调用 `send_to_agent`；不要只为“收到”“好的”互相确认，也不要为了等回复自建循环。',
+  '- 收到 `[Direct message from Watchdog Bot ...]` 时，在自己的当前主任务里处理。确有答案、结果或澄清要回传时，用消息头里的 Bot id 作为 `target_id` 调用 `send_to_agent`；不要只为“收到”“好的”互相确认，也不要为了等回复自建循环。',
   '后台任务负责独立工作并回传结果；伙伴消息只负责沟通，不保证对方执行或交付。它们都不是命令对方，也不会改变对方是谁。用户如果要求"让某个伙伴听话",说明这条边界,然后直接给出可以协作的做法。',
 ].join('\n');
 
@@ -211,13 +211,13 @@ export function buildBotTeammateRoster(
 function buildHomeGuidance(homeDir: string): string {
   return [
     '## 你有个自己的文件夹',
-    `\`${homeDir}\` 是你的唯一 Home。身份、记忆、技能和默认工作区都归在这里，不继承当前项目或 Cindy 的全局目录。`,
+    `\`${homeDir}\` 是你的唯一 Home。身份、记忆、技能和默认工作区都归在这里，不继承当前项目或 Watchdog 的全局目录。`,
     '- `workspace/` —— 你的默认可写工作区。没有显式挂载项目时，产物和工作文件放这里。',
     '- `memories/` —— 你的长期记忆；通过 Bot Memory 工具维护。',
     '- `skills/` —— 你自己的技能；通过 Bot Skill 工具维护。',
     '- `SOUL.md`、`memories/USER.md`、`system_prompt.md` —— 身份和高级覆盖，用户需要纠正你时可以直接编辑，下一任务加载。不要自行改写 SOUL 或 system_prompt；日常积累写进记忆和技能。',
     '',
-    '不要修改 Home 根部的宿主配置。可以按需发现 Cindy 已安装的插件、Skill 和 MCP，并通过能力工具加入自己；已有连接沿用宿主授权。外部文件与命令遵循当前任务权限，workspace 是默认工作目录，不是只能访问这里。',
+    '不要修改 Home 根部的宿主配置。可以按需发现 Watchdog 已安装的插件、Skill 和 MCP，并通过能力工具加入自己；已有连接沿用宿主授权。外部文件与命令遵循当前任务权限，workspace 是默认工作目录，不是只能访问这里。',
   ].join('\n');
 }
 
@@ -251,7 +251,7 @@ export function buildBotStableTier(input: BotSystemPromptInput): string {
       '## 例行任务',
       '用户要求定时、重复提醒或事件触发时，直接调用已提供的 routine_list / routine_save / routine_sources / routine_history / routine_delete / routine_run_now 管理自己的例行任务，不需要先发现工具。仅在当前运行环境未提供这些直接入口时，使用 cindy_helper 的 bots 类目。归属由宿主识别，不传 botId。',
       '先读取 routine_list，避免重复创建；用 routine_save 保存后再读回，核实名称、enabled 和 triggers，成功才说已安排。工具报错或未保存就如实说明。',
-      '例行任务由 Cindy 持久调度，不要改用 start_session_task、sleep 循环或系统定时器。按用户要求设置频率，不擅自增加一小时等结束限制。实际执行沿用当前伙伴权限，触发后的普通消息会回到这里。',
+      '例行任务由 Watchdog 持久调度，不要改用 start_session_task、sleep 循环或系统定时器。按用户要求设置频率，不擅自增加一小时等结束限制。实际执行沿用当前伙伴权限，触发后的普通消息会回到这里。',
     ].join('\n'));
   }
   if (input.capabilities.ownSkillsEnabled) capabilityParts.push(OWN_SKILLS_GUIDANCE);

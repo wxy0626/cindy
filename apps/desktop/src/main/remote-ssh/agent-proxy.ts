@@ -193,7 +193,7 @@ export function buildAgentProxyEnvUppercase(proxyUrl: string): Record<string, st
  * marker 逐字节一致, 升级不触发无谓的 daemon 重启。
  */
 export function buildAgentProxyMarkerContent(proxyUrl: string): string {
-  const lines = ['# Written by Cindy — agent proxy tunnel env. Sourced by the codex daemon wrapper.'];
+  const lines = ['# Written by Watchdog — agent proxy tunnel env. Sourced by the codex daemon wrapper.'];
   for (const [key, value] of Object.entries(buildAgentProxyEnv(proxyUrl))) {
     lines.push(`export ${key}='${value}'`);
   }

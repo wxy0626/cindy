@@ -16,7 +16,7 @@ function requireSkillhubApiBaseUrl(): string {
     throw new ServerApiError(
       'UNSUPPORTED_CAPABILITY',
       0,
-      'Cindy Skill Hub is not configured for this environment',
+      'Watchdog Skill Hub is not configured for this environment',
     );
   }
   return baseUrl;

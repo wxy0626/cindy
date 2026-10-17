@@ -19,7 +19,7 @@ export async function openMakeToolsDirectory(
   } catch {
     // Do not send private filesystem paths or OS error messages over IPC.
   }
-  throwIpcError('INTERNAL', 'Unable to open Cindy Make tools directory');
+  throwIpcError('INTERNAL', 'Unable to open Watchdog Make tools directory');
 }
 
 /** Open the managed Cindy source checkout directory. */
@@ -36,5 +36,5 @@ export async function openMakeSourceDirectory(
   } catch {
     // Do not send private filesystem paths or OS error messages over IPC.
   }
-  throwIpcError('INTERNAL', 'Unable to open Cindy Make source directory');
+  throwIpcError('INTERNAL', 'Unable to open Watchdog Make source directory');
 }

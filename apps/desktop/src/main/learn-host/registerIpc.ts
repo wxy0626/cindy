@@ -76,7 +76,7 @@ export function registerLearnIpc(): void {
   _learnIpcRegistered = true;
   ipcMain.handle(LEARN_CHANNELS.START, async (_event, req: LearnStartRequest) => {
     if (!isCindyLearnSkillEnabled()) {
-      throwIpcError('PERMISSION_DENIED', 'Cindy Learn is disabled in Local Skills.');
+      throwIpcError('PERMISSION_DENIED', 'Watchdog Learn is disabled in Local Skills.');
     }
     try {
       return await mustController().startLearn(req);

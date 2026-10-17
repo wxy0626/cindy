@@ -116,7 +116,7 @@ const log = createLogger('device-link:ipc');
 
 function requireDeviceLinkCapability(): void {
   if (!getAppCapabilities().canUseDeviceLink) {
-    throwIpcError('PERMISSION_DENIED', 'Device Link requires a Cindy account.');
+    throwIpcError('PERMISSION_DENIED', 'Device Link requires a Watchdog account.');
   }
 }
 
@@ -1456,7 +1456,7 @@ export function registerDeviceLinkIpc(deps: DeviceLinkIpcDeps = defaultDeps()): 
       }, raw);
     } catch (error) {
       if (error instanceof RemotePluginOauthUnsupportedError)
-        throwIpcError('UNSUPPORTED_CAPABILITY', 'Update Cindy on the remote device to use remote plugin authorization');
+        throwIpcError('UNSUPPORTED_CAPABILITY', 'Update Watchdog on the remote device to use remote plugin authorization');
       throwIpcError('PRECONDITION_FAILED', 'Remote authorization unavailable; retry from the current card');
     }
   };

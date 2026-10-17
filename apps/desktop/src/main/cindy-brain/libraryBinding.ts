@@ -130,7 +130,7 @@ export async function validateLibraryCandidateLocation(req: {
         /* 受管根本身不存在(未登录早期)按词法比较 */
       }
       if (isInsideDir(realManaged, path.join(realCandidate, ghostId)) || isInsideDir(managed, libraryRoot)) {
-        return { ok: false, errorCode: 'PATH_INVALID', message: '所选目录位于 Cindy 管理的数据区内;请选择其它位置' };
+        return { ok: false, errorCode: 'PATH_INVALID', message: '所选目录位于 Watchdog 管理的数据区内;请选择其它位置' };
       }
     }
   }

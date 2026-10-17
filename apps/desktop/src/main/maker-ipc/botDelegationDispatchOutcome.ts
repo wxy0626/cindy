@@ -72,7 +72,7 @@ export function classifyBotDelegationDispatchFailure(
     return {
       kind: 'fatal',
       errorCode: 'ACCOUNT_NOT_READY',
-      message: '需要登录后才能执行：当前没有可用的账号与模型来源，请先登录 Cindy 再重新启动任务。',
+      message: '需要登录后才能执行：当前没有可用的账号与模型来源，请先登录 Watchdog 再重新启动任务。',
     };
   }
   if (STRUCTURAL_FATAL_CODES.has(input.errorCode)) {

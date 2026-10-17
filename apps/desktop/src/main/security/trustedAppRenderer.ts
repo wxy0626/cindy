@@ -126,6 +126,6 @@ export function isTrustedAppRendererWindowForLocation(
 /** 高权限 IPC 的统一断言；失败时不泄露真实允许地址。 */
 export function assertTrustedAppRendererEvent(event: MainIpcEvent): void {
   if (!isTrustedAppRendererEvent(event)) {
-    throwIpcError('PERMISSION_DENIED', '此操作只能从 Cindy 主页面发起');
+    throwIpcError('PERMISSION_DENIED', '此操作只能从 Watchdog 主页面发起');
   }
 }

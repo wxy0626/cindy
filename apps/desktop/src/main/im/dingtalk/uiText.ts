@@ -18,11 +18,11 @@ export const ui = {
 /stop  中止当前执行，并撤掉排队消息
 /help  查看可用命令
 
-模型、权限和远程接管请在 Cindy 桌面端调整。`,
+模型、权限和远程接管请在 Watchdog 桌面端调整。`,
     unknownCommand: (cmd: string) =>
       `没认出 \`${cmd}\` 这个命令 🤔\n我能听懂的：/new、/stop、/help`,
     interactiveCommandUnsupported: (cmd: string) =>
-      `钉钉暂不支持 ${cmd} 的交互选择，请在 Cindy 桌面端完成对应设置。`,
+      `钉钉暂不支持 ${cmd} 的交互选择，请在 Watchdog 桌面端完成对应设置。`,
   },
 } satisfies ImUiTextPack;
 

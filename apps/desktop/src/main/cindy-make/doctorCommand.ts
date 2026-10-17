@@ -144,7 +144,7 @@ export function createMakeDoctorCommand<T extends MakeDoctorEnvironment>(deps: {
         );
       } catch (error) {
         if ((error as { code?: string })?.code === 'busy')
-          throwIpcError('DEVICE_BUSY', 'A Cindy Make operation is already running');
+          throwIpcError('DEVICE_BUSY', 'A Watchdog Make operation is already running');
         throw error;
       }
       let controller = managerOperation.controller;

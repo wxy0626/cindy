@@ -106,7 +106,7 @@ export async function collectCindyMakeChanges(
   const branch = (await git(['rev-parse', '--abbrev-ref', 'HEAD'], worktree)).trim();
   // 先拒绝非托管路径和分支，避免无关路径触发文件系统错误后掩盖真实保护原因。
   if (!isCindyMakeWorktreePath(userData, worktree) || branch !== makeTaskBranch(runId))
-    throw new Error('Unexpected Cindy Make worktree');
+    throw new Error('Unexpected Watchdog Make worktree');
   const samePath = (a: string, b: string) =>
     process.platform === 'win32'
       ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
@@ -133,11 +133,11 @@ export async function collectCindyMakeChanges(
       path.join(makeSourceCheckoutPath(userData), '.git'),
     ))
   )
-    throw new Error('Unexpected Cindy Make worktree');
+    throw new Error('Unexpected Watchdog Make worktree');
   const { commit, tree } = await commitLocalFiles(
     git,
     worktree,
-    'Cindy Make: complete personal change',
+    'Watchdog Make: complete personal change',
   );
   await git(['update-ref', taskContentRef(runId, 'complete'), tree], worktree);
   await git(['update-ref', taskCommitRef(runId), commit], worktree);

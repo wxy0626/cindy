@@ -402,7 +402,7 @@ export class PluginPublisherOrchestrator {
           errorCode: signal.aborted ? null : 'CONFIRM_UNAVAILABLE',
           message: signal.aborted
             ? cancelMessage(record.uploadId !== null)
-            : '请在 Cindy 窗口内重试',
+            : '请在 Watchdog 窗口内重试',
         });
         return;
       }

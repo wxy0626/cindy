@@ -32,8 +32,8 @@ type PageKind = (typeof PAGE_KINDS)[number];
 
 /** Human-readable labels for the preview toolbar; callback copy lives below. */
 const PAGE_LABELS: Record<PageKind, string> = {
-  'login-success': 'Cindy 登录 · 成功',
-  'login-error': 'Cindy 登录 · 失败',
+  'login-success': 'Watchdog 登录 · 成功',
+  'login-error': 'Watchdog 登录 · 失败',
   'xai-success': 'xAI · 成功',
   'xai-error': 'xAI · 失败',
   'generic-success': '通用模型供应商 · 成功',
@@ -166,7 +166,7 @@ function renderToolbar(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cindy OAuth 回调页预览</title>
+<title>Watchdog OAuth 回调页预览</title>
 <style>
 *{box-sizing:border-box}body{margin:0;height:100vh;display:grid;grid-template-rows:auto 1fr;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:#ececea;color:#262626}
 .toolbar{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #d7d7d4;background:#f8f8f6}.title{font-size:14px;font-weight:600;margin-right:auto}.field{display:flex;align-items:center;gap:6px;font-size:12px;color:#737373}select,.open,.script-open{height:34px;border:1px solid #c7c7c3;border-radius:8px;background:#fff;color:#262626;padding:0 10px;font:inherit}.open,.script-open{display:inline-flex;align-items:center;text-decoration:none;font-size:12px;cursor:pointer}.script-open{appearance:none}iframe{width:100%;height:100%;border:0;background:#f8f8f6}@media(max-width:720px){.toolbar{align-items:stretch;flex-wrap:wrap}.title{width:100%;margin:0}.field{flex:1;min-width:140px}.field select{width:100%}}
@@ -174,7 +174,7 @@ function renderToolbar(
 </head>
 <body>
 <div class="toolbar">
-  <div class="title">Cindy OAuth 回调页 · 真实渲染器预览</div>
+  <div class="title">Watchdog OAuth 回调页 · 真实渲染器预览</div>
   <label class="field">页面<select id="kind">${pageOptions}</select></label>
   <label class="field">语言<select id="lang">${langOptions}</select></label>
   <label class="field">主题<select id="theme">${themeOptions}</select></label>
@@ -221,7 +221,7 @@ const server = createServer((request, response) => {
 server.listen(0, '127.0.0.1', () => {
   const address = server.address();
   if (typeof address !== 'object' || address === null) return;
-  process.stdout.write(`Cindy OAuth callback preview: http://127.0.0.1:${address.port}\n`);
+  process.stdout.write(`Watchdog OAuth callback preview: http://127.0.0.1:${address.port}\n`);
 });
 
 process.once('SIGINT', () => server.close(() => process.exit(0)));

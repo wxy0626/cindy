@@ -26,7 +26,7 @@ import { projectMakeRemoteCard, type MakeRemoteSnapshot } from './remoteProjecti
 import type { CindyMakeCompletionMeta } from '../../shared/cindyMakeSession.js';
 
 const unavailable = () =>
-  new RemoteResourceRegistryError('NOT_FOUND', 'Cindy Make task is unavailable');
+  new RemoteResourceRegistryError('NOT_FOUND', 'Watchdog Make task is unavailable');
 const parse = (raw: string | null): Record<string, unknown> => {
   try {
     const value = JSON.parse(raw ?? '{}');

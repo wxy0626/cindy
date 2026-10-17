@@ -20,7 +20,7 @@ export function shouldRefuseOfficialProfileWriterMigration(input: {
 export function officialProfileWriterMigrationMessage(pendingNames: readonly string[]): string {
   const pending = pendingNames.length > 0 ? pendingNames.join(', ') : '(unknown)';
   return (
-    `开发版不能把正式 Cindy 目录的数据库升到当前 checkout 的 schema（待执行 ${pending}）。` +
+    `开发版不能把正式 Watchdog 目录的数据库升到当前 checkout 的 schema（待执行 ${pending}）。` +
     '请改用 --isolated=<名字>，或等包含这些 migration 的正式版发布后再用共享目录。'
   );
 }

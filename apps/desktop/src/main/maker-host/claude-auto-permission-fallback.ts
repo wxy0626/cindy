@@ -448,7 +448,7 @@ export function createClaudeAutoPermissionFallbackCoordinator(
       }
       await session.useCindyAutoReviewFallback();
       counters.switched += 1;
-      deps.logger.info('auto permission classifier unavailable; session kept on Auto with Cindy fallback', {
+      deps.logger.info('auto permission classifier unavailable; session kept on Auto with Watchdog fallback', {
         sessionId: signal.sessionId,
         agentKind: signalAgentKind,
         status: signal.status,

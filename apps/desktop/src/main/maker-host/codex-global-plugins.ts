@@ -932,7 +932,7 @@ async function collectCapabilityRoutingFailures(
         continue;
       }
       failures.push(
-        `cannot enforce Cindy capability routing for installed Codex plugin ${pluginName}@${marketplace} (marketplace status: ${status ?? 'unmanaged'})`,
+        `cannot enforce Watchdog capability routing for installed Codex plugin ${pluginName}@${marketplace} (marketplace status: ${status ?? 'unmanaged'})`,
       );
     }
   }

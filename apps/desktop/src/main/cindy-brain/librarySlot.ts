@@ -1010,7 +1010,7 @@ export class GhostLibrarySlot {
     if (session.drift !== null && op !== 'open' && op !== 'status') {
       return fail(
         'LIBRARY_UNAVAILABLE',
-        `Library 不可用(${session.drift});请在 Cindy 设置中重新确认存储位置`,
+        `Library 不可用(${session.drift});请在 Watchdog 设置中重新确认存储位置`,
         'LIBRARY_UNAVAILABLE',
       );
     }

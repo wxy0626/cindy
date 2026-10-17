@@ -61,7 +61,7 @@ export function buildHookPromptNote(im: string | undefined): string {
     '`[文件名](xdt-file:///绝对路径)`;图片写 ' +
     '`![说明](工具返回的媒体地址或当前任务图片的绝对路径)`。' +
     '不要给本地路径拼接 xdt-image:// 或 cindy-media://。' +
-    `Cindy 会保存可读取的任务图片,并在回复结束后作为 ${platform} 附件发回,无需另调导入工具;` +
+    `Watchdog 会保存可读取的任务图片,并在回复结束后作为 ${platform} 附件发回,无需另调导入工具;` +
     'xdt-file 文件必须位于当前工作目录内;无法读取、超限或目录外的附件不会发送,' +
     '最终回复会明确显示附件发送不完整。' +
     '不要用 cindy_feishu_bot 发送,除非用户明确要求发到飞书。';

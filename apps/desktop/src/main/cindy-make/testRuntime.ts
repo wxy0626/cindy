@@ -434,7 +434,7 @@ export async function actCindyMakeTest(
       'resume-build',
     ].includes(action)
   )
-    throwIpcError('INVALID_PARAMS', 'Invalid Cindy Make test action');
+    throwIpcError('INVALID_PARAMS', 'Invalid Watchdog Make test action');
   let targetCompletionId = completionId;
   try {
     if (action === 'resume-start' || action === 'resume-build') {

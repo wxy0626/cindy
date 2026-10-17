@@ -127,7 +127,7 @@ export function overloadFailureNotice(
   // 与桌面端 ErrorBanner 的 overloadBusy 文案同口径。
   return (
     '⚠️ 模型服务繁忙：上游暂时没有可用容量。' +
-    '请直接在这里重发这条消息重试，或在 Cindy 里换一个模型。' +
+    '请直接在这里重发这条消息重试，或在 Watchdog 里换一个模型。' +
     '（在桌面端点「重试」也能继续任务，但结果不会回到这条消息里。）'
   );
 }
@@ -146,18 +146,18 @@ function toolLoopFailureNotice(data: unknown): string | null {
 
   const details = parseToolLoopErrorDetails(record.toolLoop);
   if (!details) {
-    return '模型重复调用工具次数过多，Cindy 已停止本轮以避免无限循环。可以发送新消息继续。';
+    return '模型重复调用工具次数过多，Watchdog 已停止本轮以避免无限循环。可以发送新消息继续。';
   }
 
   switch (details.kind) {
     case 'consecutive':
-      return `模型重复调用同一个工具 ${details.count} 次，Cindy 已停止本轮以避免无限循环。可以发送新消息继续。`;
+      return `模型重复调用同一个工具 ${details.count} 次，Watchdog 已停止本轮以避免无限循环。可以发送新消息继续。`;
     case 'pingpong':
-      return `模型在多个工具调用之间来回循环，Cindy 检测到本轮已有 ${details.count} 次调用后停止了本轮。可以发送新消息继续。`;
+      return `模型在多个工具调用之间来回循环，Watchdog 检测到本轮已有 ${details.count} 次调用后停止了本轮。可以发送新消息继续。`;
     case 'rotation':
-      return `模型持续轮转调用多个工具，Cindy 检测到本轮已有 ${details.count} 次调用后停止了本轮。可以发送新消息继续。`;
+      return `模型持续轮转调用多个工具，Watchdog 检测到本轮已有 ${details.count} 次调用后停止了本轮。可以发送新消息继续。`;
     case 'contract':
-      return `模型连续触发了无效的工具调用，Cindy 已在 ${details.count} 次失败后停止本轮，以避免无限循环。可以发送新消息继续。`;
+      return `模型连续触发了无效的工具调用，Watchdog 已在 ${details.count} 次失败后停止本轮，以避免无限循环。可以发送新消息继续。`;
   }
 }
 

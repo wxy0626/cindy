@@ -64,7 +64,7 @@ describe('feishu streaming text', () => {
 
     const card = mocks.patchCardRaw.mock.calls[0][1];
     expect(requestBytes(card)).toBeLessThanOrEqual(FEISHU_CARD_REQUEST_MAX_BYTES);
-    expect(markdownContent(card)).toContain('完整内容仍可在 Cindy 桌面端查看');
+    expect(markdownContent(card)).toContain('完整内容仍可在 Watchdog 桌面端查看');
   });
 
   it('uses a bounded plain card when image elements alone exceed the limit', async () => {

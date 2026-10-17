@@ -234,7 +234,7 @@ describe('durable Subagent runs', () => {
     insertMessage(
       'tool-result-durable',
       'tool_result',
-      JSON.stringify('Cindy subagent launched. The agent is working in the background.'),
+      JSON.stringify('Watchdog subagent launched. The agent is working in the background.'),
       'pi-tool-durable',
       2100,
     );

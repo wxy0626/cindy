@@ -12,8 +12,8 @@ export type OAuthResultPageLang = 'zh' | 'en';
 /** Receipt is not token-exchange success. The authoritative result stays in the cloud card. */
 export function getRemoteOAuthCallbackCopy(lang: OAuthResultPageLang): { title: string; body: string } {
   return {
-    zh: { title: '已收到授权回调', body: '请返回 Cindy，查看远程设备的授权结果。' },
-    en: { title: 'Authorization callback received', body: 'Return to Cindy to check the authorization result on the remote device.' },
+    zh: { title: '已收到授权回调', body: '请返回 Watchdog，查看远程设备的授权结果。' },
+    en: { title: 'Authorization callback received', body: 'Return to Watchdog to check the authorization result on the remote device.' },
   }[lang];
 }
 export type OAuthResultPageVariant = 'success' | 'warning' | 'error';
@@ -326,7 +326,7 @@ function renderBrandLoginCallbackPage(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>${title} · Cindy</title>
+<title>${title} · Watchdog</title>
 <style>
 :root{color-scheme:light;--page:#eeeeee;--card:#fbfbfb;--card-border:#d4d4d4;--title:#252222;--body:#6f6f6f;--detail:#a3a3a3;--cta:#2a2828;--cta-border:#434343;--cta-text:#d4d4d4;--cta-hover:rgba(255,255,255,.08);--cta-active:rgba(0,0,0,.5)}
 :root[data-theme="dark"]{color-scheme:dark;--page:#2a2828;--card:#312f2f;--card-border:#434343;--title:#d4d4d4;--body:#6f6f6f;--detail:#737373;--cta:#eeeeee;--cta-border:#ffffff;--cta-text:#2a2828;--cta-hover:rgba(0,0,0,.05);--cta-active:rgba(0,0,0,.1)}
@@ -393,7 +393,7 @@ export function renderOAuthResultPage(input: OAuthResultPageInput): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>${title} · Cindy</title>
+<title>${title} · Watchdog</title>
 <style>
 :root{color-scheme:light;--page:#f8f8f6;--card:#fff;--border:#d7d7d4;--text:#262626;--muted:#737373;--detail:#a3a3a3;--chip:#e5e5e5;--cta:#000;--cta-text:#fff;--cta-hover:#262626}
 :root[data-theme="dark"]{color-scheme:dark;--page:#1f1f1e;--card:#2c2c2a;--border:#3c3c3a;--text:#d4d4d4;--muted:#a3a3a3;--detail:#737373;--chip:#3c3c3a;--cta:#fff;--cta-text:#000;--cta-hover:#e5e5e5}

@@ -460,7 +460,7 @@ async function inspectCodexBrowserCompanion(
   } catch (error) {
     return unavailable(
       'provider_not_installed',
-      `cannot read Cindy's isolated Codex plugin config: ${error instanceof Error ? error.message : String(error)}`,
+      `cannot read Watchdog's isolated Codex plugin config: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   const isolatedPlugins = isRecord(isolatedConfig.plugins) ? isolatedConfig.plugins : {};
@@ -468,7 +468,7 @@ async function inspectCodexBrowserCompanion(
   if (!isRecord(isolatedPlugin) || isolatedPlugin.enabled !== true) {
     return unavailable(
       'provider_not_installed',
-      `${SOURCE_PLUGIN_KEY} is not enabled in Cindy's isolated Codex runtime`,
+      `${SOURCE_PLUGIN_KEY} is not enabled in Watchdog's isolated Codex runtime`,
     );
   }
 

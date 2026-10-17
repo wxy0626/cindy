@@ -36,12 +36,12 @@ export function createSkillhubAgentTools(deps: {
 }): SkillhubAgentCallback {
   return async (request, context) => {
     if (!context.sessionId || context.remoteHostId || !deps.isCurrentSession(context)) {
-      return fail('NO_SESSION_CONTEXT', 'A current local Cindy task is required.');
+      return fail('NO_SESSION_CONTEXT', 'A current local Watchdog task is required.');
     }
     const host = (deps.getServices ?? (() => services))();
     if (!host) return fail('HOST_NOT_READY', 'SkillHub is not ready.');
     const owner = host.ownerScope();
-    if (!owner) return fail('UNAUTHORIZED', 'Sign in to Cindy to search SkillHub or publish your Skills.');
+    if (!owner) return fail('UNAUTHORIZED', 'Sign in to Watchdog to search SkillHub or publish your Skills.');
     const isCurrent = () => host.ownerScope() === owner && deps.isCurrentSession(context);
     const changed = () => fail('CANCELLED', 'The active account or task changed. Check the published version before retrying.');
     try {
@@ -108,7 +108,7 @@ export function createSkillhubAgentTools(deps: {
       }
       const absolutePath = await fs.realpath(input.path);
       if (!isCurrent()) return changed();
-      if (host.isManagedPath(absolutePath)) return fail('PERMISSION_DENIED', 'Cindy built-in and plugin-managed Skills cannot be published as your own.');
+      if (host.isManagedPath(absolutePath)) return fail('PERMISSION_DENIED', 'Watchdog built-in and plugin-managed Skills cannot be published as your own.');
       const workingDir = context.workingDir ? await fs.realpath(context.workingDir) : null;
       if (!workingDir || !isCurrent()) return changed();
       let authorization: SessionPathAuthorization = { allowed: true };

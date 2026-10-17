@@ -253,7 +253,7 @@ describe('implicit local bridge resume routing', () => {
   });
 });
 
-describe('local mode Cindy gateway gate', () => {
+describe('local mode Watchdog gateway gate', () => {
   it('does not route explicit or implicit XD traffic when the capability is disabled', () => {
     mockGetAppCapabilities.mockReturnValue({ canUseCindyGateway: false });
     setSessionProvider('s-local-xd', 'xd');

@@ -291,7 +291,7 @@ function parseResolvedGuidePayload(
   ) {
     throw new MediaGuideCompatibilityError(
       'CLIENT_UPGRADE_REQUIRED',
-      '当前 Cindy 版本不支持该模型的调用协议，请升级客户端或更换模型。',
+      '当前 Watchdog 版本不支持该模型的调用协议，请升级客户端或更换模型。',
       `unsupported Guide schemaVersion: ${schemaVersion}`,
     );
   }

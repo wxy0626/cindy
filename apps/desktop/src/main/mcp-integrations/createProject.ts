@@ -32,7 +32,7 @@ export async function withLocalProjectContext<T extends object>(
 ): Promise<ControlResult<T, string>> {
   const client = tryGetDbClient();
   if (!client || isAppSessionBoundaryPending())
-    return fail('HOST_NOT_READY', 'Cindy project storage is not ready.');
+    return fail('HOST_NOT_READY', 'Watchdog project storage is not ready.');
   const owner = getActiveDataOwnerPushStamp();
   const isCurrent = () => {
     const current = getActiveDataOwnerPushStamp();
@@ -44,7 +44,7 @@ export async function withLocalProjectContext<T extends object>(
     );
   };
   const assertCurrent = () => {
-    if (!isCurrent()) throwIpcError('PRECONDITION_FAILED', 'The active Cindy account changed.');
+    if (!isCurrent()) throwIpcError('PRECONDITION_FAILED', 'The active Watchdog account changed.');
   };
   try {
     const [caller] = await client.drizzle
@@ -52,13 +52,13 @@ export async function withLocalProjectContext<T extends object>(
       .from(sessions)
       .where(eq(sessions.id, callerSessionId))
       .limit(1);
-    if (!isCurrent()) return fail('PRECONDITION_FAILED', 'The active Cindy account changed.');
+    if (!isCurrent()) return fail('PRECONDITION_FAILED', 'The active Watchdog account changed.');
     if (!caller)
       return fail('NO_SESSION_CONTEXT', 'The calling task is not available in this account.');
     if (caller.remoteHostId)
       return fail(
         'UNSUPPORTED_CAPABILITY',
-        'Project registration only supports local Cindy tasks.',
+        'Project registration only supports local Watchdog tasks.',
       );
     // Account-generation checkpoint. Bot callers may manage projects; the
     // helper surface names the five project tools and keeps the rest of
@@ -94,7 +94,7 @@ export function validateLocalProjectDirectory(
   if (process.platform !== 'win32' && workingDir.includes('\\')) {
     return fail(
       'INVALID_ARGS',
-      'Cindy project paths cannot contain literal backslashes on this platform.',
+      'Watchdog project paths cannot contain literal backslashes on this platform.',
     );
   }
   const directory = normalizeRecentWorkdirPath(path.normalize(workingDir));

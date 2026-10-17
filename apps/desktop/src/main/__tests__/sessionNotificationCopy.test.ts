@@ -34,9 +34,9 @@ const CASES: Array<{
     done: '已完成 ✓',
     error: '执行失败',
     needsReply: '需要你回复',
-    externalDone: 'Cindy · 任务「整理报告」已完成 ✓',
-    externalError: 'Cindy · 任务「整理报告」执行失败',
-    externalNeedsReply: 'Cindy · 任务「整理报告」需要你回复',
+    externalDone: 'Watchdog · 任务「整理报告」已完成 ✓',
+    externalError: 'Watchdog · 任务「整理报告」执行失败',
+    externalNeedsReply: 'Watchdog · 任务「整理报告」需要你回复',
   },
   {
     locale: 'en',
@@ -45,9 +45,9 @@ const CASES: Array<{
     done: 'Completed ✓',
     error: 'Failed',
     needsReply: 'Reply needed',
-    externalDone: 'Cindy · Session “Report” completed ✓',
-    externalError: 'Cindy · Session “Report” failed',
-    externalNeedsReply: 'Cindy · Session “Report” needs your reply',
+    externalDone: 'Watchdog · Session “Report” completed ✓',
+    externalError: 'Watchdog · Session “Report” failed',
+    externalNeedsReply: 'Watchdog · Session “Report” needs your reply',
   },
 ];
 
@@ -78,13 +78,13 @@ describe('session notification copy', () => {
     (title) => {
       setMainLocale('en');
       expect(getSessionExternalNotificationText(title, 'done')).toBe(
-        `Cindy · Session “${title}” completed ✓`,
+        `Watchdog · Session “${title}” completed ✓`,
       );
       expect(getSessionExternalNotificationText(title, 'error')).toBe(
-        `Cindy · Session “${title}” failed`,
+        `Watchdog · Session “${title}” failed`,
       );
       expect(getSessionExternalNotificationText(title, 'needs-reply')).toBe(
-        `Cindy · Session “${title}” needs your reply`,
+        `Watchdog · Session “${title}” needs your reply`,
       );
     },
   );

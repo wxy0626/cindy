@@ -677,18 +677,18 @@ function assembleHandoffText(
   ) {
     const rebuildCause =
       opts.reason === 'context-overflow'
-        ? `The previous native agent session exceeded the model's context window, so Cindy started a fresh native session in the same task. ` +
+        ? `The previous native agent session exceeded the model's context window, so Watchdog started a fresh native session in the same task. ` +
           `Below is the valid conversation history before the overflowing turn; treat only these records as the prior conversation, ` +
           `and do not try to recover, cite, or infer messages that are not listed. `
         : opts.reason === 'model-window-switch'
-          ? `The task is switching to a model with a smaller context window, so Cindy started a fresh native session before applying that model. ` +
+          ? `The task is switching to a model with a smaller context window, so Watchdog started a fresh native session before applying that model. ` +
             `Below is the valid conversation history carried into the smaller window; treat only these records as the prior conversation, ` +
             `and use the history retrieval tools when an earlier detail is needed. `
         : opts.reason === 'native-session-recovery'
-          ? `The previous native session history could not be safely transferred, so Cindy started a fresh native session in the same task. ` +
+          ? `The previous native session history could not be safely transferred, so Watchdog started a fresh native session in the same task. ` +
             `The original conversation remains available through the history retrieval tools. Use the handoff below to continue; do not repeat completed actions. `
         : opts.reason === 'pi-prompt-timeout'
-          ? `The previous native agent session stopped responding to prompts, so Cindy started a fresh native session in the same task. ` +
+          ? `The previous native agent session stopped responding to prompts, so Watchdog started a fresh native session in the same task. ` +
             `Below is the valid conversation history before the unresponsive turn; treat only these records as the prior conversation, ` +
             `and do not try to recover, cite, or infer messages that are not listed. `
         : `The user edited this conversation's local record, which invalidated the current native session context. ` +

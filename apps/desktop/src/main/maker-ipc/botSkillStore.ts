@@ -255,7 +255,7 @@ function renderPluginManifest(botId: string): string {
   return `${JSON.stringify(
     {
       name: `cindy-bot-${botDirName(botId)}`,
-      description: 'Skills this Cindy Bot learned for itself.',
+      description: 'Skills this Watchdog Bot learned for itself.',
       version: '1.0.0',
     },
     null,

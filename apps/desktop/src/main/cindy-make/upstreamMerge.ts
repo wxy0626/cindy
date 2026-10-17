@@ -199,7 +199,7 @@ export async function cleanupMergedCandidate(
       const normalized = await commitLocalFiles(
         git,
         worktree,
-        'Cindy Make: preserve completed legacy merge',
+        'Watchdog Make: preserve completed legacy merge',
         true,
         state.tree,
       );
@@ -364,7 +364,7 @@ export async function applyUpstreamMerge(
         throw error;
       }
     }
-    const result = await commitLocalFiles(git, worktree, 'Cindy Make: resolve upstream rebase');
+    const result = await commitLocalFiles(git, worktree, 'Watchdog Make: resolve upstream rebase');
     await git(['merge-base', '--is-ancestor', state.upstreamCommit, result.commit], worktree);
     try {
       await git(['diff', '--check', state.upstreamCommit, result.commit], worktree);
@@ -462,7 +462,7 @@ async function runFeatureSteps(
   if (feature.awaitingResolution) {
     if ((await git(['ls-files', '--unmerged'], worktree)).trim())
       return { ...state, status: 'conflict' };
-    await commitLocalFiles(git, worktree, 'Cindy Make: resolve feature conflict', true);
+    await commitLocalFiles(git, worktree, 'Watchdog Make: resolve feature conflict', true);
     feature = { ...feature, awaitingResolution: false, nextStep: feature.nextStep + 1 };
     state = { ...state, feature };
     await publish(state);
@@ -491,7 +491,7 @@ async function runFeatureSteps(
       await commitLocalFiles(
         git,
         worktree,
-        'Cindy Make: ' + feature.action + ' ' + feature.runId,
+        'Watchdog Make: ' + feature.action + ' ' + feature.runId,
         true,
       );
     } catch (error) {
@@ -580,7 +580,7 @@ export async function applyFeatureMerge(
   const state = await runFeatureSteps(userData, initial, git, publish);
   if (state.status === 'conflict' && state.feature?.awaitingResolution) return state;
   const worktree = await verifyMergeWorktree(userData, state, git);
-  const candidate = await commitLocalFiles(git, worktree, 'Cindy Make: resolve personal feature');
+  const candidate = await commitLocalFiles(git, worktree, 'Watchdog Make: resolve personal feature');
   const source = await assertSource(userData, git);
   await assertNoGitOperation(git, source);
   const head = (await git(['rev-parse', 'HEAD'], source)).trim();

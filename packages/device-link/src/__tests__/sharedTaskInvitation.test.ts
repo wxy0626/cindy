@@ -66,6 +66,6 @@ describe('shared task invitation handoff', () => {
     expect(sharedTaskAccountName('  Account Name  ')).toBe('Account Name');
     expect(sharedTaskAccountName('a'.repeat(31) + '\u{1f600}')).toBe('a'.repeat(31));
     expect(sharedTaskAccountName('A\nB')).toBe('AB');
-    expect(sharedTaskAccountName('')).toBe('Cindy');
+    expect(sharedTaskAccountName('')).toBe('Watchdog');
   });
 });

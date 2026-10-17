@@ -322,7 +322,7 @@ export async function manageCindyMakeTask(sessionId: unknown, action: unknown): 
     !/^[a-zA-Z0-9-]{1,128}$/.test(sessionId) ||
     (action !== 'end' && action !== 'finish' && action !== 'delete')
   )
-    throwIpcError('INVALID_PARAMS', 'Invalid Cindy Make action');
+    throwIpcError('INVALID_PARAMS', 'Invalid Watchdog Make action');
   const client = getDbClient();
   const owner = captureDataOwnerBroadcastScope();
   const isCurrent = () => {
@@ -346,7 +346,7 @@ export async function manageCindyMakeTask(sessionId: unknown, action: unknown): 
     !isCindyMakeWorktreePath(app.getPath('userData'), row.workingDir) ||
     (row.status === 'deleted' && action === 'finish')
   )
-    throwIpcError('NOT_FOUND', 'Cindy Make task unavailable');
+    throwIpcError('NOT_FOUND', 'Watchdog Make task unavailable');
   if (!runtime) throwIpcError('PRECONDITION_FAILED', 'busy');
   const featureOperation = cindyMakeManager.getState().upstreamMerge;
   if (

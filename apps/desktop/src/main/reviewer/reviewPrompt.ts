@@ -360,7 +360,7 @@ export function buildReviewPrompt(input: BuildReviewPromptInput): BuiltReviewPro
     ? '\n历史改动记录不完整，本次不把它当作完整补丁。审查以当前 Git 证据和显式成果为准；未提供的历史或未跟踪成果不得声称已覆盖。'
     : '');
 
-  const prompt = `你是 Cindy 的独立成果审查员。你在一个全新、无开发历史记忆的只读任务中工作。
+  const prompt = `你是 Watchdog 的独立成果审查员。你在一个全新、无开发历史记忆的只读任务中工作。
 
 ## 硬性边界
 

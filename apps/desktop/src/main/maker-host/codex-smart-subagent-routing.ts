@@ -179,7 +179,7 @@ export function buildCodexSmartModelCatalog(
       slug: candidate.model.id,
       display_name: candidate.model.name,
       description:
-        candidate.model.description ?? `Cindy smart Subagent route for ${candidate.model.name}`,
+        candidate.model.description ?? `Watchdog smart Subagent route for ${candidate.model.name}`,
       priority,
       context_window: candidate.model.contextWindow,
       max_context_window: candidate.model.contextWindow,

@@ -2051,7 +2051,7 @@ export function createRemoteAgentHost(deps: RemoteAgentHostDeps) {
         if (trust === 'guest') {
           // 受邀者必须用虚拟工作区：本机 Agent 只看到会话目录内的路径，附加目录也映射在其中。
           if (payload.virtualWorkspace !== true) {
-            fail('REMOTE_AGENT_UNSUPPORTED', 'shared users need the virtual workspace; update Cindy on the other computer');
+            fail('REMOTE_AGENT_UNSUPPORTED', 'shared users need the virtual workspace; update Watchdog on the other computer');
           }
           payload = sanitizeGuestOpenPayload(payload);
           // 只能接回自己在本机建立过的会话：会话 id 不能用来接上本机用户自己的会话。

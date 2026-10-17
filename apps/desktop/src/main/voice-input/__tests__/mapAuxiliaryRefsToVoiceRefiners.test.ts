@@ -48,7 +48,7 @@ describe('mapAuxiliaryRefsToVoiceRefiners', () => {
     expect(mapAuxiliaryRefToVoiceRefiner('cat:anthropic:claude-code:claude-haiku-4-5')).toBeNull();
   });
 
-  it('maps OpenAI and Cindy gateway catalog pins onto matching refiner transports', () => {
+  it('maps OpenAI and Watchdog gateway catalog pins onto matching refiner transports', () => {
     expect(mapAuxiliaryRefToVoiceRefiner('cat:openai:codex:gpt-5.4-mini')).toBe(
       'cat:openai:codex:gpt-5.4-mini',
     );

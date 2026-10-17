@@ -4,7 +4,7 @@ title: Plugins (extending what the agents can do)
 summary: What plugins are, how to browse / install / enable / disable them, per-working-directory control, the permission model, and invoking one with a $command.
 tab: ghosts
 ---
-Plugins (internally "意识" / Ghost) extend what the agents can do — they add AI-callable tools, dockable UI panels, and "ask Cindy to make it" media generation. Each plugin is a self-contained `.cindy` capability pack that runs in its own isolated sandbox.
+Plugins (internally "意识" / Ghost) extend what the agents can do — they add AI-callable tools, dockable UI panels, and "ask Watchdog to make it" media generation. Each plugin is a self-contained `.cindy` capability pack that runs in its own isolated sandbox.
 
 **The Plugins page:**
 
@@ -14,10 +14,10 @@ Plugins (internally "意识" / Ghost) extend what the agents can do — they add
 
 **Built-in plugins that ship with the app:**
 
-- **Cindy Art** (`$cindy-art`) — generate and edit images and short videos.
-- **Cindy Web Search** (`$cindy-web-search`) — public web search (add your own Brave or Tavily key on its detail page).
-- **Cindy Mermaid** (`$cindy-mermaid`) — build / repair Mermaid diagrams.
-- **Cindy GitHub** (`$cindy-github`) / **Cindy GitLab** (`$cindy-gitlab`) — read / write issues, PRs / MRs, reviews, CI, releases.
+- **Watchdog Art** (`$cindy-art`) — generate and edit images and short videos.
+- **Watchdog Web Search** (`$cindy-web-search`) — public web search (add your own Brave or Tavily key on its detail page).
+- **Watchdog Mermaid** (`$cindy-mermaid`) — build / repair Mermaid diagrams.
+- **Watchdog GitHub** (`$cindy-github`) / **Watchdog GitLab** (`$cindy-gitlab`) — read / write issues, PRs / MRs, reviews, CI, releases.
 - **Filo Google** (`$filo-google`) — Gmail / Calendar / Drive / Sheets.
 
 **Enabling and disabling:**
@@ -31,7 +31,7 @@ Plugins (internally "意识" / Ghost) extend what the agents can do — they add
 - Choosing Install, dragging a package, or picking one from disk first shows a **confirmation dialog** listing everything the plugin declares it can do (network domains, credentials, background tasks, skills, bundled code, panels…). Nothing is installed until you confirm; after that the plugin is enabled right away.
 - When you ask an agent to install a plugin (`ghost_market_install` / `ghost_forge_install`), the same confirmation appears as a card in that task — whatever the task's permission mode, including Full Access. It also works from the phone when you control this computer remotely. If you deny it, nothing is installed.
 - Plugins pushed by your organization (server default installs) are installed and updated silently without a confirmation.
-- The server selects the release appropriate for this Cindy version before marketplace delivery. Desktop does not apply a second `minCindyVersion` gate; custom marketplaces and local `.cindy` packages follow the same install policy.
+- The server selects the release appropriate for this Watchdog version before marketplace delivery. Desktop does not apply a second `minCindyVersion` gate; custom marketplaces and local `.cindy` packages follow the same install policy.
 - Updates from stable marketplace sources are applied automatically when the plugin is idle — **as long as the new version doesn't need more permissions**. If it does, the automatic update pauses, the old version keeps working, and the plugin card shows "New permissions need confirmation"; clicking Update shows the added permissions for you to confirm. Failed attempts retry later; you can still click Update to retry immediately.
 
 **Using a plugin with `$command`:**

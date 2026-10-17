@@ -94,7 +94,7 @@ export class CindyVoiceRunContext {
       usedLegacyRefinerFallback = true;
     }
     if (requestGeneration !== this.connectionGeneration) {
-      throw new Error('Cindy voice ASR session allocation was superseded by a newer provider attempt.');
+      throw new Error('Watchdog voice ASR session allocation was superseded by a newer provider attempt.');
     }
     if (usedLegacyRefinerFallback) this.refinerUnavailableOnServer = true;
     this.latestSessionId = session.sessionId;
@@ -117,7 +117,7 @@ export class CindyVoiceRunContext {
     authorization: string;
   }> {
     if (this.refinerUnavailableOnServer) {
-      throw new Error('Cindy voice service on this server does not support managed refinement yet.');
+      throw new Error('Watchdog voice service on this server does not support managed refinement yet.');
     }
     const sessionId = this.latestSessionId;
     if (!sessionId) throw new Error('Voice ASR session is not connected yet.');
@@ -126,9 +126,9 @@ export class CindyVoiceRunContext {
       await authManager.refresh();
       token = authManager.getAccessToken();
     }
-    if (!token) throw new Error('Cindy login is required for voice refinement.');
+    if (!token) throw new Error('Watchdog login is required for voice refinement.');
     const baseUrl = getClientEndpoint('voiceApiBaseUrl');
-    if (!baseUrl) throw new Error('Cindy voice service is unavailable in this region.');
+    if (!baseUrl) throw new Error('Watchdog voice service is unavailable in this region.');
     return {
       url: `${baseUrl}/api/voice/sessions/${encodeURIComponent(sessionId)}/refine?provider=${encodeURIComponent(refinerProvider)}`,
       authorization: `Bearer ${token}`,
@@ -148,14 +148,14 @@ export class CindyVoiceRunContext {
     promptCacheKey: string;
   }): Promise<void> {
     if (this.refinerUnavailableOnServer) {
-      throw new Error('Cindy voice service on this server does not support managed refinement yet.');
+      throw new Error('Watchdog voice service on this server does not support managed refinement yet.');
     }
     const sessionId = this.latestSessionId;
     if (!sessionId) throw new Error('Voice ASR session is not connected yet.');
     const token = authManager.getAccessToken();
-    if (!token) throw new Error('Cindy login is required for voice refinement.');
+    if (!token) throw new Error('Watchdog login is required for voice refinement.');
     const baseUrl = getClientEndpoint('voiceApiBaseUrl');
-    if (!baseUrl) throw new Error('Cindy voice service is unavailable in this region.');
+    if (!baseUrl) throw new Error('Watchdog voice service is unavailable in this region.');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), VOICE_REFINE_WARMUP_TIMEOUT_MS);
     try {
@@ -198,9 +198,9 @@ async function createCindyVoiceSession(input: {
   refinerProvider?: string;
   sourceLanguage?: string;
 }): Promise<CindyVoiceAsrSession> {
-  requireAppCapability('canUseCindyAccountServices', 'Cindy voice requires a Cindy account.');
+  requireAppCapability('canUseCindyAccountServices', 'Watchdog voice requires a Watchdog account.');
   if (!getClientEndpoint('voiceApiBaseUrl')) {
-    throw new Error('Cindy voice service is unavailable in this region.');
+    throw new Error('Watchdog voice service is unavailable in this region.');
   }
   const request = {
     baseUrl: () => getClientEndpoint('voiceApiBaseUrl'),
@@ -234,7 +234,7 @@ async function createCindyVoiceSession(input: {
     || !session.sessionId
     || !/^wss?:\/\//.test(session.asr.websocketUrl)
   ) {
-    throw new Error('Cindy voice service returned an invalid session.');
+    throw new Error('Watchdog voice service returned an invalid session.');
   }
   return session;
 }

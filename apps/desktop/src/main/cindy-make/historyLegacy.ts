@@ -31,7 +31,7 @@ export async function readLegacyFeatureReceipts(
         .trim()
         .split(/\s+/);
       const subject = (await git(['show', '-s', '--format=%s', built.commit], source)).trim();
-      if (!HASH.test(parents[0]) || !subject.startsWith('Cindy Make: integrate personal feature'))
+      if (!HASH.test(parents[0]) || !subject.startsWith('Watchdog Make: integrate personal feature'))
         continue;
       if (parents.length > 1 && !parents.slice(1).includes(completion.commit)) continue;
       const beforeTree = (await git(['rev-parse', parents[0] + '^{tree}'], source)).trim();

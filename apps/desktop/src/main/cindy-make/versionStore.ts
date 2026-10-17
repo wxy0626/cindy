@@ -450,7 +450,7 @@ export async function retainPersonalVersion(input: {
       protocol: 1,
       id,
       profile: input.profile,
-      version: `Cindy Make ${id.slice(0, 8)}`,
+      version: `Watchdog Make ${id.slice(0, 8)}`,
       title: input.title,
       commit: input.commit,
       ...(input.tree ? { tree: input.tree } : {}),

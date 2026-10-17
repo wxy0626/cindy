@@ -353,7 +353,7 @@ export function registerMakerUsageIpc(maker: Maker): void {
   // 用量历史「所有设备」范围:经 device-link 拉同账号其它电脑的原始用量行并按账号缓存。
   // 与设备互联 IPC 入口同一道能力门:未登录或账号切换进行中时,不读设备目录、不开 peer 链路。
   configurePeerUsageSync(withPeerUsageAccessGate(() =>
-    requireAppCapability('canUseDeviceLink', 'Device Link requires a Cindy account.'), {
+    requireAppCapability('canUseDeviceLink', 'Device Link requires a Watchdog account.'), {
     userId: getCurrentDbClientUserId,
     selfDeviceId: getSelfDeviceId,
     listDevices: () => handleListDevices(deviceDirectoryDeps()),

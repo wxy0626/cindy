@@ -45,7 +45,7 @@ vi.mock('../logger', () => ({
 }));
 vi.mock('../security/trustedAppRenderer', () => ({
   assertTrustedAppRendererEvent: () => {
-    if (!h.trusted) throw new Error('[PERMISSION_DENIED] 此操作只能从 Cindy 主页面发起');
+    if (!h.trusted) throw new Error('[PERMISSION_DENIED] 此操作只能从 Watchdog 主页面发起');
   },
 }));
 

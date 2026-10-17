@@ -509,14 +509,14 @@ export function createDesktopMcpProviders(deps: DesktopMcpProvidersDeps): LiziMc
           return {
             ok: false,
             errorCode: 'SKILL_DISABLED',
-            message: 'Cindy Learn is disabled in Local Skills.',
+            message: 'Watchdog Learn is disabled in Local Skills.',
           };
         }
         if (!getLearnController()) {
           return {
             ok: false,
             errorCode: 'HOST_NOT_READY',
-            message: 'Cindy Learn is not ready yet.',
+            message: 'Watchdog Learn is not ready yet.',
           };
         }
         const sessionInstanceId = context.sessionInstanceId;
@@ -527,7 +527,7 @@ export function createDesktopMcpProviders(deps: DesktopMcpProvidersDeps): LiziMc
           return {
             ok: false,
             errorCode: 'USER_REQUEST_REQUIRED',
-            message: 'Cindy Learn is not authorized for this task instance.',
+            message: 'Watchdog Learn is not authorized for this task instance.',
           };
         }
         const authorization = await consumeLearnInvocationGrant(request, sessionInstanceId);
@@ -547,7 +547,7 @@ export function createDesktopMcpProviders(deps: DesktopMcpProvidersDeps): LiziMc
             return {
               ok: false,
               errorCode: 'SKILL_DISABLED',
-              message: 'Cindy Learn is disabled in Local Skills.',
+              message: 'Watchdog Learn is disabled in Local Skills.',
             };
           }
           const controller = getLearnController();
@@ -555,7 +555,7 @@ export function createDesktopMcpProviders(deps: DesktopMcpProvidersDeps): LiziMc
             return {
               ok: false,
               errorCode: 'HOST_NOT_READY',
-              message: 'Cindy Learn is not ready yet.',
+              message: 'Watchdog Learn is not ready yet.',
             };
           }
           if (!deps.isCurrentLocalSessionInstance?.(
@@ -565,7 +565,7 @@ export function createDesktopMcpProviders(deps: DesktopMcpProvidersDeps): LiziMc
             return {
               ok: false,
               errorCode: 'USER_REQUEST_REQUIRED',
-              message: 'Cindy Learn is not authorized for this task instance.',
+              message: 'Watchdog Learn is not authorized for this task instance.',
             };
           }
           const { runId } = await controller.startLearn({
@@ -586,7 +586,7 @@ export function createDesktopMcpProviders(deps: DesktopMcpProvidersDeps): LiziMc
           return {
             ok: false,
             errorCode,
-            message: err instanceof Error ? err.message : 'Failed to start Cindy Learn.',
+            message: err instanceof Error ? err.message : 'Failed to start Watchdog Learn.',
           };
         }
       },

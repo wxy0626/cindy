@@ -108,7 +108,7 @@ function currentAuthScope(downloadContext?: MediaDownloadContext): MediaAuthScop
   const userId = state.user?.id ?? null;
   const dbOwnerId = state.dataOwnerId;
   if (!dbOwnerId || (state.mode !== 'local' && !userId) || state.mode === 'signed-out') {
-    throw new MediaInvocationError('CONNECTION_UNAVAILABLE', '当前没有可用的 Cindy 登录态');
+    throw new MediaInvocationError('CONNECTION_UNAVAILABLE', '当前没有可用的 Watchdog 登录态');
   }
   return {
     owner: state.mode === 'local'
@@ -131,7 +131,7 @@ function assertAuthScope(scope: MediaAuthScope, expectedOwner = scope.owner): vo
   ) {
     throw new MediaInvocationError(
       'ACCOUNT_CHANGED',
-      '媒体调用期间 Cindy 账号发生变化，请在当前账号下重新准备',
+      '媒体调用期间 Watchdog 账号发生变化，请在当前账号下重新准备',
     );
   }
 }
@@ -142,7 +142,7 @@ function captureMediaDb(scope: MediaAuthScope): DbClient {
   if (dbOwnerId !== scope.dbOwnerId) {
     throw new MediaInvocationError(
       dbOwnerId ? 'ACCOUNT_CHANGED' : 'CONNECTION_UNAVAILABLE',
-      dbOwnerId ? '媒体调用期间 Cindy 账号发生变化' : '当前账号的本地数据尚未就绪',
+      dbOwnerId ? '媒体调用期间 Watchdog 账号发生变化' : '当前账号的本地数据尚未就绪',
     );
   }
   const db = getDbClient();
@@ -228,8 +228,8 @@ function providerImageGuide(
       ],
     },
     instructions: edit
-      ? '必填 prompt 和 image。image 可传一条 Cindy 本地媒体引用或引用数组。尺寸与质量参数见 inputSchema；不要丢弃用户的明确要求。'
-      : '必填 prompt。尺寸与质量参数见 inputSchema；不指定时由上游决定。model 与凭证由 Cindy 注入。',
+      ? '必填 prompt 和 image。image 可传一条 Watchdog 本地媒体引用或引用数组。尺寸与质量参数见 inputSchema；不要丢弃用户的明确要求。'
+      : '必填 prompt。尺寸与质量参数见 inputSchema；不指定时由上游决定。model 与凭证由 Watchdog 注入。',
     exampleBody: {
       prompt: edit ? '描述希望如何修改图片' : '描述希望生成的图片',
       ...(edit ? { image: 'cindy-media://blobs/<hash>.png' } : {}),
@@ -292,29 +292,29 @@ function resolveConnection(providerId: string): MediaConnection {
   if (providerId !== 'xd') {
     throw new MediaInvocationError(
       'CONNECTION_NOT_SUPPORTED',
-      `当前 Cindy 版本没有注册媒体连接 ${JSON.stringify(providerId)}`,
+      `当前 Watchdog 版本没有注册媒体连接 ${JSON.stringify(providerId)}`,
     );
   }
   if (!getAppCapabilities().canUseCindyGateway) {
-    throw new MediaInvocationError('CONNECTION_UNAVAILABLE', '当前账号不能使用 Cindy AI 网关');
+    throw new MediaInvocationError('CONNECTION_UNAVAILABLE', '当前账号不能使用 Watchdog AI 网关');
   }
   const baseUrl = effectiveXdGatewayBaseUrl().trim();
   const apiKey = getProviderSecretStore().get('xd')?.trim() ?? '';
   if (!baseUrl || !apiKey) {
-    throw new MediaInvocationError('CONNECTION_UNAVAILABLE', 'Cindy AI 连接尚未就绪，请先完成登录');
+    throw new MediaInvocationError('CONNECTION_UNAVAILABLE', 'Watchdog AI 连接尚未就绪，请先完成登录');
   }
   let parsed: URL;
   try {
     parsed = new URL(baseUrl);
   } catch {
-    throw new MediaInvocationError('CONNECTION_INVALID', 'Cindy AI endpoint 不合法');
+    throw new MediaInvocationError('CONNECTION_INVALID', 'Watchdog AI endpoint 不合法');
   }
   if (
     (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') ||
     parsed.username ||
     parsed.password
   ) {
-    throw new MediaInvocationError('CONNECTION_INVALID', 'Cindy AI endpoint 不合法');
+    throw new MediaInvocationError('CONNECTION_INVALID', 'Watchdog AI endpoint 不合法');
   }
   return { baseUrl, apiKey };
 }
@@ -423,7 +423,7 @@ function multipartRequestBody(
       if (!parsed || !encoded) {
         throw new MediaInvocationError(
           'MEDIA_INPUT_INVALID',
-          `multipart 媒体字段 ${field} 必须使用 Cindy 受管媒体`,
+          `multipart 媒体字段 ${field} 必须使用 Watchdog 受管媒体`,
         );
       }
       const mimeType = parsed.mimeType;
@@ -436,7 +436,7 @@ function multipartRequestBody(
       ) {
         throw new MediaInvocationError(
           'MEDIA_INPUT_INVALID',
-          `媒体字段 ${field} 不是 Cindy 支持的 ${fileGuide.kind} 文件`,
+          `媒体字段 ${field} 不是 Watchdog 支持的 ${fileGuide.kind} 文件`,
         );
       }
       const extension =
@@ -746,7 +746,7 @@ async function localImagePath(
   } catch {
     throw new MediaInvocationError(
       'MEDIA_INPUT_INVALID',
-      '第三方 Provider 参考图必须是 Cindy 本地媒体引用',
+      '第三方 Provider 参考图必须是 Watchdog 本地媒体引用',
     );
   }
   const stat = await fs.stat(resolved.absPath);
@@ -821,7 +821,7 @@ function assertResultMime(kind: MediaResultKind, mimeType: string): void {
   if (!mimeType.startsWith(`${kind}/`) || !blobStore.supportedMime(mimeType)) {
     throw new MediaInvocationError(
       'MEDIA_RESULT_INVALID',
-      `上游返回的字节不是 Cindy 支持的 ${kind} 媒体`,
+      `上游返回的字节不是 Watchdog 支持的 ${kind} 媒体`,
     );
   }
 }
@@ -1264,7 +1264,7 @@ async function prepareInvocation(
     }
   } else {
     if (!getAppCapabilities().canUseCindyGateway) {
-      return failure('CONNECTION_UNAVAILABLE', '当前账号不能使用 Cindy AI 网关');
+      return failure('CONNECTION_UNAVAILABLE', '当前账号不能使用 Watchdog AI 网关');
     }
     let resolvedGuide: ResolvedMediaInvocationGuide;
     try {
@@ -1912,7 +1912,7 @@ export async function callCindyMedia(
             ? 'GUIDE_SERVICE_UNAVAILABLE'
             : 'GUIDE_NOT_AVAILABLE';
         const message = upgradeRequired
-          ? '当前 Cindy 版本不支持可用模型的调用协议，请升级客户端或使用其他工具。'
+          ? '当前 Watchdog 版本不支持可用模型的调用协议，请升级客户端或使用其他工具。'
           : temporarilyUnavailable
             ? '媒体调用说明暂时无法读取，请稍后重试或使用其他工具。'
             : '当前没有带可用调用说明的模型支持该媒体能力。';

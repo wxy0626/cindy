@@ -10,7 +10,7 @@ export async function seedLegacySharedRuntimeLease(
   worktree: string,
   gitLock: string,
 ): Promise<WorktreeRuntimeLease> {
-  const directory = path.join(appData, 'Cindy', 'shared-worktree-runtime-leases');
+  const directory = path.join(appData, 'Watchdog', 'shared-worktree-runtime-leases');
   await fs.mkdir(directory, { recursive: true });
   await fs.writeFile(gitLock, JSON.stringify({ kind: 'cindy-runtime-lock', version: 1, nonce: 'legacy-fixture' }), { flag: 'wx' })
     .catch((error) => { if (error.code !== 'EEXIST') throw error; });

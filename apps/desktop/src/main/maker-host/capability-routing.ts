@@ -16,11 +16,11 @@ const CODEX_COMPUTER_USE_REPLACEMENT_ROUTE = {
     kind: 'cindy-host',
     id: 'cindy_computer',
   },
-  reason: 'Cindy owns desktop-control enablement, permissions, and execution.',
+  reason: 'Watchdog owns desktop-control enablement, permissions, and execution.',
 } as const satisfies CapabilityRouteOverride;
 
 const HARNESS_OUTPUT_UNAVAILABLE_REASON =
-  'Its result is shown only in the vendor app, not in Cindy; Cindy delivers files, images, and pages itself.';
+  'Its result is shown only in the vendor app, not in Watchdog; Watchdog delivers files, images, and pages itself.';
 
 function claudeSkillOutputOverride(
   kind: 'harness-builtin' | 'harness-plugin',
@@ -119,7 +119,7 @@ export const DESKTOP_CAPABILITY_ROUTING_POLICY = {
         kind: 'cindy-plugin',
         id: 'xd-feishu',
       },
-      reason: 'Natural-language Feishu requests should use the Cindy-connected account.',
+      reason: 'Natural-language Feishu requests should use the Watchdog-connected account.',
     },
     {
       capabilityId: 'feishu',
@@ -140,7 +140,7 @@ export const DESKTOP_CAPABILITY_ROUTING_POLICY = {
         kind: 'cindy-plugin',
         id: 'xd-feishu',
       },
-      reason: 'Natural-language Feishu requests should use the Cindy-connected account.',
+      reason: 'Natural-language Feishu requests should use the Watchdog-connected account.',
     },
     {
       capabilityId: 'feishu',
@@ -201,7 +201,7 @@ export const DESKTOP_CAPABILITY_ROUTING_POLICY = {
         containerId: 'computer-use@openai-bundled',
       },
       invocation: 'disabled',
-      reason: 'The bundled Skill requires node_repl, which is unavailable in Cindy.',
+      reason: 'The bundled Skill requires node_repl, which is unavailable in Watchdog.',
     },
     ...HARNESS_OUTPUT_SURFACE_OVERRIDES,
   ],
@@ -216,7 +216,7 @@ const CODEX_IN_APP_BROWSER_UNAVAILABLE_OVERRIDE = {
     id: 'browser@openai-bundled',
   },
   invocation: 'disabled',
-  reason: 'Cindy does not host the ChatGPT in-app browser runtime.',
+  reason: 'Watchdog does not host the ChatGPT in-app browser runtime.',
 } as const satisfies CapabilityRoutingPolicy['overrides'][number];
 
 const CODEX_CHROME_USE_OVERRIDES = [
@@ -233,7 +233,7 @@ const CODEX_CHROME_USE_OVERRIDES = [
       kind: 'cindy-plugin',
       id: 'browser',
     },
-    reason: 'Cindy Browser owns browser automation while it is enabled for this workspace.',
+    reason: 'Watchdog Browser owns browser automation while it is enabled for this workspace.',
   },
   {
     capabilityId: 'browser-use',
@@ -248,7 +248,7 @@ const CODEX_CHROME_USE_OVERRIDES = [
       kind: 'cindy-plugin',
       id: 'browser',
     },
-    reason: 'Cindy Browser owns browser automation while it is enabled for this workspace.',
+    reason: 'Watchdog Browser owns browser automation while it is enabled for this workspace.',
   },
 ] as const satisfies CapabilityRoutingPolicy['overrides'];
 

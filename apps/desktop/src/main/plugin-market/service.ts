@@ -1258,7 +1258,7 @@ export class PluginMarketService {
       throwIpcError('NOT_FOUND', 'Plugin is unavailable to the active account');
     }
     if (!isGhostAvailableForActiveSession(selected.ghostId)) {
-      throwIpcError('PERMISSION_DENIED', 'This Plugin requires a Cindy account');
+      throwIpcError('PERMISSION_DENIED', 'This Plugin requires a Watchdog account');
     }
     const plugin = await this.api.detail(pluginId);
     requireSameMarketOwner(owner);

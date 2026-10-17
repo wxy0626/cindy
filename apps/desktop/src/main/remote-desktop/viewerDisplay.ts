@@ -197,7 +197,7 @@ export async function createViewerDisplay(
         )
           return {
             id: String(actual.id),
-            name: actual.label || 'Cindy Remote Desktop',
+            name: actual.label || 'Watchdog Remote Desktop',
             width: actual.size.width,
             height: actual.size.height,
           };

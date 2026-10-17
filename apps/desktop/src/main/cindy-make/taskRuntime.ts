@@ -75,7 +75,7 @@ export async function dispatchCindyMakeTask(
       shouldBroadcast: isCurrent,
     },
   });
-  if (!sent.accepted) throwIpcError('PRECONDITION_FAILED', 'Could not start Cindy Make task');
+  if (!sent.accepted) throwIpcError('PRECONDITION_FAILED', 'Could not start Watchdog Make task');
 }
 
 export const dispatchCindyMakeMergeTask = dispatchCindyMakeTask;
@@ -166,7 +166,7 @@ export async function restoreCindyMakeTaskState(): Promise<void> {
 
 export async function assertCindyMakeTaskReady(sessionId: string): Promise<void> {
   if (isEditingBlocked(sessionId))
-    throwIpcError('PRECONDITION_FAILED', 'Stop Cindy Make testing or building before editing');
+    throwIpcError('PRECONDITION_FAILED', 'Stop Watchdog Make testing or building before editing');
   const [card] = await getDbClient()
     .drizzle.select({ content: messages.content })
     .from(messages)
@@ -187,12 +187,12 @@ export async function assertCindyMakeTaskReady(sessionId: string): Promise<void>
     status = JSON.parse(card.content).__cindyMakeCard?.data?.report?.status;
   } catch {}
   if (status !== 'completed')
-    throwIpcError('PRECONDITION_FAILED', 'Retry Cindy Make preparation before starting this task');
+    throwIpcError('PRECONDITION_FAILED', 'Retry Watchdog Make preparation before starting this task');
 }
 
 export function validateCindyMakeTaskStart(raw: unknown): CindyMakeTaskStart {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw))
-    throwIpcError('INVALID_PARAMS', 'Invalid Cindy Make task');
+    throwIpcError('INVALID_PARAMS', 'Invalid Watchdog Make task');
   const input = raw as Record<string, unknown>;
   if (
     (input.originSessionId !== undefined &&
@@ -207,12 +207,12 @@ export function validateCindyMakeTaskStart(raw: unknown): CindyMakeTaskStart {
     !input.title.trim() ||
     input.title.length > 200
   ) {
-    throwIpcError('INVALID_PARAMS', 'Invalid Cindy Make task');
+    throwIpcError('INVALID_PARAMS', 'Invalid Watchdog Make task');
   }
   const options = input.createOptions;
   if (options !== undefined) {
     if (!options || typeof options !== 'object' || Array.isArray(options))
-      throwIpcError('INVALID_PARAMS', 'Invalid Cindy Make preferences');
+      throwIpcError('INVALID_PARAMS', 'Invalid Watchdog Make preferences');
     const fields = options as Record<string, unknown>;
     for (const [key, value] of Object.entries(fields)) {
       const valid =
@@ -226,7 +226,7 @@ export function validateCindyMakeTaskStart(raw: unknown): CindyMakeTaskStart {
               : ['model', 'effort', 'providerId', 'permissionMode'].includes(key) &&
                 typeof value === 'string' &&
                 value.length <= 500);
-      if (!valid) throwIpcError('INVALID_PARAMS', 'Invalid Cindy Make preferences');
+      if (!valid) throwIpcError('INVALID_PARAMS', 'Invalid Watchdog Make preferences');
     }
   }
   return {
@@ -419,7 +419,7 @@ export async function startCindyMakeTask(raw: unknown, sender: number): Promise<
         if (input.originSessionId && (!origin || origin.status !== 'active'))
           throwIpcError('NOT_FOUND', 'Origin task is unavailable');
         if (origin?.remoteHostId)
-          throwIpcError('UNSUPPORTED_CAPABILITY', 'Cindy Make requires a local task');
+          throwIpcError('UNSUPPORTED_CAPABILITY', 'Watchdog Make requires a local task');
         sessionId = createBusinessSessionId();
         const row = sessionCreateToRow(
           sessionId,

@@ -40,7 +40,7 @@ export function validFeatureReceipt(value: MakeFeatureReceipt): boolean {
 export class CindyMakeHistoryStore {
   constructor(readonly directory: string) {}
   private file(runId: string): string {
-    if (!ID.test(runId)) throw new Error('Invalid Cindy Make history identity');
+    if (!ID.test(runId)) throw new Error('Invalid Watchdog Make history identity');
     return path.join(this.directory, 'records', runId + '.json');
   }
   private assertDirectories(): void {
@@ -82,7 +82,7 @@ export class CindyMakeHistoryStore {
       !value.receipts.every(validFeatureReceipt) ||
       !Array.isArray(value.versions)
     )
-      throw new Error('Invalid Cindy Make history');
+      throw new Error('Invalid Watchdog Make history');
     return value;
   }
   list(): CindyMakeHistoryRecord[] {

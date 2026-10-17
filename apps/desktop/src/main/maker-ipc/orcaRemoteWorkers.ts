@@ -370,7 +370,7 @@ export function createOrcaRemoteWorkers(deps: OrcaRemoteWorkersDeps) {
         return {
           ok: false,
           errorCode: 'UNSUPPORTED_CAPABILITY',
-          message: `${name} 的 Cindy 版本过旧，需要更新后才能运行协同 Worker。`,
+          message: `${name} 的 Watchdog 版本过旧，需要更新后才能运行协同 Worker。`,
         };
       }
       if (supported === null) {
@@ -461,7 +461,7 @@ export function createOrcaRemoteWorkers(deps: OrcaRemoteWorkersDeps) {
           return {
             ok: false,
             errorCode: 'UNSUPPORTED_CAPABILITY',
-            message: `${name} 的 Cindy 版本过旧，需要更新后才能运行协同 Worker。`,
+            message: `${name} 的 Watchdog 版本过旧，需要更新后才能运行协同 Worker。`,
           };
         }
         deps.log.warn('orca remote worker: open failed', { deviceId: input.deviceId, code });

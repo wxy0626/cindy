@@ -1,9 +1,9 @@
 ---
 id: getting-started
-title: Getting started with Cindy
+title: Getting started with Watchdog
 summary: Create a session, choose an agent and working directory, send your first prompt, and iterate.
 ---
-Cindy is a desktop app that runs AI coding agents (Claude Code and Codex) for you.
+Watchdog is a desktop app that runs AI coding agents (Claude Code and Codex) for you.
 
 **Your first session:**
 

@@ -288,7 +288,7 @@ vi.mock('../../localDb/latestMessageText.js', () => ({
 vi.mock('../../security/trustedAppRenderer.js', () => ({
   assertTrustedAppRendererEvent: () => {
     if (!h.trusted) {
-      const err = new Error('[PERMISSION_DENIED] 此操作只能从 Cindy 主页面发起');
+      const err = new Error('[PERMISSION_DENIED] 此操作只能从 Watchdog 主页面发起');
       throw err;
     }
   },

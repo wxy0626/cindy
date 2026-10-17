@@ -325,7 +325,7 @@ export async function buildCindyPersonal(
           const candidate = await commitLocalFiles(
             git,
             merge,
-            'Cindy Make: integrate personal feature',
+            'Watchdog Make: integrate personal feature',
             true,
           );
           candidateTree = candidate.tree;

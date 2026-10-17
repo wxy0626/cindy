@@ -16,7 +16,7 @@ import {
 export type MakeTaskAction = 'end' | 'finish' | 'delete';
 export type MakeTaskError = CindyMakeTaskError;
 export function taskError(code: MakeTaskError): Error & { code: MakeTaskError } {
-  return Object.assign(new Error('Cindy Make task ' + code), { code });
+  return Object.assign(new Error('Watchdog Make task ' + code), { code });
 }
 
 async function exists(target: string): Promise<boolean> {

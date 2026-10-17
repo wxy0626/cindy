@@ -61,11 +61,11 @@ export const ENDPOINT_MANIFEST_DIALOG_COPY: Record<
   EndpointManifestDialogCopy
 > = {
   'zh-CN': {
-    networkTitle: 'Cindy 暂时无法连接',
-    configTitle: 'Cindy 暂时无法启动',
+    networkTitle: 'Watchdog 暂时无法连接',
+    configTitle: 'Watchdog 暂时无法启动',
     networkBody:
-      '启动时未能连接到 Cindy 服务。请确认设备已联网，然后重新尝试启动。如果正在使用 Proxy 或公司网络，可以切换网络后再试。',
-    configBody: 'Cindy 暂时无法完成启动。请稍后重新尝试；如果问题持续出现，请联系技术支持。',
+      '启动时未能连接到 Watchdog 服务。请确认设备已联网，然后重新尝试启动。如果正在使用 Proxy 或公司网络，可以切换网络后再试。',
+    configBody: 'Watchdog 暂时无法完成启动。请稍后重新尝试；如果问题持续出现，请联系技术支持。',
     errorLine: '错误信息：{{error}}',
     diagnosticsHint: '需要反馈时，可以复制诊断信息后粘贴给我们。',
     copyDiagnosticsButton: '复制诊断信息',
@@ -74,29 +74,29 @@ export const ENDPOINT_MANIFEST_DIALOG_COPY: Record<
     noSavedConfigurationHint: '这台设备没有可用的历史配置，需要恢复连接后才能继续启动。',
     offlineHint:
       '也可以用上次成功获取的配置离线启动（获取于 {{savedAt}}），需要联网的功能会不可用。',
-    retryButton: '重试启动 Cindy',
+    retryButton: '重试启动 Watchdog',
     offlineButton: '用上次配置启动',
-    quitButton: '退出 Cindy',
+    quitButton: '退出 Watchdog',
   },
   en: {
-    networkTitle: "Cindy Couldn't Connect",
-    configTitle: "Cindy Couldn't Start",
+    networkTitle: "Watchdog Couldn't Connect",
+    configTitle: "Watchdog Couldn't Start",
     networkBody:
-      "Cindy couldn't connect to its services during startup. Check that this device is online, then try starting again. If you're using a proxy or company network, try switching networks.",
+      "Watchdog couldn't connect to its services during startup. Check that this device is online, then try starting again. If you're using a proxy or company network, try switching networks.",
     configBody:
-      "Cindy couldn't finish starting right now. Try again later. If the problem continues, contact support.",
+      "Watchdog couldn't finish starting right now. Try again later. If the problem continues, contact support.",
     errorLine: 'Error: {{error}}',
     diagnosticsHint: 'If you need help, copy the diagnostics into your support message.',
     copyDiagnosticsButton: 'Copy Diagnostics',
     copiedHint: 'Diagnostics copied. Paste them into your support message.',
     copyFailedHint: "Diagnostics couldn't be copied. Try again.",
     noSavedConfigurationHint:
-      'This device has no saved configuration yet, so Cindy needs to reconnect before it can start.',
+      'This device has no saved configuration yet, so Watchdog needs to reconnect before it can start.',
     offlineHint:
-      'You can also start offline with the configuration Cindy last fetched ({{savedAt}}). Features that need a network connection will be unavailable.',
-    retryButton: 'Try Starting Cindy Again',
+      'You can also start offline with the configuration Watchdog last fetched ({{savedAt}}). Features that need a network connection will be unavailable.',
+    retryButton: 'Try Starting Watchdog Again',
     offlineButton: 'Use Last Configuration',
-    quitButton: 'Quit Cindy',
+    quitButton: 'Quit Watchdog',
   },
 };
 
@@ -143,7 +143,7 @@ export function buildEndpointManifestDiagnosticsText(
   input: Pick<EndpointManifestDialogInput, 'kind' | 'reason' | 'source' | 'diagnosis' | 'logPath'>,
 ): string {
   return [
-    'Cindy startup diagnostics',
+    'Watchdog startup diagnostics',
     `kind=${input.kind}`,
     `reason=${input.reason}`,
     `source=${input.source ?? 'n/a'}`,

@@ -227,7 +227,7 @@ export async function installCindyCliCommand(
         // 成功会从「应用程序」重新拉起并结束当前进程;失败则不建 symlink。
         app.moveToApplicationsFolder();
       } catch (err) {
-        log.warn('failed to move Cindy to Applications before CLI install', err);
+        log.warn('failed to move Watchdog to Applications before CLI install', err);
       }
     }
     return;

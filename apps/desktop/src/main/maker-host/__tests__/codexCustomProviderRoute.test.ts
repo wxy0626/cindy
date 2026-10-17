@@ -207,7 +207,7 @@ describe('Codex custom Provider identity', () => {
     const route = deriveCodexCustomProviderRoutes(catalog())[0]!;
     const config = buildCodexCustomProviderArgs('http://127.0.0.1:43210', 'oauth-bearer', [route]);
     const argv = config.extraArgs.join(' ');
-    expect(argv).toContain(`model_providers.${route.modelProviderId}.name="Cindy Custom Provider"`);
+    expect(argv).toContain(`model_providers.${route.modelProviderId}.name="Watchdog Custom Provider"`);
     expect(argv).toContain('x-openai-actor-authorization = "local-image-extension"');
     expect(argv).toContain('supports_websockets=false');
     expect(argv).toContain(`/_cindy/custom-provider/${route.routeId}`);

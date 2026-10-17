@@ -24,10 +24,10 @@ export function assertRendererSessionSourceAllowed(input: {
     );
   }
   if (normalizeRemoteHostId(typeof input.remoteHostId === 'string' ? input.remoteHostId : null)) {
-    throwIpcError('UNSUPPORTED_CAPABILITY', 'Cindy Make tasks are local-only');
+    throwIpcError('UNSUPPORTED_CAPABILITY', 'Watchdog Make tasks are local-only');
   }
   const requested = normalizeWorkingDirForStorage(input.workingDir);
   if (!requested || !isCindyMakeWorktreePath(input.userData, requested)) {
-    throwIpcError('INVALID_PARAMS', 'Cindy Make tasks can only use a managed task worktree');
+    throwIpcError('INVALID_PARAMS', 'Watchdog Make tasks can only use a managed task worktree');
   }
 }

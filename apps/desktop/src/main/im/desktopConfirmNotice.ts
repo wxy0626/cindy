@@ -45,7 +45,7 @@ export async function resolveFeishuNoticeTarget(
 
 /** 提示文案(纯函数,便于单测锚定)。 */
 export function buildDesktopConfirmNoticeText(what: string): string {
-  return `🔔 ${what}正在桌面端 Cindy 等待你的确认;超时将自动取消,如需继续请到桌面端操作。`;
+  return `🔔 ${what}正在桌面端 Watchdog 等待你的确认;超时将自动取消,如需继续请到桌面端操作。`;
 }
 
 /**

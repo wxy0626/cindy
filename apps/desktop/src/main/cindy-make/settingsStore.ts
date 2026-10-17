@@ -44,7 +44,7 @@ export function writeCindyMakeSyncLatestBeforeBuild(
 ): CindyMakeSettings {
   // An explicit OFF remains an override if the product default changes later.
   store.writePatch({ syncLatestBeforeBuild }, { preserveDefaults: true });
-  log.info('Cindy Make build sync setting written', { syncLatestBeforeBuild });
+  log.info('Watchdog Make build sync setting written', { syncLatestBeforeBuild });
   return store.read();
 }
 

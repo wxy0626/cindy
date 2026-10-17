@@ -5,7 +5,7 @@ import { snapshotContent, PERSONAL_UPSTREAM_REF, type ContentGit } from './sourc
 
 export const MAKE_GIT_IDENTITY = [
   '-c',
-  'user.name=Cindy Make',
+  'user.name=Watchdog Make',
   '-c',
   'user.email=cindy-make@localhost.invalid',
   '-c',
@@ -87,7 +87,7 @@ export async function commitLocalFiles(
         ...MAKE_GIT_IDENTITY,
         'commit',
         '--signoff',
-        '--author=Cindy Make <cindy-make@localhost.invalid>',
+        '--author=Watchdog Make <cindy-make@localhost.invalid>',
         '-m',
         message,
       ],
@@ -135,5 +135,5 @@ export async function commitPersonalFiles(
         throw historyError('baselineChanged');
     }
   }
-  return commitLocalFiles(git, source, 'Cindy Make: preserve personal changes');
+  return commitLocalFiles(git, source, 'Watchdog Make: preserve personal changes');
 }

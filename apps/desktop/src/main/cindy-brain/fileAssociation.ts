@@ -96,7 +96,7 @@ export function registerCindyFileAssociation(): void {
 
       await regSetDefault(KEY_EXT, PROG_ID);
       await regSetNamed(KEY_EXT, 'Content Type', CINDY_MIME);
-      await regSetDefault(KEY_PROG, 'Cindy Ghost');
+      await regSetDefault(KEY_PROG, 'Watchdog Ghost');
       await regSetDefault(`${KEY_PROG}\\DefaultIcon`, `"${exe}",0`);
       await regSetDefault(commandKey, command);
       await regSetNamed(KEY_EXT_SHARE, 'Content Type', SHARE_MIME);

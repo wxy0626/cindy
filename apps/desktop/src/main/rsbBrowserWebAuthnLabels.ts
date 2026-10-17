@@ -23,7 +23,7 @@ export const RSB_BROWSER_WEBAUTHN_LABELS: Record<
   'zh-CN': {
     title: '选择通行密钥',
     message: '选择用于 {{relyingPartyId}} 的通行密钥',
-    detail: 'Cindy 只会把你的选择交给认证器；通行密钥的私密信息始终留在认证器中。',
+    detail: 'Watchdog 只会把你的选择交给认证器；通行密钥的私密信息始终留在认证器中。',
     cancel: '取消通行密钥登录',
     unknownAccount: '通行密钥 {{index}}',
     unknownRelyingParty: '此网站',
@@ -33,7 +33,7 @@ export const RSB_BROWSER_WEBAUTHN_LABELS: Record<
     title: 'Choose a Passkey',
     message: 'Choose a passkey for {{relyingPartyId}}',
     detail:
-      'Cindy only passes your selection to the authenticator; the passkey secret stays in the authenticator.',
+      'Watchdog only passes your selection to the authenticator; the passkey secret stays in the authenticator.',
     cancel: 'Cancel Passkey Sign-In',
     unknownAccount: 'Passkey {{index}}',
     unknownRelyingParty: 'this website',

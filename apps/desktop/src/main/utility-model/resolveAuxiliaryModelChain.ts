@@ -137,7 +137,7 @@ export function formatAuxiliaryModelRefLabel(ref: string): string {
     return `${profile.model} · ${utilityTransportLabel(profile.transport)}`;
   }
   if (parsed.route.providerId === 'xd') {
-    return `${parsed.route.model} · Cindy AI`;
+    return `${parsed.route.model} · Watchdog AI`;
   }
   const agent = parsed.route.agentKind === 'claude-code' ? 'Claude' : 'Codex';
   const provider = parsed.route.providerId === 'anthropic' || parsed.route.providerId === 'openai'

@@ -456,7 +456,7 @@ export function setModelPriceOverride(
   registry: ModelRegistry | null | undefined,
 ): void {
   if (target.providerId === 'xd') {
-    throw new Error('Cindy AI Gateway pricing cannot be overridden');
+    throw new Error('Watchdog AI Gateway pricing cannot be overridden');
   }
   const reference = providerReferencePriceQuote(target.providerId, target.modelId, registry, {
     agent: target.agent,

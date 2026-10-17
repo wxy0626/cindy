@@ -102,7 +102,7 @@ function classifyHttpFailure(
   if (status === 401 || status === 403) {
     return {
       errorCode: 'AUTH_REJECTED',
-      message: 'Cindy AI 搜索鉴权失败，请重新登录或稍后再试',
+      message: 'Watchdog AI 搜索鉴权失败，请重新登录或稍后再试',
     };
   }
   // 余额耗尽(#4024):网关的预算闸用 HTTP 429 + `ExceededBudget` 正文拒绝,与瞬时限流
@@ -120,13 +120,13 @@ function classifyHttpFailure(
   if (looksLikeQuota) {
     return {
       errorCode: 'QUOTA_EXHAUSTED',
-      message: 'Cindy AI 余额不足，请充值后再试，或在插件设置中改用自己的搜索渠道',
+      message: 'Watchdog AI 余额不足，请充值后再试，或在插件设置中改用自己的搜索渠道',
     };
   }
   if (status === 404) {
     return {
       errorCode: 'NOT_CONFIGURED',
-      message: 'Cindy AI 搜索服务尚未配置，请稍后再试',
+      message: 'Watchdog AI 搜索服务尚未配置，请稍后再试',
     };
   }
   if (
@@ -137,30 +137,30 @@ function classifyHttpFailure(
   ) {
     return {
       errorCode: 'NOT_CONFIGURED',
-      message: 'Cindy AI 搜索模型尚未配置，请稍后再试',
+      message: 'Watchdog AI 搜索模型尚未配置，请稍后再试',
     };
   }
   if (status === 429) {
     return {
       errorCode: 'RATE_LIMITED',
-      message: 'Cindy AI 搜索请求过于频繁，请稍后再试',
+      message: 'Watchdog AI 搜索请求过于频繁，请稍后再试',
     };
   }
   if (status >= 500) {
     return {
       errorCode: 'UPSTREAM_UNAVAILABLE',
-      message: 'Cindy AI 搜索服务暂时不可用，请稍后再试',
+      message: 'Watchdog AI 搜索服务暂时不可用，请稍后再试',
     };
   }
   if (status === 400 || status === 422) {
     return {
       errorCode: 'INVALID_PARAMS',
-      message: 'Cindy AI 搜索请求参数未被服务接受',
+      message: 'Watchdog AI 搜索请求参数未被服务接受',
     };
   }
   return {
     errorCode: 'INTERNAL',
-    message: 'Cindy AI 搜索失败，请稍后再试',
+    message: 'Watchdog AI 搜索失败，请稍后再试',
   };
 }
 
@@ -286,7 +286,7 @@ function invalidSearchResponse(): ParsedSearchResponse {
   return {
     ok: false,
     errorCode: 'RESPONSE_INVALID',
-    message: 'Cindy AI 搜索返回了无法识别的结果，请稍后再试',
+    message: 'Watchdog AI 搜索返回了无法识别的结果，请稍后再试',
   };
 }
 
@@ -295,28 +295,28 @@ function searchToolFailure(errorCode: unknown): ParsedSearchResponse {
     return {
       ok: false,
       errorCode: 'RATE_LIMITED',
-      message: 'Cindy AI 搜索请求过于频繁，请稍后再试',
+      message: 'Watchdog AI 搜索请求过于频繁，请稍后再试',
     };
   }
   if (errorCode === 'max_uses_exceeded') {
     return {
       ok: false,
       errorCode: 'RATE_LIMITED',
-      message: 'Cindy AI 搜索已达到本次调用上限，请稍后再试',
+      message: 'Watchdog AI 搜索已达到本次调用上限，请稍后再试',
     };
   }
   if (errorCode === 'invalid_tool_input' || errorCode === 'query_too_long') {
     return {
       ok: false,
       errorCode: 'INVALID_PARAMS',
-      message: 'Cindy AI 搜索请求参数未被服务接受',
+      message: 'Watchdog AI 搜索请求参数未被服务接受',
     };
   }
   if (errorCode === 'unavailable') {
     return {
       ok: false,
       errorCode: 'UPSTREAM_UNAVAILABLE',
-      message: 'Cindy AI 搜索服务暂时不可用，请稍后再试',
+      message: 'Watchdog AI 搜索服务暂时不可用，请稍后再试',
     };
   }
   return invalidSearchResponse();
@@ -393,7 +393,7 @@ export function createCindyProxySearchService(deps: CindyProxySearchDeps): Cindy
         return {
           ok: false,
           errorCode: 'NOT_CONFIGURED',
-          message: 'Cindy AI 搜索尚未就绪，请重新登录或在插件设置中改用自己的搜索渠道',
+          message: 'Watchdog AI 搜索尚未就绪，请重新登录或在插件设置中改用自己的搜索渠道',
           requestStarted: false,
         };
       }
@@ -438,7 +438,7 @@ export function createCindyProxySearchService(deps: CindyProxySearchDeps): Cindy
         return {
           ok: false,
           errorCode: 'UPSTREAM_UNAVAILABLE',
-          message: 'Cindy AI 搜索服务连接失败，请稍后再试',
+          message: 'Watchdog AI 搜索服务连接失败，请稍后再试',
           requestStarted: true,
         };
       }
@@ -461,7 +461,7 @@ export function createCindyProxySearchService(deps: CindyProxySearchDeps): Cindy
         return {
           ok: false,
           errorCode: 'UPSTREAM_UNAVAILABLE',
-          message: 'Cindy AI 搜索响应传输中断，请稍后再试',
+          message: 'Watchdog AI 搜索响应传输中断，请稍后再试',
           requestStarted: true,
           status: response.status,
           ...(requestId ? { requestId } : {}),

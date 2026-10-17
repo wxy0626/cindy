@@ -99,7 +99,7 @@ describe('Maker: agent on another computer', () => {
     // 那台的 Cindy 不能转发对话截断时不提供回退(文件按本机保存点回退，对话在那台截断)。
     expect(session.capabilities.rewind).toMatchObject({
       supported: false,
-      message: expect.stringMatching(/Update Cindy on the computer running the agent/),
+      message: expect.stringMatching(/Update Watchdog on the computer running the agent/),
     });
     await maker.shutdown();
   });

@@ -658,7 +658,7 @@ function unresolvedCollabSpawnRouteDecision(): RoutingDecision {
         error: {
           type: 'server_error',
           code: CODEX_COLLAB_ROUTE_UNAVAILABLE_CODE,
-          message: 'Cindy could not resolve the parent Provider route for this spawned Codex agent.',
+          message: 'Watchdog could not resolve the parent Provider route for this spawned Codex agent.',
         },
       }));
     },
@@ -1420,7 +1420,7 @@ function createAnthropicBridgeDecision(
           error: {
             type: 'authentication_error',
             code: 'cindy_gateway_credentials_unavailable',
-            message: 'Cindy AI credentials are not ready for this bridged model.',
+            message: 'Watchdog AI credentials are not ready for this bridged model.',
           },
         }));
       },

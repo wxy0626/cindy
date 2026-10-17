@@ -611,7 +611,7 @@ export async function openBrowserForLogin(): Promise<void> {
   const status = await externalBackend.call({ action: 'status' });
   if (!status.ok) {
     throw new Error(
-      status.message === FOREIGN_AGENT_BROWSER_ERROR || status.message?.includes('Another Cindy')
+      status.message === FOREIGN_AGENT_BROWSER_ERROR || status.message?.includes('Another Watchdog')
         ? FOREIGN_AGENT_BROWSER_ERROR
         : (status.message ?? `browser status failed (HTTP ${status.status ?? '?'})`),
     );
@@ -634,7 +634,7 @@ export async function openBrowserForLogin(): Promise<void> {
       if (reason) throw new BrowserOpenForLoginError(reason);
       if (
         started.message === FOREIGN_AGENT_BROWSER_ERROR ||
-        started.message?.includes('Another Cindy')
+        started.message?.includes('Another Watchdog')
       ) {
         throw new BrowserOpenForLoginError(FOREIGN_AGENT_BROWSER_ERROR);
       }

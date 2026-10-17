@@ -166,13 +166,13 @@ export function createWorkingDirectoryRecovery(io: {
         pending.set(sessionId, { ...own, fallback, note: [
           '[Working directory recovery]',
           ...(mode === 'unrestored-worktree' ? [
-            `Cindy could not restore the task worktree at ${JSON.stringify(workingDir)}. Cindy is using ${JSON.stringify(fallback)} as a temporary conversation workspace; the task remains associated with its original project and worktree.`,
+            `Watchdog could not restore the task worktree at ${JSON.stringify(workingDir)}. Watchdog is using ${JSON.stringify(fallback)} as a temporary conversation workspace; the task remains associated with its original project and worktree.`,
             'The original code, branch and uncommitted changes have not been restored or copied. Do not create an empty replacement at the original path or continue editing in the project root as if it were the original worktree. Investigate the original branch and snapshots before resuming project edits.',
             'Continue responding to the user and explain the unavailable worktree. Files created in this conversation workspace remain here; do not move them or switch workspaces without discussing it with the user. No folder-selection interface is required just to continue the conversation.',
           ] : [
             selectedFallback
-              ? `Cindy is continuing to use the previously selected conversation workspace ${JSON.stringify(fallback)} for ${JSON.stringify(workingDir)}, even if the original filesystem is available again.`
-              : `The filesystem for ${JSON.stringify(workingDir)} is unavailable or has changed. Cindy is using ${JSON.stringify(fallback)} as a temporary conversation workspace.`,
+              ? `Watchdog is continuing to use the previously selected conversation workspace ${JSON.stringify(fallback)} for ${JSON.stringify(workingDir)}, even if the original filesystem is available again.`
+              : `The filesystem for ${JSON.stringify(workingDir)} is unavailable or has changed. Watchdog is using ${JSON.stringify(fallback)} as a temporary conversation workspace.`,
             'The original directory and files have not been restored or copied. Do not create a substitute directory at the original mount location. Files written here stay here when the disk reconnects; do not move them or switch back without discussing it with the user.',
             'Continue responding. If the task needs the original files, investigate the disconnected disk or network share, or ask the user in this conversation. No folder-selection interface is required.',
           ]),
@@ -251,7 +251,7 @@ export function createWorkingDirectoryRecovery(io: {
         // Do not repopulate it after a clear, archive, delete, or owner change.
         const note = [
           '[Working directory recovery]',
-          `The working directory was missing. Cindy recreated the directory at ${JSON.stringify(workingDir)} so this conversation can continue.`,
+          `The working directory was missing. Watchdog recreated the directory at ${JSON.stringify(workingDir)} so this conversation can continue.`,
           'Only the directory was recreated; its previous files have not been recovered. Do not assume the original project contents are available.',
           ...(similar ? [
             `A similarly named filesystem entry exists at ${JSON.stringify(similar)} (possibly differing only in whitespace or case). Inspect this candidate before reading or creating project files in the recreated directory. It may contain the original project; verify its identity or ask the user before treating it as their workspace.`,

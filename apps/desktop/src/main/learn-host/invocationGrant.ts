@@ -108,7 +108,7 @@ export function createLearnInvocationGrantConsumer(
       return {
         ok: false,
         errorCode: isDbClientNotReadyError(error) ? 'HOST_NOT_READY' : 'INTERNAL',
-        message: 'Cindy could not verify the current /learn request.',
+        message: 'Watchdog could not verify the current /learn request.',
       };
     }
     const invocation = latest ? parseDirectLearnInvocation(latest.text) : null;
@@ -138,7 +138,7 @@ export function createLearnInvocationGrantConsumer(
       return {
         ok: false,
         errorCode: isDbClientNotReadyError(error) ? 'HOST_NOT_READY' : 'INTERNAL',
-        message: 'Cindy could not record the current /learn request.',
+        message: 'Watchdog could not record the current /learn request.',
       };
     }
     if (!consumed) {

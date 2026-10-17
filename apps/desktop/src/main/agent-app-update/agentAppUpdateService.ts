@@ -166,7 +166,7 @@ function ownerTurnRequired(): ToolResult {
     ok: false,
     errorCode: 'OWNER_TURN_REQUIRED',
     message:
-      '只有 Cindy 主人本人在本机、手机远程或私聊中发起的请求才能更新 Cindy；自动化、其他任务、群成员或共享任务成员的消息不能触发。',
+      '只有 Watchdog 主人本人在本机、手机远程或私聊中发起的请求才能更新 Watchdog；自动化、其他任务、群成员或共享任务成员的消息不能触发。',
   };
 }
 
@@ -410,7 +410,7 @@ export function createAgentAppUpdateService(deps: AgentAppUpdateDeps) {
           : {
               status: 'in_progress',
               targetVersion: flow.targetVersion,
-              message: '更新已在进行中，完成后 Cindy 会自动重启。',
+              message: '更新已在进行中，完成后 Watchdog 会自动重启。',
             };
       }
       const authority = deps.resolveCaller(caller);
@@ -458,7 +458,7 @@ export function createAgentAppUpdateService(deps: AgentAppUpdateDeps) {
           currentVersion: from,
           targetVersion: to,
           message:
-            'Cindy 正在通过内置更新器下载并安装更新，本轮回复结束后会自动重启；重启后结果会写回本任务。请简短告知用户，不要再执行其他操作。',
+            'Watchdog 正在通过内置更新器下载并安装更新，本轮回复结束后会自动重启；重启后结果会写回本任务。请简短告知用户，不要再执行其他操作。',
         };
       } finally {
         if (!started) flow = null;

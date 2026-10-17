@@ -687,7 +687,7 @@ export function createBotDirectMessageService(deps: BotDirectMessageServiceDeps)
       const senderName = trustedHeaderLabel(caller.botName, MAX_SENDER_NAME_CHARS);
       const senderId = trustedHeaderLabel(caller.botId, MAX_SENDER_ID_CHARS);
       const envelope = [
-        `[Direct message from Cindy Bot "${senderName}" (${senderId})]`,
+        `[Direct message from Watchdog Bot "${senderName}" (${senderId})]`,
         ...(groupAuthority ? [
           `[Group source: ${trustedHeaderLabel(groupAuthority.sourceGroup?.name ?? '', MAX_SENDER_NAME_CHARS)} (${trustedHeaderLabel(groupAuthority.sourceGroup?.groupId ?? '', MAX_SENDER_ID_CHARS)}); lane: ${trustedHeaderLabel(input.callerSessionId, MAX_SENDER_ID_CHARS)}]`,
           'Replies go to the sender teammate\'s private chat with its owner. They are not delivered to the group lane. Retain this group source when replying.',

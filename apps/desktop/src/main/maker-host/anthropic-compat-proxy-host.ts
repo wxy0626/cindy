@@ -992,7 +992,7 @@ export function createModelRoutingTransform(): RoutingTransform {
       // 没有任何 Cindy 注入的凭证:Anthropic 模型只剩「带着 CLI 自己的订阅凭证直连」一条路,
       // 而订阅会话从不经本 proxy —— 本地拒绝,不中转。判据 = 前缀地板 ∪ 目录 anthropic 模型集合。
       if (isAnthropicWireModel(wireModel, anthropicCatalogModelIds(getActiveCatalog()))) {
-        log.warn('claude request without Cindy credentials refused (subscription is CLI-only)', { wireModel });
+        log.warn('claude request without Watchdog credentials refused (subscription is CLI-only)', { wireModel });
         return refuseClaudeSubscriptionViaProxy();
       }
       if (wireModel) {

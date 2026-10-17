@@ -63,7 +63,7 @@ export function getAppCapabilities(): AppCapabilities {
 
 export function requireAppCapability(
   capability: keyof AppCapabilities,
-  message = 'This feature requires a Cindy account.',
+  message = 'This feature requires a Watchdog account.',
 ): void {
   const session = getActiveAppSession();
   const boundaryPending = isAppSessionBoundaryPending();
